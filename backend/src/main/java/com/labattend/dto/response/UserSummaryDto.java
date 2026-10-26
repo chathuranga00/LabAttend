@@ -21,4 +21,5 @@ public class UserSummaryDto {
     private Boolean isActive;
     private String staffId;
     private String department;
+    private Boolean mustChangePassword;
 }

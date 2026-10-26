@@ -4,4 +4,7 @@ export { default as BatchesPage } from './BatchesPage';
 export { default as ModulesPage } from './ModulesPage';
 export { default as LaboratoryHallsPage } from './LaboratoryHallsPage';
 export { default as AssignmentsPage } from './AssignmentsPage';
+export { default as LecturersPage } from './LecturersPage';
+export { default as StudentsPage } from './StudentsPage';
+export { default as StudentDetailsPage } from './StudentDetailsPage';
 export { default as AdminPlaceholderPage } from './AdminPlaceholderPage';

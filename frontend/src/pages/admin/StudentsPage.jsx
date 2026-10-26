@@ -1,0 +1,755 @@
+import React, { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { 
+  Plus, 
+  Upload, 
+  Edit2, 
+  Eye, 
+  QrCode, 
+  Users, 
+  FileSpreadsheet, 
+  CheckCircle, 
+  AlertCircle, 
+  RefreshCw, 
+  X,
+  ShieldAlert
+} from 'lucide-react';
+import { studentService, degreeProgrammeService, batchService } from '../../services/academicService';
+import { useToast } from '../../context/ToastContext';
+import { DataTable, Pagination, SearchBar, Modal, StatusBadge } from '../../components/common';
+
+export default function StudentsPage() {
+  const navigate = useNavigate();
+  const { showToast } = useToast();
+
+  const [students, setStudents] = useState([]);
+  const [programmes, setProgrammes] = useState([]);
+  const [batches, setBatches] = useState([]);
+  const [filteredBatches, setFilteredBatches] = useState([]);
+
+  // Filter states
+  const [selectedProgrammeId, setSelectedProgrammeId] = useState('');
+  const [selectedBatchId, setSelectedBatchId] = useState('');
+  const [selectedStatus, setSelectedStatus] = useState('');
+  const [search, setSearch] = useState('');
+
+  // Pagination states
+  const [page, setPage] = useState(0);
+  const [totalPages, setTotalPages] = useState(0);
+  const [totalElements, setTotalElements] = useState(0);
+  const [loading, setLoading] = useState(true);
+
+  // Add / Edit Modal state
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingItem, setEditingItem] = useState(null);
+  const [formData, setFormData] = useState({
+    studentId: '',
+    fullName: '',
+    email: '',
+    degreeProgrammeId: '',
+    batchId: '',
+    qrToken: '',
+  });
+  const [formErrors, setFormErrors] = useState({});
+  const [submitting, setSubmitting] = useState(false);
+
+  // CSV Import Modal state
+  const [isCsvModalOpen, setIsCsvModalOpen] = useState(false);
+  const [csvFile, setCsvFile] = useState(null);
+  const [csvImporting, setCsvImporting] = useState(false);
+  const [csvResult, setCsvResult] = useState(null);
+
+  // Load degree programmes
+  const loadProgrammes = useCallback(async () => {
+    try {
+      const res = await degreeProgrammeService.getProgrammes({ size: 100 });
+      if (res.success && res.data) {
+        setProgrammes(res.data.content || []);
+      }
+    } catch (err) {
+      console.error('Failed to load programmes', err);
+    }
+  }, []);
+
+  // Load all batches
+  const loadBatches = useCallback(async () => {
+    try {
+      const res = await batchService.getBatches({ size: 200 });
+      if (res.success && res.data) {
+        setBatches(res.data.content || []);
+      }
+    } catch (err) {
+      console.error('Failed to load batches', err);
+    }
+  }, []);
+
+  // Fetch students
+  const fetchStudents = useCallback(async () => {
+    try {
+      setLoading(true);
+      const params = {
+        programmeId: selectedProgrammeId || undefined,
+        batchId: selectedBatchId || undefined,
+        isActive: selectedStatus === 'active' ? true : selectedStatus === 'inactive' ? false : undefined,
+        search: search.trim() || undefined,
+        page,
+        size: 10,
+        sortBy: 'studentId',
+        sortDir: 'asc',
+      };
+      const res = await studentService.getStudents(params);
+      if (res.success && res.data) {
+        setStudents(res.data.content || []);
+        setTotalPages(res.data.totalPages || 0);
+        setTotalElements(res.data.totalElements || 0);
+      }
+    } catch (err) {
+      showToast(err.message || 'Failed to load students', 'error');
+    } finally {
+      setLoading(false);
+    }
+  }, [selectedProgrammeId, selectedBatchId, selectedStatus, search, page, showToast]);
+
+  useEffect(() => {
+    loadProgrammes();
+    loadBatches();
+  }, [loadProgrammes, loadBatches]);
+
+  useEffect(() => {
+    fetchStudents();
+  }, [fetchStudents]);
+
+  // Update batch options when form degree programme changes
+  useEffect(() => {
+    if (formData.degreeProgrammeId) {
+      const matching = batches.filter(b => b.degreeProgrammeId === formData.degreeProgrammeId);
+      setFilteredBatches(matching);
+      if (matching.length > 0 && !matching.some(b => b.id === formData.batchId)) {
+        setFormData(prev => ({ ...prev, batchId: matching[0].id }));
+      }
+    } else {
+      setFilteredBatches([]);
+    }
+  }, [formData.degreeProgrammeId, batches, formData.batchId]);
+
+  const handleOpenCreate = () => {
+    setEditingItem(null);
+    const firstProg = programmes[0]?.id || '';
+    const matchingBatches = batches.filter(b => b.degreeProgrammeId === firstProg);
+    setFormData({
+      studentId: '',
+      fullName: '',
+      email: '',
+      degreeProgrammeId: firstProg,
+      batchId: matchingBatches[0]?.id || '',
+      qrToken: '',
+    });
+    setFormErrors({});
+    setIsModalOpen(true);
+  };
+
+  const handleOpenEdit = (item) => {
+    setEditingItem(item);
+    setFormData({
+      studentId: item.studentId || '',
+      fullName: item.fullName || '',
+      email: item.email || '',
+      degreeProgrammeId: item.degreeProgrammeId || '',
+      batchId: item.batchId || '',
+      qrToken: '', // Leave blank unless admin wants to overwrite the QR identifier
+    });
+    setFormErrors({});
+    setIsModalOpen(true);
+  };
+
+  const validateForm = () => {
+    const errs = {};
+    if (!formData.studentId.trim()) errs.studentId = 'Student ID is required';
+    if (!formData.fullName.trim()) errs.fullName = 'Full Name is required';
+    if (!formData.email.trim()) {
+      errs.email = 'Email address is required';
+    } else if (!/\S+@\S+\.\S+/.test(formData.email)) {
+      errs.email = 'Invalid email address format';
+    }
+    if (!formData.degreeProgrammeId) errs.degreeProgrammeId = 'Degree Programme is required';
+    if (!formData.batchId) errs.batchId = 'Batch cohort is required';
+    setFormErrors(errs);
+    return Object.keys(errs).length === 0;
+  };
+
+  const handleSubmitForm = async (e) => {
+    e.preventDefault();
+    if (!validateForm()) return;
+
+    try {
+      setSubmitting(true);
+      const payload = {
+        studentId: formData.studentId.trim(),
+        fullName: formData.fullName.trim(),
+        email: formData.email.trim(),
+        degreeProgrammeId: formData.degreeProgrammeId,
+        batchId: formData.batchId,
+        qrToken: formData.qrToken.trim() || null,
+      };
+
+      if (editingItem) {
+        await studentService.updateStudent(editingItem.id, payload);
+        showToast('Student record updated successfully', 'success');
+      } else {
+        await studentService.createStudent(payload);
+        showToast('Student record registered successfully', 'success');
+      }
+      setIsModalOpen(false);
+      fetchStudents();
+    } catch (err) {
+      showToast(err.message || 'Operation failed', 'error');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleToggleStatus = async (item) => {
+    try {
+      const res = await studentService.toggleStatus(item.id);
+      showToast(res.message || 'Student status updated', 'success');
+      fetchStudents();
+    } catch (err) {
+      showToast(err.message || 'Failed to update student status', 'error');
+    }
+  };
+
+  const handleCsvFileChange = (e) => {
+    if (e.target.files && e.target.files[0]) {
+      setCsvFile(e.target.files[0]);
+    }
+  };
+
+  const handleUploadCsv = async (e) => {
+    e.preventDefault();
+    if (!csvFile) {
+      showToast('Please select a valid CSV file', 'error');
+      return;
+    }
+
+    try {
+      setCsvImporting(true);
+      setCsvResult(null);
+      const uploadData = new FormData();
+      uploadData.append('file', csvFile);
+
+      const res = await studentService.importCsv(uploadData);
+      if (res.success && res.data) {
+        setCsvResult(res.data);
+        showToast(res.message || 'CSV processing complete', 'success');
+        fetchStudents();
+      }
+    } catch (err) {
+      showToast(err.message || 'Failed to process CSV file', 'error');
+    } finally {
+      setCsvImporting(false);
+    }
+  };
+
+  const columns = [
+    {
+      header: 'Student ID',
+      accessor: 'studentId',
+      render: (item) => (
+        <span className="font-mono font-semibold text-emerald-400 bg-emerald-950/40 border border-emerald-800/40 px-2 py-0.5 rounded text-xs">
+          {item.studentId}
+        </span>
+      ),
+    },
+    {
+      header: 'Full Name',
+      accessor: 'fullName',
+      render: (item) => (
+        <div>
+          <span className="font-medium text-slate-100 block">{item.fullName}</span>
+          <span className="text-xs text-slate-400">{item.email}</span>
+        </div>
+      ),
+    },
+    {
+      header: 'Degree & Batch',
+      accessor: 'batchCode',
+      render: (item) => (
+        <div>
+          <span className="text-sm text-slate-200 block font-medium">
+            {item.degreeProgrammeCode} ({item.batchCode})
+          </span>
+          <span className="text-xs text-slate-500">{item.degreeProgrammeName}</span>
+        </div>
+      ),
+    },
+    {
+      header: 'Badge Identifier',
+      accessor: 'hasQrToken',
+      render: (item) => (
+        item.hasQrToken ? (
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-cyan-950/60 border border-cyan-800/50 text-cyan-400">
+            <QrCode className="h-3 w-3" />
+            Token Mapped
+          </span>
+        ) : (
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-800 text-slate-400">
+            Unmapped
+          </span>
+        )
+      ),
+    },
+    {
+      header: 'Status',
+      accessor: 'isActive',
+      render: (item) => (
+        <StatusBadge 
+          isActive={item.isActive} 
+          onClick={() => handleToggleStatus(item)} 
+        />
+      ),
+    },
+    {
+      header: 'Actions',
+      accessor: 'actions',
+      render: (item) => (
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => navigate(`/admin/students/${item.id}`)}
+            className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-cyan-400 transition"
+            title="View Attendance History & Profile"
+          >
+            <Eye className="h-4 w-4" />
+          </button>
+          <button
+            onClick={() => handleOpenEdit(item)}
+            className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition"
+            title="Edit Student"
+          >
+            <Edit2 className="h-4 w-4" />
+          </button>
+        </div>
+      ),
+    },
+  ];
+
+  return (
+    <div className="p-8 space-y-6">
+      {/* Header */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <div className="flex items-center gap-2.5 text-xs text-emerald-400 font-semibold tracking-wider uppercase mb-1">
+            <Users className="h-4 w-4" />
+            <span>Cohort Roster Directory</span>
+          </div>
+          <h1 className="text-2xl font-bold text-white tracking-tight">Student Records</h1>
+          <p className="text-sm text-slate-400 mt-1">
+            Zero-Trust Registry: Students are records only (no login accounts). Roster modifications strictly preserve session history.
+          </p>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => {
+              setCsvFile(null);
+              setCsvResult(null);
+              setIsCsvModalOpen(true);
+            }}
+            className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 text-sm font-medium transition"
+          >
+            <Upload className="h-4 w-4 text-emerald-400" />
+            <span>Bulk CSV Import</span>
+          </button>
+
+          <button
+            onClick={handleOpenCreate}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-slate-950 text-sm font-semibold shadow-lg shadow-emerald-500/20 transition"
+          >
+            <Plus className="h-4 w-4 stroke-[2.5]" />
+            <span>Add Student</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Filters Bar */}
+      <div className="bg-slate-900/60 border border-slate-800/80 rounded-2xl p-4 flex flex-col md:flex-row items-center gap-3">
+        <div className="w-full md:w-72">
+          <SearchBar
+            value={search}
+            onChange={(val) => {
+              setSearch(val);
+              setPage(0);
+            }}
+            placeholder="Search by ID, name, or email..."
+          />
+        </div>
+
+        <div className="w-full md:w-56">
+          <select
+            value={selectedProgrammeId}
+            onChange={(e) => {
+              setSelectedProgrammeId(e.target.value);
+              setSelectedBatchId('');
+              setPage(0);
+            }}
+            className="w-full px-3 py-2 bg-slate-800/80 border border-slate-700 rounded-xl text-sm text-slate-200 focus:outline-none focus:border-emerald-500"
+          >
+            <option value="">All Programmes</option>
+            {programmes.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.code} - {p.name}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="w-full md:w-48">
+          <select
+            value={selectedBatchId}
+            onChange={(e) => {
+              setSelectedBatchId(e.target.value);
+              setPage(0);
+            }}
+            className="w-full px-3 py-2 bg-slate-800/80 border border-slate-700 rounded-xl text-sm text-slate-200 focus:outline-none focus:border-emerald-500"
+          >
+            <option value="">All Batches</option>
+            {batches
+              .filter((b) => !selectedProgrammeId || b.degreeProgrammeId === selectedProgrammeId)
+              .map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.batchCode}
+                </option>
+              ))}
+          </select>
+        </div>
+
+        <div className="w-full md:w-36">
+          <select
+            value={selectedStatus}
+            onChange={(e) => {
+              setSelectedStatus(e.target.value);
+              setPage(0);
+            }}
+            className="w-full px-3 py-2 bg-slate-800/80 border border-slate-700 rounded-xl text-sm text-slate-200 focus:outline-none focus:border-emerald-500"
+          >
+            <option value="">All Statuses</option>
+            <option value="active">Active Only</option>
+            <option value="inactive">Inactive Only</option>
+          </select>
+        </div>
+
+        {(selectedProgrammeId || selectedBatchId || selectedStatus || search) && (
+          <button
+            onClick={() => {
+              setSelectedProgrammeId('');
+              setSelectedBatchId('');
+              setSelectedStatus('');
+              setSearch('');
+              setPage(0);
+            }}
+            className="text-xs text-slate-400 hover:text-white transition flex items-center gap-1 px-2 py-1"
+          >
+            <RefreshCw className="h-3 w-3" />
+            <span>Reset</span>
+          </button>
+        )}
+      </div>
+
+      {/* Students Data Table */}
+      <div className="bg-slate-900/60 border border-slate-800/80 rounded-2xl overflow-hidden shadow-xl">
+        <DataTable
+          columns={columns}
+          data={students}
+          loading={loading}
+          emptyMessage="No students found matching current filter criteria."
+        />
+
+        <Pagination
+          currentPage={page}
+          totalPages={totalPages}
+          totalElements={totalElements}
+          onPageChange={(p) => setPage(p)}
+        />
+      </div>
+
+      {/* Add / Edit Student Modal */}
+      <Modal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        title={editingItem ? 'Edit Student Record' : 'Register New Student'}
+      >
+        <form onSubmit={handleSubmitForm} className="space-y-4">
+          <div>
+            <label className="block text-xs font-medium text-slate-300 mb-1">
+              Student ID / Registration Number *
+            </label>
+            <input
+              type="text"
+              value={formData.studentId}
+              onChange={(e) => setFormData({ ...formData, studentId: e.target.value })}
+              placeholder="e.g. SE2026001"
+              className="w-full px-3 py-2 bg-slate-800/80 border border-slate-700 rounded-xl text-sm text-slate-200 focus:outline-none focus:border-emerald-500 uppercase font-mono"
+            />
+            {formErrors.studentId && (
+              <span className="text-xs text-rose-400 mt-1 block">{formErrors.studentId}</span>
+            )}
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-slate-300 mb-1">
+              Full Legal Name *
+            </label>
+            <input
+              type="text"
+              value={formData.fullName}
+              onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
+              placeholder="e.g. Kasun Chamara"
+              className="w-full px-3 py-2 bg-slate-800/80 border border-slate-700 rounded-xl text-sm text-slate-200 focus:outline-none focus:border-emerald-500"
+            />
+            {formErrors.fullName && (
+              <span className="text-xs text-rose-400 mt-1 block">{formErrors.fullName}</span>
+            )}
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-slate-300 mb-1">
+              Institutional Email *
+            </label>
+            <input
+              type="email"
+              value={formData.email}
+              onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+              placeholder="e.g. kasun@uni.ac.lk"
+              className="w-full px-3 py-2 bg-slate-800/80 border border-slate-700 rounded-xl text-sm text-slate-200 focus:outline-none focus:border-emerald-500"
+            />
+            {formErrors.email && (
+              <span className="text-xs text-rose-400 mt-1 block">{formErrors.email}</span>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-medium text-slate-300 mb-1">
+                Degree Programme *
+              </label>
+              <select
+                value={formData.degreeProgrammeId}
+                onChange={(e) => setFormData({ ...formData, degreeProgrammeId: e.target.value })}
+                className="w-full px-3 py-2 bg-slate-800/80 border border-slate-700 rounded-xl text-sm text-slate-200 focus:outline-none focus:border-emerald-500"
+              >
+                <option value="">Select Programme</option>
+                {programmes.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.code} - {p.name}
+                  </option>
+                ))}
+              </select>
+              {formErrors.degreeProgrammeId && (
+                <span className="text-xs text-rose-400 mt-1 block">{formErrors.degreeProgrammeId}</span>
+              )}
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-slate-300 mb-1">
+                Batch Cohort *
+              </label>
+              <select
+                value={formData.batchId}
+                onChange={(e) => setFormData({ ...formData, batchId: e.target.value })}
+                className="w-full px-3 py-2 bg-slate-800/80 border border-slate-700 rounded-xl text-sm text-slate-200 focus:outline-none focus:border-emerald-500"
+              >
+                <option value="">Select Batch</option>
+                {filteredBatches.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.batchCode} ({b.academicYear})
+                  </option>
+                ))}
+              </select>
+              {formErrors.batchId && (
+                <span className="text-xs text-rose-400 mt-1 block">{formErrors.batchId}</span>
+              )}
+            </div>
+          </div>
+
+          {editingItem && (
+            <div className="p-3 bg-amber-950/30 border border-amber-800/40 rounded-xl text-xs text-amber-300">
+              <span className="font-semibold block mb-0.5">Historical Integrity Notice:</span>
+              Changing a student's batch updates future session targeting only. Past sessions and attendance history remain strictly immutable.
+            </div>
+          )}
+
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-xs font-medium text-slate-300">
+                Pre-printed Badge / Card Identifier Token (Optional)
+              </label>
+              {editingItem?.hasQrToken && (
+                <span className="text-[11px] text-cyan-400 font-medium">Currently Mapped</span>
+              )}
+            </div>
+            <input
+              type="text"
+              value={formData.qrToken}
+              onChange={(e) => setFormData({ ...formData, qrToken: e.target.value })}
+              placeholder={editingItem?.hasQrToken ? 'Enter new token to overwrite, or leave blank to keep' : 'Physical card barcode / QR text'}
+              className="w-full px-3 py-2 bg-slate-800/80 border border-slate-700 rounded-xl text-sm text-slate-200 focus:outline-none focus:border-emerald-500 font-mono"
+            />
+            <p className="text-[11px] text-slate-500 mt-1">
+              Stored as SHA-256 hash. Zero QR code generation or printing occurs in LabAttend.
+            </p>
+          </div>
+
+          <div className="flex justify-end gap-3 pt-3 border-t border-slate-800">
+            <button
+              type="button"
+              onClick={() => setIsModalOpen(false)}
+              className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-sm font-medium transition"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={submitting}
+              className="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 text-slate-950 rounded-xl text-sm font-semibold transition"
+            >
+              {submitting ? 'Saving...' : editingItem ? 'Update Student' : 'Create Student'}
+            </button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* CSV Bulk Import Modal */}
+      <Modal
+        isOpen={isCsvModalOpen}
+        onClose={() => {
+          setIsCsvModalOpen(false);
+          setCsvResult(null);
+        }}
+        title="Bulk Import Student Roster (CSV)"
+      >
+        <div className="space-y-5">
+          <div className="p-4 bg-slate-800/50 border border-slate-700/60 rounded-xl text-xs text-slate-300 space-y-2">
+            <div className="flex items-center gap-2 font-semibold text-emerald-400">
+              <FileSpreadsheet className="h-4 w-4" />
+              <span>CSV Format Specification:</span>
+            </div>
+            <p className="text-slate-400">
+              Your CSV file must include headers matching standard student fields.
+            </p>
+            <div className="bg-slate-950 p-2.5 rounded-lg font-mono text-[11px] text-emerald-300 overflow-x-auto border border-slate-800">
+              student_id,full_name,email,degree_programme_code,batch_code,qr_token
+            </div>
+            <div className="text-[11px] text-slate-500">
+              Example row: <code className="text-slate-400">STU101,Kamal Perera,kamal@uni.ac.lk,SE,Y2026-B1,BADGE-CARD-001</code>
+            </div>
+          </div>
+
+          {!csvResult ? (
+            <form onSubmit={handleUploadCsv} className="space-y-4">
+              <div className="border-2 border-dashed border-slate-700 hover:border-emerald-500/60 rounded-2xl p-6 text-center transition cursor-pointer bg-slate-950/40">
+                <input
+                  type="file"
+                  id="csv-file-input"
+                  accept=".csv,text/csv"
+                  onChange={handleCsvFileChange}
+                  className="hidden"
+                />
+                <label htmlFor="csv-file-input" className="cursor-pointer block">
+                  <Upload className="h-8 w-8 text-emerald-400 mx-auto mb-2" />
+                  <span className="text-sm font-medium text-slate-200 block">
+                    {csvFile ? csvFile.name : 'Click to select CSV file (40+ students supported)'}
+                  </span>
+                  <span className="text-xs text-slate-500 mt-1 block">
+                    {csvFile ? `${(csvFile.size / 1024).toFixed(1)} KB` : 'UTF-8 encoded .csv files only'}
+                  </span>
+                </label>
+              </div>
+
+              <div className="flex justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsCsvModalOpen(false)}
+                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-sm font-medium transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={!csvFile || csvImporting}
+                  className="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 text-slate-950 rounded-xl text-sm font-semibold transition"
+                >
+                  {csvImporting ? 'Validating & Importing...' : 'Upload & Import Roster'}
+                </button>
+              </div>
+            </form>
+          ) : (
+            <div className="space-y-4">
+              {/* Import Results Banner */}
+              <div className="grid grid-cols-3 gap-3 text-center">
+                <div className="p-3 bg-slate-800/60 border border-slate-700/60 rounded-xl">
+                  <span className="text-xs text-slate-400 block">Total Rows</span>
+                  <span className="text-lg font-bold text-white">{csvResult.totalRows}</span>
+                </div>
+                <div className="p-3 bg-emerald-950/40 border border-emerald-800/40 rounded-xl">
+                  <span className="text-xs text-emerald-400 block">Imported</span>
+                  <span className="text-lg font-bold text-emerald-400">{csvResult.successCount}</span>
+                </div>
+                <div className="p-3 bg-rose-950/40 border border-rose-800/40 rounded-xl">
+                  <span className="text-xs text-rose-400 block">Failed</span>
+                  <span className="text-lg font-bold text-rose-400">{csvResult.failureCount}</span>
+                </div>
+              </div>
+
+              {/* Per-row Errors List */}
+              {csvResult.errors && csvResult.errors.length > 0 && (
+                <div className="space-y-2">
+                  <span className="text-xs font-semibold text-rose-400 block">
+                    Detailed Row Validation Errors ({csvResult.errors.length}):
+                  </span>
+                  <div className="max-h-56 overflow-y-auto space-y-1.5 pr-1">
+                    {csvResult.errors.map((err, idx) => (
+                      <div
+                        key={idx}
+                        className="p-2.5 rounded-lg bg-rose-950/30 border border-rose-900/40 text-xs text-rose-300 flex items-start gap-2"
+                      >
+                        <AlertCircle className="h-4 w-4 shrink-0 text-rose-400 mt-0.5" />
+                        <div>
+                          <span className="font-semibold text-rose-200">
+                            Row {err.rowNumber} [{err.studentId}]:
+                          </span>{' '}
+                          {err.error}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="flex justify-end gap-3 pt-3 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCsvFile(null);
+                    setCsvResult(null);
+                  }}
+                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-sm font-medium transition"
+                >
+                  Import Another File
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsCsvModalOpen(false);
+                    setCsvResult(null);
+                  }}
+                  className="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-slate-950 rounded-xl text-sm font-semibold transition"
+                >
+                  Done
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      </Modal>
+    </div>
+  );
+}

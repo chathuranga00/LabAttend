@@ -40,3 +40,25 @@ export const lecturerAssignmentService = {
   toggleStatus: (id) => api.patch(`/admin/assignments/${id}/toggle-status`),
   deleteAssignment: (id) => api.delete(`/admin/assignments/${id}`),
 };
+
+export const studentService = {
+  getStudents: (params = {}) => api.get('/admin/students', { params }),
+  getStudentById: (id) => api.get(`/admin/students/${id}`),
+  createStudent: (data) => api.post('/admin/students', data),
+  updateStudent: (id, data) => api.put(`/admin/students/${id}`, data),
+  toggleStatus: (id) => api.patch(`/admin/students/${id}/toggle-status`),
+  getAttendanceHistory: (id) => api.get(`/admin/students/${id}/attendance`),
+  importCsv: (formData) =>
+    api.post('/admin/students/import-csv', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }),
+};
+
+export const lecturerService = {
+  getLecturers: (params = {}) => api.get('/admin/lecturers', { params }),
+  getLecturerById: (id) => api.get(`/admin/lecturers/${id}`),
+  createLecturer: (data) => api.post('/admin/lecturers', data),
+  updateLecturer: (id, data) => api.put(`/admin/lecturers/${id}`, data),
+  toggleStatus: (id) => api.patch(`/admin/lecturers/${id}/toggle-status`),
+  resetAccess: (id) => api.post(`/admin/lecturers/${id}/reset-access`),
+};

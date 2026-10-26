@@ -13,6 +13,9 @@ import {
   ModulesPage,
   LaboratoryHallsPage,
   AssignmentsPage,
+  LecturersPage,
+  StudentsPage,
+  StudentDetailsPage,
   AdminPlaceholderPage,
 } from '../pages/admin';
 import LecturerDashboardPage from '../pages/lecturer/LecturerDashboardPage';
@@ -56,16 +59,10 @@ export default function AppRoutes() {
         <Route path="programmes" element={<DegreeProgrammesPage />} />
         <Route path="batches" element={<BatchesPage />} />
         <Route path="modules" element={<ModulesPage />} />
-        <Route path="lecturers" element={<AssignmentsPage />} />
-        <Route
-          path="students"
-          element={
-            <AdminPlaceholderPage
-              title="Student Cohort Rosters"
-              description="Manage student records and cohort enrollments (records only, no login accounts)"
-            />
-          }
-        />
+        <Route path="lecturers" element={<LecturersPage />} />
+        <Route path="assignments" element={<AssignmentsPage />} />
+        <Route path="students" element={<StudentsPage />} />
+        <Route path="students/:id" element={<StudentDetailsPage />} />
         <Route path="halls" element={<LaboratoryHallsPage />} />
         <Route
           path="audits"
