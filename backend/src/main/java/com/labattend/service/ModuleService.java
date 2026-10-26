@@ -39,11 +39,15 @@ public class ModuleService {
         Sort sort = sortDir.equalsIgnoreCase("desc") ? Sort.by(sortBy).descending() : Sort.by(sortBy).ascending();
         Pageable pageable = PageRequest.of(page, size, sort);
 
-        Page<Module> modulePage = moduleRepository.searchModules(
-                programmeId,
-                search != null && !search.isBlank() ? search.trim() : null,
-                pageable
-        );
+        Page<Module> modulePage;
+        if (search != null && !search.isBlank()) {
+            String pattern = "%" + search.trim().toLowerCase() + "%";
+            modulePage = moduleRepository.searchModules(programmeId, pattern, pageable);
+        } else if (programmeId != null) {
+            modulePage = moduleRepository.findByDegreeProgrammeId(programmeId, pageable);
+        } else {
+            modulePage = moduleRepository.findAll(pageable);
+        }
 
         return PageResponse.of(modulePage.map(this::mapToResponse));
     }

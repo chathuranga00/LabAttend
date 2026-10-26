@@ -83,14 +83,26 @@ public class AuditLogService {
                 : org.springframework.data.domain.Sort.by(sortBy).descending();
         org.springframework.data.domain.Pageable pageable = org.springframework.data.domain.PageRequest.of(page, size, sort);
 
-        org.springframework.data.domain.Page<AuditLog> auditPage = auditLogRepository.searchAuditLogs(
-                actorId,
-                action != null && !action.isBlank() ? action.trim() : null,
-                entityName != null && !entityName.isBlank() ? entityName.trim() : null,
-                startDate, endDate,
-                search != null && !search.isBlank() ? search.trim() : null,
-                pageable
-        );
+        boolean noFilters = actorId == null &&
+                (action == null || action.isBlank()) &&
+                (entityName == null || entityName.isBlank()) &&
+                startDate == null && endDate == null &&
+                (search == null || search.isBlank());
+
+        org.springframework.data.domain.Page<AuditLog> auditPage;
+        if (noFilters) {
+            auditPage = auditLogRepository.findAll(pageable);
+        } else {
+            String searchPattern = search != null && !search.isBlank() ? "%" + search.trim().toLowerCase() + "%" : null;
+            auditPage = auditLogRepository.searchAuditLogs(
+                    actorId,
+                    action != null && !action.isBlank() ? action.trim() : null,
+                    entityName != null && !entityName.isBlank() ? entityName.trim() : null,
+                    startDate, endDate,
+                    searchPattern,
+                    pageable
+            );
+        }
 
         return com.labattend.dto.response.PageResponse.of(auditPage.map(this::mapToResponse));
     }

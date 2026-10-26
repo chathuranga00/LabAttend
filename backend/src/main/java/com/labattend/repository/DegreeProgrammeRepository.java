@@ -18,6 +18,6 @@ public interface DegreeProgrammeRepository extends JpaRepository<DegreeProgramme
     boolean existsByCodeAndIdNot(String code, UUID id);
 
     @Query("SELECT dp FROM DegreeProgramme dp WHERE " +
-           "(:search IS NULL OR LOWER(dp.name) LIKE LOWER(CONCAT('%', :search, '%')) OR LOWER(dp.code) LIKE LOWER(CONCAT('%', :search, '%')))")
+           "LOWER(dp.name) LIKE :search OR LOWER(dp.code) LIKE :search")
     Page<DegreeProgramme> searchProgrammes(@Param("search") String search, Pageable pageable);
 }

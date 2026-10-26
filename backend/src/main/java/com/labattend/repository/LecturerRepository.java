@@ -20,11 +20,11 @@ public interface LecturerRepository extends JpaRepository<Lecturer, UUID> {
     boolean existsByStaffIdAndIdNot(String staffId, UUID id);
 
     @Query("SELECT l FROM Lecturer l WHERE " +
-           "(:department IS NULL OR LOWER(l.department) LIKE LOWER(CONCAT('%', :department, '%'))) AND " +
+           "(:department IS NULL OR LOWER(l.department) LIKE :department) AND " +
            "(:isActive IS NULL OR l.isActive = :isActive) AND " +
-           "(:search IS NULL OR LOWER(l.staffId) LIKE LOWER(CONCAT('%', :search, '%')) OR " +
-           "LOWER(l.fullName) LIKE LOWER(CONCAT('%', :search, '%')) OR " +
-           "LOWER(l.user.email) LIKE LOWER(CONCAT('%', :search, '%')))")
+           "(:search IS NULL OR LOWER(l.staffId) LIKE :search OR " +
+           "LOWER(l.fullName) LIKE :search OR " +
+           "LOWER(l.user.email) LIKE :search)")
     Page<Lecturer> searchLecturers(
             @Param("department") String department,
             @Param("isActive") Boolean isActive,

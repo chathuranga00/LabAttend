@@ -32,18 +32,18 @@ public interface AttendanceRecordRepository extends JpaRepository<AttendanceReco
                 "(:status IS NULL OR a.status = :status) AND " +
                 "(:method IS NULL OR a.method = :method) AND " +
                 "(:isCorrected IS NULL OR a.isCorrected = :isCorrected) AND " +
-                "(:search IS NULL OR LOWER(s.studentId) LIKE LOWER(CONCAT('%', :search, '%')) OR " +
-                "LOWER(s.fullName) LIKE LOWER(CONCAT('%', :search, '%')) OR " +
-                "LOWER(ses.sessionCode) LIKE LOWER(CONCAT('%', :search, '%')))",
+                "(:search IS NULL OR LOWER(s.studentId) LIKE :search OR " +
+                "LOWER(s.fullName) LIKE :search OR " +
+                "LOWER(ses.sessionCode) LIKE :search)",
         countQuery = "SELECT COUNT(a) FROM AttendanceRecord a " +
                      "WHERE (:sessionId IS NULL OR a.session.id = :sessionId) AND " +
                      "(:studentId IS NULL OR a.student.id = :studentId) AND " +
                      "(:status IS NULL OR a.status = :status) AND " +
                      "(:method IS NULL OR a.method = :method) AND " +
                      "(:isCorrected IS NULL OR a.isCorrected = :isCorrected) AND " +
-                     "(:search IS NULL OR LOWER(a.student.studentId) LIKE LOWER(CONCAT('%', :search, '%')) OR " +
-                     "LOWER(a.student.fullName) LIKE LOWER(CONCAT('%', :search, '%')) OR " +
-                     "LOWER(a.session.sessionCode) LIKE LOWER(CONCAT('%', :search, '%')))"
+                     "(:search IS NULL OR LOWER(a.student.studentId) LIKE :search OR " +
+                     "LOWER(a.student.fullName) LIKE :search OR " +
+                     "LOWER(a.session.sessionCode) LIKE :search)"
     )
     org.springframework.data.domain.Page<AttendanceRecord> searchAttendanceRecords(
             @org.springframework.data.repository.query.Param("sessionId") UUID sessionId,

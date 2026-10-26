@@ -20,8 +20,8 @@ public interface SessionStudentRepository extends JpaRepository<SessionStudent, 
         "SELECT ss FROM SessionStudent ss " +
         "JOIN FETCH ss.student s " +
         "WHERE ss.session.id = :sessionId AND " +
-        "(:search IS NULL OR LOWER(s.studentId) LIKE LOWER(CONCAT('%', :search, '%')) OR " +
-        "LOWER(s.fullName) LIKE LOWER(CONCAT('%', :search, '%'))) " +
+        "(:search IS NULL OR LOWER(s.studentId) LIKE :search OR " +
+        "LOWER(s.fullName) LIKE :search) " +
         "ORDER BY s.studentId ASC"
     )
     List<SessionStudent> findBySessionIdWithSearch(

@@ -20,20 +20,20 @@ public interface AuditLogRepository extends JpaRepository<AuditLog, UUID> {
                 "(:entityName IS NULL OR a.entityName = :entityName) AND " +
                 "(:startDate IS NULL OR a.timestamp >= :startDate) AND " +
                 "(:endDate IS NULL OR a.timestamp <= :endDate) AND " +
-                "(:search IS NULL OR (u IS NOT NULL AND LOWER(u.fullName) LIKE LOWER(CONCAT('%', :search, '%'))) OR " +
-                "(u IS NOT NULL AND LOWER(u.email) LIKE LOWER(CONCAT('%', :search, '%'))) OR " +
-                "LOWER(a.action) LIKE LOWER(CONCAT('%', :search, '%')) OR " +
-                "LOWER(a.entityName) LIKE LOWER(CONCAT('%', :search, '%')))",
+                "(:search IS NULL OR (u IS NOT NULL AND LOWER(u.fullName) LIKE :search) OR " +
+                "(u IS NOT NULL AND LOWER(u.email) LIKE :search) OR " +
+                "LOWER(a.action) LIKE :search OR " +
+                "LOWER(a.entityName) LIKE :search)",
         countQuery = "SELECT COUNT(a) FROM AuditLog a " +
                      "WHERE (:actorId IS NULL OR (a.performedBy IS NOT NULL AND a.performedBy.id = :actorId)) AND " +
                      "(:action IS NULL OR a.action = :action) AND " +
                      "(:entityName IS NULL OR a.entityName = :entityName) AND " +
                      "(:startDate IS NULL OR a.timestamp >= :startDate) AND " +
                      "(:endDate IS NULL OR a.timestamp <= :endDate) AND " +
-                     "(:search IS NULL OR (a.performedBy IS NOT NULL AND LOWER(a.performedBy.fullName) LIKE LOWER(CONCAT('%', :search, '%'))) OR " +
-                     "(a.performedBy IS NOT NULL AND LOWER(a.performedBy.email) LIKE LOWER(CONCAT('%', :search, '%'))) OR " +
-                     "LOWER(a.action) LIKE LOWER(CONCAT('%', :search, '%')) OR " +
-                     "LOWER(a.entityName) LIKE LOWER(CONCAT('%', :search, '%')))"
+                     "(:search IS NULL OR (a.performedBy IS NOT NULL AND LOWER(a.performedBy.fullName) LIKE :search) OR " +
+                     "(a.performedBy IS NOT NULL AND LOWER(a.performedBy.email) LIKE :search) OR " +
+                     "LOWER(a.action) LIKE :search OR " +
+                     "LOWER(a.entityName) LIKE :search)"
     )
     org.springframework.data.domain.Page<AuditLog> searchAuditLogs(
             @org.springframework.data.repository.query.Param("actorId") UUID actorId,

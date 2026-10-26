@@ -34,10 +34,13 @@ public class DegreeProgrammeService {
         Sort sort = sortDir.equalsIgnoreCase("desc") ? Sort.by(sortBy).descending() : Sort.by(sortBy).ascending();
         Pageable pageable = PageRequest.of(page, size, sort);
 
-        Page<DegreeProgramme> programmePage = degreeProgrammeRepository.searchProgrammes(
-                search != null && !search.isBlank() ? search.trim() : null,
-                pageable
-        );
+        Page<DegreeProgramme> programmePage;
+        if (search != null && !search.isBlank()) {
+            String pattern = "%" + search.trim().toLowerCase() + "%";
+            programmePage = degreeProgrammeRepository.searchProgrammes(pattern, pageable);
+        } else {
+            programmePage = degreeProgrammeRepository.findAll(pageable);
+        }
 
         return PageResponse.of(programmePage.map(this::mapToResponse));
     }

@@ -39,11 +39,15 @@ public class BatchService {
         Sort sort = sortDir.equalsIgnoreCase("desc") ? Sort.by(sortBy).descending() : Sort.by(sortBy).ascending();
         Pageable pageable = PageRequest.of(page, size, sort);
 
-        Page<Batch> batchPage = batchRepository.searchBatches(
-                programmeId,
-                search != null && !search.isBlank() ? search.trim() : null,
-                pageable
-        );
+        Page<Batch> batchPage;
+        if (search != null && !search.isBlank()) {
+            String pattern = "%" + search.trim().toLowerCase() + "%";
+            batchPage = batchRepository.searchBatches(programmeId, pattern, pageable);
+        } else if (programmeId != null) {
+            batchPage = batchRepository.findByDegreeProgrammeId(programmeId, pageable);
+        } else {
+            batchPage = batchRepository.findAll(pageable);
+        }
 
         return PageResponse.of(batchPage.map(this::mapToResponse));
     }

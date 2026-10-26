@@ -21,6 +21,8 @@ public interface ModuleRepository extends JpaRepository<Module, UUID> {
 
     @Query("SELECT m FROM Module m WHERE " +
            "(:programmeId IS NULL OR m.degreeProgramme.id = :programmeId) AND " +
-           "(:search IS NULL OR LOWER(m.name) LIKE LOWER(CONCAT('%', :search, '%')) OR LOWER(m.moduleCode) LIKE LOWER(CONCAT('%', :search, '%')))")
+           "(LOWER(m.name) LIKE :search OR LOWER(m.moduleCode) LIKE :search)")
     Page<Module> searchModules(@Param("programmeId") UUID programmeId, @Param("search") String search, Pageable pageable);
+
+    Page<Module> findByDegreeProgrammeId(UUID degreeProgrammeId, Pageable pageable);
 }

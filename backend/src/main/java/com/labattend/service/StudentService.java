@@ -56,13 +56,22 @@ public class StudentService {
         Sort sort = sortDir.equalsIgnoreCase("desc") ? Sort.by(sortBy).descending() : Sort.by(sortBy).ascending();
         Pageable pageable = PageRequest.of(page, size, sort);
 
-        Page<Student> studentPage = studentRepository.searchStudents(
-                programmeId,
-                batchId,
-                isActive,
-                search != null && !search.isBlank() ? search.trim() : null,
-                pageable
-        );
+        boolean noFilters = programmeId == null && batchId == null && isActive == null &&
+                (search == null || search.isBlank());
+
+        Page<Student> studentPage;
+        if (noFilters) {
+            studentPage = studentRepository.findAll(pageable);
+        } else {
+            String searchPattern = search != null && !search.isBlank() ? "%" + search.trim().toLowerCase() + "%" : null;
+            studentPage = studentRepository.searchStudents(
+                    programmeId,
+                    batchId,
+                    isActive,
+                    searchPattern,
+                    pageable
+            );
+        }
 
         return PageResponse.of(studentPage.map(this::mapToResponse));
     }

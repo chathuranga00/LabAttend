@@ -55,9 +55,9 @@ public interface LabSessionRepository extends JpaRepository<LabSession, UUID> {
            "(:status IS NULL OR s.status = :status) AND " +
            "(:startDate IS NULL OR s.sessionDate >= :startDate) AND " +
            "(:endDate IS NULL OR s.sessionDate <= :endDate) AND " +
-           "(:search IS NULL OR LOWER(s.sessionCode) LIKE LOWER(CONCAT('%', :search, '%')) OR " +
-           "LOWER(s.module.moduleCode) LIKE LOWER(CONCAT('%', :search, '%')) OR " +
-           "LOWER(s.module.name) LIKE LOWER(CONCAT('%', :search, '%')))")
+           "(:search IS NULL OR LOWER(s.sessionCode) LIKE :search OR " +
+           "LOWER(s.module.moduleCode) LIKE :search OR " +
+           "LOWER(s.module.name) LIKE :search)")
     Page<LabSession> searchSessions(
             @Param("lecturerId") UUID lecturerId,
             @Param("moduleId") UUID moduleId,

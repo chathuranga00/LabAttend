@@ -34,10 +34,13 @@ public class LaboratoryHallService {
         Sort sort = sortDir.equalsIgnoreCase("desc") ? Sort.by(sortBy).descending() : Sort.by(sortBy).ascending();
         Pageable pageable = PageRequest.of(page, size, sort);
 
-        Page<LaboratoryHall> hallPage = laboratoryHallRepository.searchHalls(
-                search != null && !search.isBlank() ? search.trim() : null,
-                pageable
-        );
+        Page<LaboratoryHall> hallPage;
+        if (search != null && !search.isBlank()) {
+            String pattern = "%" + search.trim().toLowerCase() + "%";
+            hallPage = laboratoryHallRepository.searchHalls(pattern, pageable);
+        } else {
+            hallPage = laboratoryHallRepository.findAll(pageable);
+        }
 
         return PageResponse.of(hallPage.map(this::mapToResponse));
     }

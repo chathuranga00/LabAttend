@@ -48,12 +48,18 @@ public class LecturerService {
         Sort sort = sortDir.equalsIgnoreCase("desc") ? Sort.by(sortBy).descending() : Sort.by(sortBy).ascending();
         Pageable pageable = PageRequest.of(page, size, sort);
 
-        Page<Lecturer> lecturerPage = lecturerRepository.searchLecturers(
-                department != null && !department.isBlank() ? department.trim() : null,
-                isActive,
-                search != null && !search.isBlank() ? search.trim() : null,
-                pageable
-        );
+        boolean noFilters = (department == null || department.isBlank()) &&
+                isActive == null &&
+                (search == null || search.isBlank());
+
+        Page<Lecturer> lecturerPage;
+        if (noFilters) {
+            lecturerPage = lecturerRepository.findAll(pageable);
+        } else {
+            String deptPattern = department != null && !department.isBlank() ? "%" + department.trim().toLowerCase() + "%" : null;
+            String searchPattern = search != null && !search.isBlank() ? "%" + search.trim().toLowerCase() + "%" : null;
+            lecturerPage = lecturerRepository.searchLecturers(deptPattern, isActive, searchPattern, pageable);
+        }
 
         return PageResponse.of(lecturerPage.map(this::mapToResponse));
     }

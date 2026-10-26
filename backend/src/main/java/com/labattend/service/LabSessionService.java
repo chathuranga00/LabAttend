@@ -191,9 +191,10 @@ public class LabSessionService {
         Sort sort = sortDir.equalsIgnoreCase("desc") ? Sort.by(sortBy).descending() : Sort.by(sortBy).ascending();
         Pageable pageable = PageRequest.of(page, size, sort);
 
+        String searchPattern = search != null && !search.isBlank() ? "%" + search.trim().toLowerCase() + "%" : null;
         Page<LabSession> sessionPage = labSessionRepository.searchSessions(
                 lecturer.getId(), moduleId, batchId, null, status, startDate, endDate,
-                search != null && !search.isBlank() ? search.trim() : null,
+                searchPattern,
                 pageable
         );
 
@@ -566,11 +567,21 @@ public class LabSessionService {
         Sort sort = sortDir.equalsIgnoreCase("desc") ? Sort.by(sortBy).descending() : Sort.by(sortBy).ascending();
         Pageable pageable = PageRequest.of(page, size, sort);
 
-        Page<LabSession> sessionPage = labSessionRepository.searchSessions(
-                lecturerId, moduleId, batchId, hallId, status, startDate, endDate,
-                search != null && !search.isBlank() ? search.trim() : null,
-                pageable
-        );
+        boolean noFilters = lecturerId == null && moduleId == null && batchId == null && hallId == null &&
+                status == null && startDate == null && endDate == null &&
+                (search == null || search.isBlank());
+
+        Page<LabSession> sessionPage;
+        if (noFilters) {
+            sessionPage = labSessionRepository.findAll(pageable);
+        } else {
+            String searchPattern = search != null && !search.isBlank() ? "%" + search.trim().toLowerCase() + "%" : null;
+            sessionPage = labSessionRepository.searchSessions(
+                    lecturerId, moduleId, batchId, hallId, status, startDate, endDate,
+                    searchPattern,
+                    pageable
+            );
+        }
 
         return PageResponse.of(sessionPage.map(this::enrichSessionResponse));
     }

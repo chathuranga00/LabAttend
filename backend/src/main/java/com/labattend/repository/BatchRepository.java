@@ -21,6 +21,8 @@ public interface BatchRepository extends JpaRepository<Batch, UUID> {
 
     @Query("SELECT b FROM Batch b WHERE " +
            "(:programmeId IS NULL OR b.degreeProgramme.id = :programmeId) AND " +
-           "(:search IS NULL OR LOWER(b.batchCode) LIKE LOWER(CONCAT('%', :search, '%')) OR LOWER(b.academicYear) LIKE LOWER(CONCAT('%', :search, '%')))")
+           "(LOWER(b.batchCode) LIKE :search OR LOWER(b.academicYear) LIKE :search)")
     Page<Batch> searchBatches(@Param("programmeId") UUID programmeId, @Param("search") String search, Pageable pageable);
+
+    Page<Batch> findByDegreeProgrammeId(UUID degreeProgrammeId, Pageable pageable);
 }

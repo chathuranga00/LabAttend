@@ -19,6 +19,6 @@ public interface LaboratoryHallRepository extends JpaRepository<LaboratoryHall, 
     java.util.List<LaboratoryHall> findByIsActiveTrue();
 
     @Query("SELECT lh FROM LaboratoryHall lh WHERE " +
-           "(:search IS NULL OR LOWER(lh.name) LIKE LOWER(CONCAT('%', :search, '%')) OR LOWER(lh.hallCode) LIKE LOWER(CONCAT('%', :search, '%')) OR LOWER(lh.location) LIKE LOWER(CONCAT('%', :search, '%')))")
+           "LOWER(lh.name) LIKE :search OR LOWER(lh.hallCode) LIKE :search OR LOWER(lh.location) LIKE :search")
     Page<LaboratoryHall> searchHalls(@Param("search") String search, Pageable pageable);
 }

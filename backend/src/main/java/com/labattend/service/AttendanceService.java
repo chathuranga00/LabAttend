@@ -248,7 +248,7 @@ public class AttendanceService {
         LabSession session = getSessionAndVerifyOwnership(sessionId, lecturer);
 
         Pageable pageable = PageRequest.of(page, size, Sort.by("markedAt").descending());
-        String searchTerm = (search != null && !search.isBlank()) ? search.trim() : null;
+        String searchTerm = (search != null && !search.isBlank()) ? "%" + search.trim().toLowerCase() + "%" : null;
 
         Page<AttendanceRecord> records = attendanceRecordRepository.searchAttendanceRecords(
                 session.getId(), null, null, null, null, searchTerm, pageable
@@ -266,7 +266,7 @@ public class AttendanceService {
         Lecturer lecturer = getAuthorizedLecturer(userId);
         LabSession session = getSessionAndVerifyOwnership(sessionId, lecturer);
 
-        String searchTerm = (search != null && !search.isBlank()) ? search.trim() : null;
+        String searchTerm = (search != null && !search.isBlank()) ? "%" + search.trim().toLowerCase() + "%" : null;
         List<SessionStudent> sessionStudents = sessionStudentRepository.findBySessionIdWithSearch(session.getId(), searchTerm);
 
         // Fetch all attendance records for this session
@@ -443,7 +443,7 @@ public class AttendanceService {
         Sort sort = sortDir.equalsIgnoreCase("asc") ? Sort.by(sortBy).ascending() : Sort.by(sortBy).descending();
         Pageable pageable = PageRequest.of(page, size, sort);
 
-        String searchTerm = (search != null && !search.isBlank()) ? search.trim() : null;
+        String searchTerm = (search != null && !search.isBlank()) ? "%" + search.trim().toLowerCase() + "%" : null;
 
         Page<AttendanceRecord> records = attendanceRecordRepository.searchAttendanceRecords(
                 sessionId,

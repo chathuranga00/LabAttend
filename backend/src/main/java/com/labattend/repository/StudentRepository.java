@@ -31,9 +31,9 @@ public interface StudentRepository extends JpaRepository<Student, UUID> {
            "(:programmeId IS NULL OR s.degreeProgramme.id = :programmeId) AND " +
            "(:batchId IS NULL OR s.batch.id = :batchId) AND " +
            "(:isActive IS NULL OR s.isActive = :isActive) AND " +
-           "(:search IS NULL OR LOWER(s.studentId) LIKE LOWER(CONCAT('%', :search, '%')) OR " +
-           "LOWER(s.fullName) LIKE LOWER(CONCAT('%', :search, '%')) OR " +
-           "LOWER(s.email) LIKE LOWER(CONCAT('%', :search, '%')))")
+           "(:search IS NULL OR LOWER(s.studentId) LIKE :search OR " +
+           "LOWER(s.fullName) LIKE :search OR " +
+           "LOWER(s.email) LIKE :search)")
     Page<Student> searchStudents(
             @Param("programmeId") UUID programmeId,
             @Param("batchId") UUID batchId,
