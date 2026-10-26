@@ -12,7 +12,16 @@ import {
   ExternalLink,
   BookOpen,
   Building2,
-  Calendar
+  Calendar,
+  FileSpreadsheet,
+  FileText,
+  FileCode,
+  Download,
+  Loader2,
+  RefreshCw,
+  Clock,
+  Layers,
+  ShieldCheck
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { 
@@ -31,27 +40,66 @@ import {
 } from 'recharts';
 import { analyticsService } from '../../services/analyticsService';
 import { sessionService } from '../../services/sessionService';
+import { reportService } from '../../services/reportService';
+import { academicService } from '../../services/academicService';
 import { useToast } from '../../context/ToastContext';
+
+const REPORT_TYPES = [
+  { id: 'SESSION', label: 'Individual Session', desc: 'Detailed turnout for your finalized lab session' },
+  { id: 'DAILY', label: 'Daily Attendance', desc: 'Sessions and attendance conducted by you on a specific date' },
+  { id: 'STUDENT_HISTORY', label: 'Student History', desc: 'Student lab attendance history across your assigned modules' },
+  { id: 'MODULE', label: 'Module-wise', desc: 'Detailed breakdown of sessions for your assigned module' },
+  { id: 'BATCH', label: 'Batch-wise', desc: 'Cohort attendance for batches you teach' },
+  { id: 'SEMESTER', label: 'Semester Summary', desc: 'Semester-wide attendance across your taught modules' },
+  { id: 'LOW_ATTENDANCE', label: 'Low Attendance Alert', desc: 'Students in your cohorts falling below statutory threshold' },
+  { id: 'HALL', label: 'Laboratory Hall', desc: 'Hall turnout and utilization metrics for your sessions' },
+];
 
 export default function LecturerReportsPage() {
   const { showToast } = useToast();
 
-  // Filter States
-  const [moduleId, setModuleId] = useState('');
-  const [batchId, setBatchId] = useState('');
-  const [semester, setSemester] = useState('');
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
-  const [threshold, setThreshold] = useState(75);
+  // Active Main View Tab: 'EXPORTS' or 'ANALYTICS'
+  const [activeTab, setActiveTab] = useState('EXPORTS');
+
+  // =========================================================================
+  // REPORTS & EXPORTS STATE
+  // =========================================================================
+  const [reportType, setReportType] = useState('SESSION');
+  const [exportSessionId, setExportSessionId] = useState('');
+  const [exportSessionDate, setExportSessionDate] = useState(new Date().toISOString().split('T')[0]);
+  const [exportStudentId, setExportStudentId] = useState('');
+  const [exportModuleId, setExportModuleId] = useState('');
+  const [exportBatchId, setExportBatchId] = useState('');
+  const [exportSemester, setExportSemester] = useState('Year 2 Semester 1');
+  const [exportThreshold, setExportThreshold] = useState(80.0);
+  const [exportHallId, setExportHallId] = useState('');
+  const [exportStartDate, setExportStartDate] = useState('');
+  const [exportEndDate, setExportEndDate] = useState('');
+
+  const [previewData, setPreviewData] = useState(null);
+  const [loadingPreview, setLoadingPreview] = useState(false);
+  const [tableFilter, setTableFilter] = useState('');
+  const [exportLoading, setExportLoading] = useState({ PDF: false, EXCEL: false, CSV: false });
+
+  // Dropdown Reference Data
+  const [myFinalizedSessions, setMyFinalizedSessions] = useState([]);
+  const [moduleOptions, setModuleOptions] = useState([]);
+  const [batchOptions, setBatchOptions] = useState([]);
+  const [hallOptions, setHallOptions] = useState([]);
+
+  // =========================================================================
+  // ANALYTICS TAB STATE (From Phase 7)
+  // =========================================================================
+  const [analyticsModuleId, setAnalyticsModuleId] = useState('');
+  const [analyticsBatchId, setAnalyticsBatchId] = useState('');
+  const [analyticsSemester, setAnalyticsSemester] = useState('');
+  const [analyticsStartDate, setAnalyticsStartDate] = useState('');
+  const [analyticsEndDate, setAnalyticsEndDate] = useState('');
+  const [analyticsThreshold, setAnalyticsThreshold] = useState(75);
   const [showLowOnly, setShowLowOnly] = useState(false);
   const [studentSearch, setStudentSearch] = useState('');
 
-  // Dropdown Options
-  const [moduleOptions, setModuleOptions] = useState([]);
-  const [batchOptions, setBatchOptions] = useState([]);
-
-  // Data States
-  const [loading, setLoading] = useState(true);
+  const [analyticsLoading, setAnalyticsLoading] = useState(false);
   const [overview, setOverview] = useState(null);
   const [trends, setTrends] = useState([]);
   const [sessions, setSessions] = useState([]);
@@ -59,14 +107,28 @@ export default function LecturerReportsPage() {
   const [batches, setBatches] = useState([]);
   const [students, setStudents] = useState([]);
 
-  // Load Lecturer form options (assigned modules & batches)
+  // Load lecturer form options and finalized sessions
   useEffect(() => {
     async function loadFormOptions() {
       try {
-        const res = await sessionService.getFormOptions();
-        if (res.success && res.data) {
-          setModuleOptions(res.data.modules || []);
-          setBatchOptions(res.data.batches || []);
+        const [optRes, sessRes, hallRes] = await Promise.allSettled([
+          sessionService.getFormOptions(),
+          sessionService.getMySessions({ status: 'FINALIZED', size: 100 }),
+          academicService.getLaboratoryHalls({ size: 100 }),
+        ]);
+
+        if (optRes.status === 'fulfilled' && optRes.value?.data) {
+          setModuleOptions(optRes.value.data.modules || []);
+          setBatchOptions(optRes.value.data.batches || []);
+        }
+        if (sessRes.status === 'fulfilled' && sessRes.value?.data?.content) {
+          setMyFinalizedSessions(sessRes.value.data.content);
+          if (sessRes.value.data.content.length > 0 && !exportSessionId) {
+            setExportSessionId(sessRes.value.data.content[0].id);
+          }
+        }
+        if (hallRes.status === 'fulfilled' && hallRes.value?.data?.content) {
+          setHallOptions(hallRes.value.data.content);
         }
       } catch (err) {
         console.error('Failed to load lecturer options', err);
@@ -75,20 +137,20 @@ export default function LecturerReportsPage() {
     loadFormOptions();
   }, []);
 
-  // Fetch Analytics Data
+  // Fetch Analytics Data (Phase 7 tab)
   const fetchAnalytics = useCallback(async () => {
     try {
-      setLoading(true);
+      setAnalyticsLoading(true);
       const params = {};
-      if (moduleId) params.moduleId = moduleId;
-      if (batchId) params.batchId = batchId;
-      if (semester) params.semester = semester;
-      if (startDate) params.startDate = startDate;
-      if (endDate) params.endDate = endDate;
+      if (analyticsModuleId) params.moduleId = analyticsModuleId;
+      if (analyticsBatchId) params.batchId = analyticsBatchId;
+      if (analyticsSemester) params.semester = analyticsSemester;
+      if (analyticsStartDate) params.startDate = analyticsStartDate;
+      if (analyticsEndDate) params.endDate = analyticsEndDate;
 
       const studentParams = {
         ...params,
-        threshold: threshold,
+        threshold: analyticsThreshold,
         search: studentSearch,
       };
 
@@ -110,601 +172,856 @@ export default function LecturerReportsPage() {
     } catch (err) {
       showToast(err.message || 'Failed to fetch analytics', 'error');
     } finally {
-      setLoading(false);
+      setAnalyticsLoading(false);
     }
-  }, [moduleId, batchId, semester, startDate, endDate, threshold, studentSearch, showToast]);
+  }, [analyticsModuleId, analyticsBatchId, analyticsSemester, analyticsStartDate, analyticsEndDate, analyticsThreshold, studentSearch, showToast]);
 
   useEffect(() => {
-    fetchAnalytics();
-  }, [fetchAnalytics]);
+    if (activeTab === 'ANALYTICS') {
+      fetchAnalytics();
+    }
+  }, [activeTab, fetchAnalytics]);
 
-  const handleResetFilters = () => {
-    setModuleId('');
-    setBatchId('');
-    setSemester('');
-    setStartDate('');
-    setEndDate('');
-    setThreshold(75);
-    setShowLowOnly(false);
-    setStudentSearch('');
+  // Build report query params
+  const getReportParams = () => {
+    const params = {};
+    if (reportType === 'SESSION' && exportSessionId) params.sessionId = exportSessionId;
+    if (reportType === 'DAILY' && exportSessionDate) params.sessionDate = exportSessionDate;
+    if (reportType === 'STUDENT_HISTORY') {
+      if (exportStudentId) params.studentId = exportStudentId;
+      if (exportModuleId) params.moduleId = exportModuleId;
+    }
+    if (reportType === 'MODULE') {
+      if (exportModuleId) params.moduleId = exportModuleId;
+      if (exportBatchId) params.batchId = exportBatchId;
+    }
+    if (reportType === 'BATCH') {
+      if (exportBatchId) params.batchId = exportBatchId;
+      if (exportModuleId) params.moduleId = exportModuleId;
+    }
+    if (reportType === 'SEMESTER') {
+      if (exportSemester) params.semester = exportSemester;
+      if (exportBatchId) params.batchId = exportBatchId;
+      if (exportModuleId) params.moduleId = exportModuleId;
+    }
+    if (reportType === 'LOW_ATTENDANCE') {
+      if (exportThreshold) params.threshold = exportThreshold;
+      if (exportModuleId) params.moduleId = exportModuleId;
+      if (exportBatchId) params.batchId = exportBatchId;
+    }
+    if (reportType === 'HALL') {
+      if (exportHallId) params.hallId = exportHallId;
+    }
+    if (exportStartDate) params.startDate = exportStartDate;
+    if (exportEndDate) params.endDate = exportEndDate;
+
+    return params;
   };
 
-  // Filter students based on toggle
+  // Generate Report Preview
+  const handleGeneratePreview = async () => {
+    setLoadingPreview(true);
+    setPreviewData(null);
+    try {
+      const params = getReportParams();
+
+      if (reportType === 'SESSION' && !params.sessionId) {
+        showToast('Please select a finalized lab session', 'warning');
+        setLoadingPreview(false);
+        return;
+      }
+      if (reportType === 'DAILY' && !params.sessionDate) {
+        showToast('Please select a date', 'warning');
+        setLoadingPreview(false);
+        return;
+      }
+      if (reportType === 'STUDENT_HISTORY' && !params.studentId) {
+        showToast('Please specify a Student UUID or matriculation ID', 'warning');
+        setLoadingPreview(false);
+        return;
+      }
+      if (reportType === 'MODULE' && !params.moduleId) {
+        showToast('Please select an assigned module', 'warning');
+        setLoadingPreview(false);
+        return;
+      }
+      if (reportType === 'BATCH' && !params.batchId) {
+        showToast('Please select a batch cohort', 'warning');
+        setLoadingPreview(false);
+        return;
+      }
+      if (reportType === 'HALL' && !params.hallId) {
+        showToast('Please select a laboratory hall', 'warning');
+        setLoadingPreview(false);
+        return;
+      }
+
+      const res = await reportService.getLecturerReportPreview(reportType, params);
+      if (res.success && res.data) {
+        setPreviewData(res.data);
+        showToast(`${res.data.title} preview generated`, 'success');
+      } else {
+        showToast(res.message || 'Failed to generate preview', 'error');
+      }
+    } catch (err) {
+      console.error('Report preview error', err);
+      showToast(err.message || 'Failed to generate report preview', 'error');
+    } finally {
+      setLoadingPreview(false);
+    }
+  };
+
+  // Download Report
+  const handleExport = async (format) => {
+    setExportLoading((prev) => ({ ...prev, [format]: true }));
+    try {
+      const params = getReportParams();
+      await reportService.downloadLecturerReport(reportType, format, params);
+      showToast(`${format} report downloaded successfully`, 'success');
+    } catch (err) {
+      console.error(`Export ${format} error`, err);
+      showToast(err.message || `Failed to export ${format} report`, 'error');
+    } finally {
+      setExportLoading((prev) => ({ ...prev, [format]: false }));
+    }
+  };
+
+  // Filter preview rows
+  const filteredRows = previewData?.rows
+    ? previewData.rows.filter((row) =>
+        row.some((cell) => cell?.toLowerCase().includes(tableFilter.toLowerCase()))
+      )
+    : [];
+
   const displayedStudents = showLowOnly
     ? students.filter((s) => s.isLowAttendance)
     : students;
-
   const lowAttendanceCount = students.filter((s) => s.isLowAttendance).length;
 
-  // Chart data for Present vs Absent
-  const slotData = overview ? [
-    {
-      name: 'Authorized Slots',
-      Present: overview.totalPresentSlots || 0,
-      Absent: overview.totalAbsentSlots || 0,
-    }
-  ] : [];
-
   return (
-    <div className="space-y-8">
-      {/* Header */}
-      <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-6 sm:p-8 relative overflow-hidden shadow-xl">
-        <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
-          <div>
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-teal-500/10 border border-teal-500/20 text-xs text-teal-400 font-semibold mb-3">
-              <BarChart3 className="h-3.5 w-3.5" />
-              <span>Instructor Analytics & Official Reports</span>
-            </div>
-            <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
-              Classroom Attendance Analytics
-            </h1>
-            <p className="mt-1 text-sm text-slate-400">
-              Only finalized sessions reflect official attendance stats. Active sessions are marked provisional.
-            </p>
-          </div>
-          <Link
-            to="/lecturer/students"
-            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-teal-400 text-xs font-semibold border border-slate-700 transition"
-          >
-            <Users className="h-4 w-4" />
-            <span>Search Student History</span>
-          </Link>
+    <div className="space-y-6">
+      {/* Page Header with Dual-Mode Tabs */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-800">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-white flex items-center gap-2.5">
+            <FileSpreadsheet className="h-7 w-7 text-teal-400" />
+            Attendance Reports & Analytics
+          </h1>
+          <p className="text-xs text-slate-400 mt-1">
+            Access authorized attendance exports (PDF, Excel, CSV) and interactive analytical visualisations.
+          </p>
         </div>
-      </div>
 
-      {/* Filter Bar with Low Attendance Threshold */}
-      <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-4 space-y-3">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-slate-400">
-            <Filter className="h-3.5 w-3.5 text-teal-400" />
-            <span>Authorized Scope Filters</span>
-          </div>
+        {/* Tab Switcher */}
+        <div className="inline-flex p-1 rounded-xl bg-slate-900 border border-slate-800 shrink-0">
           <button
-            onClick={handleResetFilters}
-            className="text-xs text-slate-400 hover:text-slate-200 inline-flex items-center gap-1 transition"
+            onClick={() => setActiveTab('EXPORTS')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+              activeTab === 'EXPORTS'
+                ? 'bg-teal-500 text-slate-950 shadow-md shadow-teal-500/20'
+                : 'text-slate-400 hover:text-white'
+            }`}
           >
-            <RotateCcw className="h-3.5 w-3.5" />
-            <span>Reset All</span>
+            <Download className="h-4 w-4" />
+            Official Reports & Exports
+          </button>
+          <button
+            onClick={() => setActiveTab('ANALYTICS')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+              activeTab === 'ANALYTICS'
+                ? 'bg-teal-500 text-slate-950 shadow-md shadow-teal-500/20'
+                : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            <BarChart3 className="h-4 w-4" />
+            Interactive Analytics
           </button>
         </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
-          {/* Module */}
-          <div>
-            <label className="block text-[11px] text-slate-400 mb-1">Module</label>
-            <select
-              value={moduleId}
-              onChange={(e) => setModuleId(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-teal-500"
-            >
-              <option value="">All Assigned Modules</option>
-              {moduleOptions.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.moduleCode} - {m.name}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Batch */}
-          <div>
-            <label className="block text-[11px] text-slate-400 mb-1">Batch</label>
-            <select
-              value={batchId}
-              onChange={(e) => setBatchId(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-teal-500"
-            >
-              <option value="">All Assigned Batches</option>
-              {batchOptions.map((b) => (
-                <option key={b.id} value={b.id}>
-                  {b.batchCode}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* From Date */}
-          <div>
-            <label className="block text-[11px] text-slate-400 mb-1">Start Date</label>
-            <input
-              type="date"
-              value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-teal-500"
-            />
-          </div>
-
-          {/* To Date */}
-          <div>
-            <label className="block text-[11px] text-slate-400 mb-1">End Date</label>
-            <input
-              type="date"
-              value={endDate}
-              onChange={(e) => setEndDate(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-teal-500"
-            />
-          </div>
-
-          {/* Threshold Input */}
-          <div>
-            <label className="block text-[11px] text-slate-400 mb-1">
-              Low Attendance Threshold (%)
-            </label>
-            <div className="flex items-center gap-2">
-              <input
-                type="number"
-                min="0"
-                max="100"
-                step="5"
-                value={threshold}
-                onChange={(e) => setThreshold(Number(e.target.value))}
-                className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-teal-500"
-              />
-              <span className="text-xs text-slate-400 font-bold">%</span>
-            </div>
-          </div>
-        </div>
       </div>
 
-      {/* Summary Stat Cards */}
-      {loading && !overview ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {[1, 2, 3, 4].map((i) => (
-            <div key={i} className="h-28 rounded-xl bg-slate-900/60 border border-slate-800 animate-pulse" />
-          ))}
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {/* Card 1: Official Percentage */}
-          <div className="bg-slate-900/80 border border-slate-800 rounded-xl p-5">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
-                Official Attendance
-              </span>
-              <div className="h-8 w-8 rounded-lg bg-teal-500/10 text-teal-400 flex items-center justify-center">
-                <TrendingUp className="h-4 w-4" />
+      {/* ===================================================================== */}
+      {/* TAB 1: OFFICIAL REPORTS & EXPORTS (PHASE 8)                           */}
+      {/* ===================================================================== */}
+      {activeTab === 'EXPORTS' && (
+        <div className="space-y-6">
+          {/* 1. Report Type Selector Grid */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {REPORT_TYPES.map((t) => {
+              const isSelected = reportType === t.id;
+              return (
+                <button
+                  key={t.id}
+                  onClick={() => {
+                    setReportType(t.id);
+                    setPreviewData(null);
+                  }}
+                  className={`p-3.5 rounded-xl border text-left transition-all relative overflow-hidden group ${
+                    isSelected
+                      ? 'bg-teal-500/10 border-teal-500/50 text-white shadow-lg shadow-teal-500/10'
+                      : 'bg-slate-900/60 border-slate-800 text-slate-400 hover:border-slate-700 hover:text-slate-200'
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-1">
+                    <span className={`text-xs font-bold uppercase tracking-wider ${isSelected ? 'text-teal-400' : 'text-slate-400'}`}>
+                      {t.label}
+                    </span>
+                    {isSelected && <CheckCircle2 className="h-4 w-4 text-teal-400" />}
+                  </div>
+                  <p className="text-[11px] text-slate-400 line-clamp-2 leading-relaxed">
+                    {t.desc}
+                  </p>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* 2. Parameters & Filter Card */}
+          <div className="bg-slate-900/70 border border-slate-800 rounded-2xl p-5 shadow-xl backdrop-blur-sm">
+            <div className="flex items-center justify-between pb-4 mb-4 border-b border-slate-800/80">
+              <div className="flex items-center gap-2 text-sm font-semibold text-slate-200">
+                <Filter className="h-4 w-4 text-teal-400" />
+                Authorized Parameters for {reportType}
               </div>
+              <span className="text-[11px] text-teal-400 font-mono">
+                Only your assigned data is accessible
+              </span>
             </div>
-            <div className="text-3xl font-extrabold text-white tracking-tight">
-              {overview?.overallAttendancePercentage || 'N/A'}
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              {/* SESSION: Session Selector */}
+              {reportType === 'SESSION' && (
+                <div className="lg:col-span-2">
+                  <label className="block text-[11px] font-medium text-slate-400 mb-1.5">
+                    Your Finalized Session *
+                  </label>
+                  <select
+                    value={exportSessionId}
+                    onChange={(e) => setExportSessionId(e.target.value)}
+                    className="w-full bg-slate-800/90 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-teal-500"
+                  >
+                    <option value="">-- Select Finalized Lab Session --</option>
+                    {myFinalizedSessions.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.sessionCode} — {s.module?.moduleCode} ({s.sessionDate})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {/* DAILY: Session Date */}
+              {reportType === 'DAILY' && (
+                <div>
+                  <label className="block text-[11px] font-medium text-slate-400 mb-1.5">
+                    Audit Date *
+                  </label>
+                  <input
+                    type="date"
+                    value={exportSessionDate}
+                    onChange={(e) => setExportSessionDate(e.target.value)}
+                    className="w-full bg-slate-800/90 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-teal-500"
+                  />
+                </div>
+              )}
+
+              {/* STUDENT_HISTORY: Student ID Input */}
+              {reportType === 'STUDENT_HISTORY' && (
+                <div>
+                  <label className="block text-[11px] font-medium text-slate-400 mb-1.5">
+                    Student UUID / Matriculation ID *
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. IT21001234 or Student UUID"
+                    value={exportStudentId}
+                    onChange={(e) => setExportStudentId(e.target.value)}
+                    className="w-full bg-slate-800/90 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-teal-500 font-mono"
+                  />
+                </div>
+              )}
+
+              {/* MODULE: Module Dropdown */}
+              {(reportType === 'MODULE' || reportType === 'STUDENT_HISTORY' || reportType === 'BATCH' || reportType === 'SEMESTER' || reportType === 'LOW_ATTENDANCE') && (
+                <div>
+                  <label className="block text-[11px] font-medium text-slate-400 mb-1.5">
+                    Assigned Module {reportType === 'MODULE' && '*'}
+                  </label>
+                  <select
+                    value={exportModuleId}
+                    onChange={(e) => setExportModuleId(e.target.value)}
+                    className="w-full bg-slate-800/90 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-teal-500"
+                  >
+                    <option value="">{reportType === 'MODULE' ? '-- Select Assigned Module --' : 'All My Modules'}</option>
+                    {moduleOptions.map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.moduleCode} - {m.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {/* BATCH: Batch Dropdown */}
+              {(reportType === 'BATCH' || reportType === 'MODULE' || reportType === 'SEMESTER' || reportType === 'LOW_ATTENDANCE') && (
+                <div>
+                  <label className="block text-[11px] font-medium text-slate-400 mb-1.5">
+                    Assigned Batch {reportType === 'BATCH' && '*'}
+                  </label>
+                  <select
+                    value={exportBatchId}
+                    onChange={(e) => setExportBatchId(e.target.value)}
+                    className="w-full bg-slate-800/90 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-teal-500"
+                  >
+                    <option value="">{reportType === 'BATCH' ? '-- Select Batch --' : 'All Batches'}</option>
+                    {batchOptions.map((b) => (
+                      <option key={b.id} value={b.id}>
+                        {b.batchCode} ({b.academicYear})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {/* HALL: Laboratory Hall Dropdown */}
+              {reportType === 'HALL' && (
+                <div>
+                  <label className="block text-[11px] font-medium text-slate-400 mb-1.5">
+                    Laboratory Hall *
+                  </label>
+                  <select
+                    value={exportHallId}
+                    onChange={(e) => setExportHallId(e.target.value)}
+                    className="w-full bg-slate-800/90 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-teal-500"
+                  >
+                    <option value="">-- Select Laboratory Hall --</option>
+                    {hallOptions.map((h) => (
+                      <option key={h.id} value={h.id}>
+                        {h.name} (Cap: {h.capacity})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {/* SEMESTER: Semester Text / Select */}
+              {reportType === 'SEMESTER' && (
+                <div>
+                  <label className="block text-[11px] font-medium text-slate-400 mb-1.5">
+                    Semester Code *
+                  </label>
+                  <select
+                    value={exportSemester}
+                    onChange={(e) => setExportSemester(e.target.value)}
+                    className="w-full bg-slate-800/90 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-teal-500"
+                  >
+                    <option value="Year 1 Semester 1">Year 1 Semester 1</option>
+                    <option value="Year 1 Semester 2">Year 1 Semester 2</option>
+                    <option value="Year 2 Semester 1">Year 2 Semester 1</option>
+                    <option value="Year 2 Semester 2">Year 2 Semester 2</option>
+                    <option value="Year 3 Semester 1">Year 3 Semester 1</option>
+                    <option value="Year 3 Semester 2">Year 3 Semester 2</option>
+                    <option value="Year 4 Semester 1">Year 4 Semester 1</option>
+                    <option value="Year 4 Semester 2">Year 4 Semester 2</option>
+                  </select>
+                </div>
+              )}
+
+              {/* LOW_ATTENDANCE: Threshold Input */}
+              {reportType === 'LOW_ATTENDANCE' && (
+                <div>
+                  <label className="block text-[11px] font-medium text-slate-400 mb-1.5">
+                    Attendance Cutoff Threshold (%) *
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="100"
+                    step="0.5"
+                    value={exportThreshold}
+                    onChange={(e) => setExportThreshold(parseFloat(e.target.value))}
+                    className="w-full bg-slate-800/90 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-teal-500"
+                  />
+                </div>
+              )}
+
+              {/* Date Range: Start Date */}
+              {reportType !== 'DAILY' && reportType !== 'SESSION' && (
+                <div>
+                  <label className="block text-[11px] font-medium text-slate-400 mb-1.5">
+                    Date Range (From)
+                  </label>
+                  <input
+                    type="date"
+                    value={exportStartDate}
+                    onChange={(e) => setExportStartDate(e.target.value)}
+                    className="w-full bg-slate-800/90 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-teal-500"
+                  />
+                </div>
+              )}
+
+              {/* Date Range: End Date */}
+              {reportType !== 'DAILY' && reportType !== 'SESSION' && (
+                <div>
+                  <label className="block text-[11px] font-medium text-slate-400 mb-1.5">
+                    Date Range (To)
+                  </label>
+                  <input
+                    type="date"
+                    value={exportEndDate}
+                    onChange={(e) => setExportEndDate(e.target.value)}
+                    className="w-full bg-slate-800/90 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-teal-500"
+                  />
+                </div>
+              )}
             </div>
-            <div className="mt-2 text-xs text-slate-400">
-              Across <span className="text-teal-400 font-semibold">{overview?.finalizedSessions || 0}</span> finalized sessions
+
+            {/* Generate Preview Action Bar */}
+            <div className="mt-5 pt-4 border-t border-slate-800 flex items-center justify-between">
+              <div className="text-[11px] text-slate-400 flex items-center gap-1.5">
+                <Clock className="h-3.5 w-3.5 text-teal-400" />
+                Aggregates only your finalized sessions; cancelled sessions are strictly excluded.
+              </div>
+              <button
+                onClick={handleGeneratePreview}
+                disabled={loadingPreview}
+                className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-teal-500 to-emerald-500 hover:from-teal-600 hover:to-emerald-600 text-slate-950 font-bold text-xs shadow-lg shadow-teal-500/20 disabled:opacity-50 transition-all cursor-pointer"
+              >
+                {loadingPreview ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Generating Official Preview...
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw className="h-4 w-4" />
+                    Generate Report Preview
+                  </>
+                )}
+              </button>
             </div>
           </div>
 
-          {/* Card 2: Finalized Sessions */}
-          <div className="bg-slate-900/80 border border-slate-800 rounded-xl p-5">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+          {/* 3. Report Preview & Download Actions */}
+          {previewData && (
+            <div className="space-y-6">
+              {/* Summary Metric Cards */}
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="p-4 rounded-xl bg-slate-900 border border-slate-800 shadow-md">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
+                    Expected Students
+                  </span>
+                  <span className="text-2xl font-black text-white">
+                    {previewData.expectedCount}
+                  </span>
+                </div>
+                <div className="p-4 rounded-xl bg-slate-900 border border-slate-800 shadow-md">
+                  <span className="text-[10px] font-bold text-teal-400 uppercase tracking-wider block mb-1">
+                    Present Attendances
+                  </span>
+                  <span className="text-2xl font-black text-teal-400">
+                    {previewData.presentCount}
+                  </span>
+                </div>
+                <div className="p-4 rounded-xl bg-slate-900 border border-slate-800 shadow-md">
+                  <span className="text-[10px] font-bold text-rose-400 uppercase tracking-wider block mb-1">
+                    Absent Students
+                  </span>
+                  <span className="text-2xl font-black text-rose-400">
+                    {previewData.absentCount}
+                  </span>
+                </div>
+                <div className="p-4 rounded-xl bg-slate-900 border border-slate-800 shadow-md">
+                  <span className="text-[10px] font-bold text-cyan-400 uppercase tracking-wider block mb-1">
+                    Attendance Percentage
+                  </span>
+                  <span className="text-2xl font-black text-cyan-400">
+                    {previewData.attendancePercentage}
+                  </span>
+                </div>
+              </div>
+
+              {/* Metadata Card */}
+              {previewData.metadata && Object.keys(previewData.metadata).length > 0 && (
+                <div className="p-4 rounded-xl bg-slate-900/40 border border-slate-800/80 text-xs">
+                  <div className="text-[11px] font-semibold text-slate-300 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                    <Layers className="h-3.5 w-3.5 text-teal-400" />
+                    Report Parameters & Audit Header
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 text-slate-400">
+                    {Object.entries(previewData.metadata).map(([key, val]) => (
+                      <div key={key}>
+                        <span className="font-semibold text-slate-300">{key}: </span>
+                        <span className="text-slate-100">{val}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Table with Export Buttons */}
+              <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
+                <div className="p-4 border-b border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-4">
+                  <div className="flex items-center gap-3 w-full sm:w-auto">
+                    <div className="relative w-full sm:w-64">
+                      <Search className="h-4 w-4 absolute left-3 top-2.5 text-slate-400" />
+                      <input
+                        type="text"
+                        placeholder="Filter rows..."
+                        value={tableFilter}
+                        onChange={(e) => setTableFilter(e.target.value)}
+                        className="w-full bg-slate-800/80 border border-slate-700/80 rounded-xl pl-9 pr-3 py-1.5 text-xs text-slate-100 placeholder-slate-400 focus:outline-none focus:border-teal-500"
+                      />
+                    </div>
+                    <span className="text-xs text-slate-400 whitespace-nowrap">
+                      Showing <strong>{filteredRows.length}</strong> of {previewData.rows.length} rows
+                    </span>
+                  </div>
+
+                  {/* Export Buttons */}
+                  <div className="flex items-center gap-2.5 w-full sm:w-auto justify-end">
+                    <button
+                      onClick={() => handleExport('PDF')}
+                      disabled={exportLoading.PDF}
+                      className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 text-xs font-semibold shadow-sm transition-all disabled:opacity-50 cursor-pointer"
+                    >
+                      {exportLoading.PDF ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <FileText className="h-3.5 w-3.5" />
+                      )}
+                      Export PDF
+                    </button>
+
+                    <button
+                      onClick={() => handleExport('EXCEL')}
+                      disabled={exportLoading.EXCEL}
+                      className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-xs font-semibold shadow-sm transition-all disabled:opacity-50 cursor-pointer"
+                    >
+                      {exportLoading.EXCEL ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <FileSpreadsheet className="h-3.5 w-3.5" />
+                      )}
+                      Export Excel (.xlsx)
+                    </button>
+
+                    <button
+                      onClick={() => handleExport('CSV')}
+                      disabled={exportLoading.CSV}
+                      className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 text-xs font-semibold shadow-sm transition-all disabled:opacity-50 cursor-pointer"
+                    >
+                      {exportLoading.CSV ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <FileCode className="h-3.5 w-3.5" />
+                      )}
+                      Export CSV
+                    </button>
+                  </div>
+                </div>
+
+                {/* Data Table */}
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-slate-800/60 text-slate-300 font-semibold uppercase text-[10px] tracking-wider border-b border-slate-700/60">
+                      <tr>
+                        {previewData.headers.map((h, i) => (
+                          <th key={i} className="py-3 px-4">
+                            {h}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-800/80">
+                      {filteredRows.length > 0 ? (
+                        filteredRows.map((row, rIdx) => (
+                          <tr key={rIdx} className="hover:bg-slate-800/40 transition-colors">
+                            {row.map((cell, cIdx) => {
+                              const isStatus = cell === 'PRESENT' || cell === 'ABSENT' || cell === 'LATE';
+                              return (
+                                <td key={cIdx} className="py-2.5 px-4 text-slate-300">
+                                  {isStatus ? (
+                                    <span
+                                      className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold ${
+                                        cell === 'PRESENT'
+                                          ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                                          : cell === 'LATE'
+                                          ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                                          : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
+                                      }`}
+                                    >
+                                      {cell}
+                                    </span>
+                                  ) : (
+                                    cell
+                                  )}
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        ))
+                      ) : (
+                        <tr>
+                          <td colSpan={previewData.headers.length} className="py-8 text-center text-slate-400 text-xs">
+                            No matching records found.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+
+                {previewData.additionalSummary && (
+                  <div className="p-3 bg-slate-900/90 border-t border-slate-800 text-[11px] text-slate-400 flex items-center gap-2">
+                    <AlertTriangle className="h-3.5 w-3.5 text-amber-400 shrink-0" />
+                    <span>{previewData.additionalSummary}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ===================================================================== */}
+      {/* TAB 2: INTERACTIVE ANALYTICS & CHARTS (PHASE 7)                       */}
+      {/* ===================================================================== */}
+      {activeTab === 'ANALYTICS' && (
+        <div className="space-y-6">
+          {/* Analytics Filters Card */}
+          <div className="bg-slate-900/70 border border-slate-800 rounded-2xl p-5 shadow-xl backdrop-blur-sm">
+            <div className="flex items-center justify-between pb-3 mb-4 border-b border-slate-800/80">
+              <div className="flex items-center gap-2 text-sm font-semibold text-slate-200">
+                <Filter className="h-4 w-4 text-teal-400" />
+                Analytics Filters
+              </div>
+              <button
+                onClick={() => {
+                  setAnalyticsModuleId('');
+                  setAnalyticsBatchId('');
+                  setAnalyticsSemester('');
+                  setAnalyticsStartDate('');
+                  setAnalyticsEndDate('');
+                  setAnalyticsThreshold(75);
+                  setShowLowOnly(false);
+                  setStudentSearch('');
+                }}
+                className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-teal-400 transition cursor-pointer"
+              >
+                <RotateCcw className="h-3.5 w-3.5" />
+                Reset
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+              <div>
+                <label className="block text-[11px] font-medium text-slate-400 mb-1">Module</label>
+                <select
+                  value={analyticsModuleId}
+                  onChange={(e) => setAnalyticsModuleId(e.target.value)}
+                  className="w-full bg-slate-800/90 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-teal-500"
+                >
+                  <option value="">All Assigned Modules</option>
+                  {moduleOptions.map((m) => (
+                    <option key={m.id} value={m.id}>{m.moduleCode} - {m.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-medium text-slate-400 mb-1">Batch</label>
+                <select
+                  value={analyticsBatchId}
+                  onChange={(e) => setAnalyticsBatchId(e.target.value)}
+                  className="w-full bg-slate-800/90 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-teal-500"
+                >
+                  <option value="">All Batches</option>
+                  {batchOptions.map((b) => (
+                    <option key={b.id} value={b.id}>{b.batchCode}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-medium text-slate-400 mb-1">Semester</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Y2S1"
+                  value={analyticsSemester}
+                  onChange={(e) => setAnalyticsSemester(e.target.value)}
+                  className="w-full bg-slate-800/90 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-teal-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-medium text-slate-400 mb-1">From Date</label>
+                <input
+                  type="date"
+                  value={analyticsStartDate}
+                  onChange={(e) => setAnalyticsStartDate(e.target.value)}
+                  className="w-full bg-slate-800/90 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-teal-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-medium text-slate-400 mb-1">To Date</label>
+                <input
+                  type="date"
+                  value={analyticsEndDate}
+                  onChange={(e) => setAnalyticsEndDate(e.target.value)}
+                  className="w-full bg-slate-800/90 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-teal-500"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Overview Cards */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="p-4 rounded-xl bg-slate-900 border border-slate-800 shadow-md">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
                 Finalized Sessions
               </span>
-              <div className="h-8 w-8 rounded-lg bg-emerald-500/10 text-emerald-400 flex items-center justify-center">
-                <CheckCircle2 className="h-4 w-4" />
-              </div>
-            </div>
-            <div className="text-3xl font-extrabold text-white">
-              {overview?.finalizedSessions || 0}
-            </div>
-            <div className="mt-2 flex items-center gap-1.5">
-              <span className="text-xs px-2 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20 font-semibold">
-                Provisional Active: {overview?.activeSessions || 0}
+              <span className="text-2xl font-black text-white">
+                {overview?.finalizedSessionsCount ?? 0}
               </span>
+              <span className="text-[10px] text-slate-500 block mt-1">Official statistics count</span>
+            </div>
+            <div className="p-4 rounded-xl bg-slate-900 border border-slate-800 shadow-md">
+              <span className="text-[10px] font-bold text-teal-400 uppercase tracking-wider block mb-1">
+                Average Turnout
+              </span>
+              <span className="text-2xl font-black text-teal-400">
+                {overview?.attendancePercentage ?? 'N/A'}
+              </span>
+              <span className="text-[10px] text-slate-500 block mt-1">Present attendance rate</span>
+            </div>
+            <div className="p-4 rounded-xl bg-slate-900 border border-slate-800 shadow-md">
+              <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider block mb-1">
+                Active Provisional Sessions
+              </span>
+              <span className="text-2xl font-black text-amber-400">
+                {overview?.activeProvisionalSessionsCount ?? 0}
+              </span>
+              <span className="text-[10px] text-amber-500/80 block mt-1">Clearly labelled provisional</span>
+            </div>
+            <div className="p-4 rounded-xl bg-slate-900 border border-slate-800 shadow-md">
+              <span className="text-[10px] font-bold text-rose-400 uppercase tracking-wider block mb-1">
+                Low Attendance Alerts
+              </span>
+              <span className="text-2xl font-black text-rose-400">
+                {lowAttendanceCount}
+              </span>
+              <span className="text-[10px] text-slate-500 block mt-1">Below {analyticsThreshold}% cutoff</span>
             </div>
           </div>
 
-          {/* Card 3: Total Slots */}
-          <div className="bg-slate-900/80 border border-slate-800 rounded-xl p-5">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
-                Attended / Expected
-              </span>
-              <div className="h-8 w-8 rounded-lg bg-indigo-500/10 text-indigo-400 flex items-center justify-center">
-                <Users className="h-4 w-4" />
+          {/* Attendance Trend Chart */}
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl">
+            <h3 className="text-sm font-bold text-white mb-4 flex items-center gap-2">
+              <TrendingUp className="h-4 w-4 text-teal-400" />
+              Chronological Attendance Trends (Finalized Sessions)
+            </h3>
+            {trends.length > 0 ? (
+              <div className="h-64">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={trends}>
+                    <defs>
+                      <linearGradient id="rateGrad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#14b8a6" stopOpacity={0.4} />
+                        <stop offset="95%" stopColor="#14b8a6" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                    <XAxis dataKey="sessionDate" stroke="#64748b" textAnchor="end" height={45} tick={{ fontSize: 10 }} />
+                    <YAxis domain={[0, 100]} stroke="#64748b" tick={{ fontSize: 10 }} />
+                    <Tooltip contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '0.75rem', fontSize: '11px' }} />
+                    <Area type="monotone" dataKey="attendanceRate" stroke="#14b8a6" strokeWidth={2} fill="url(#rateGrad)" />
+                  </AreaChart>
+                </ResponsiveContainer>
               </div>
-            </div>
-            <div className="text-3xl font-extrabold text-white">
-              {overview?.totalPresentSlots || 0}
-              <span className="text-sm font-normal text-slate-500 ml-1">
-                / {overview?.totalExpectedSlots || 0}
-              </span>
-            </div>
-            <div className="mt-2 text-xs text-slate-400">
-              Absent Slots: <span className="text-rose-400 font-semibold">{overview?.totalAbsentSlots || 0}</span>
-            </div>
+            ) : (
+              <div className="h-40 flex items-center justify-center text-slate-500 text-xs">
+                No finalized session trends available for the selected filters.
+              </div>
+            )}
           </div>
 
-          {/* Card 4: Flagged Students */}
-          <div className="bg-slate-900/80 border border-slate-800 rounded-xl p-5">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
-                Low Attendance Alert
-              </span>
-              <div className="h-8 w-8 rounded-lg bg-amber-500/10 text-amber-400 flex items-center justify-center">
-                <AlertTriangle className="h-4 w-4" />
+          {/* Student Turnout Compliance List */}
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4">
+              <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                <Users className="h-4 w-4 text-teal-400" />
+                Student Attendance Audit Records ({displayedStudents.length})
+              </h3>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => setShowLowOnly(!showLowOnly)}
+                  className={`text-xs px-3 py-1.5 rounded-lg border font-semibold transition ${
+                    showLowOnly
+                      ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                      : 'bg-slate-800 text-slate-400 border-slate-700 hover:text-white'
+                  }`}
+                >
+                  {showLowOnly ? 'Show All Students' : 'Show At-Risk Only'}
+                </button>
+                <div className="relative w-48">
+                  <Search className="h-3.5 w-3.5 absolute left-2.5 top-2.5 text-slate-400" />
+                  <input
+                    type="text"
+                    placeholder="Search student..."
+                    value={studentSearch}
+                    onChange={(e) => setStudentSearch(e.target.value)}
+                    className="w-full bg-slate-800 border border-slate-700 rounded-lg pl-8 pr-2 py-1.5 text-xs text-white focus:outline-none focus:border-teal-500"
+                  />
+                </div>
               </div>
             </div>
-            <div className="text-3xl font-extrabold text-amber-400">
-              {lowAttendanceCount}
-            </div>
-            <div className="mt-2 text-xs text-slate-400">
-              Students under <span className="text-amber-400 font-semibold">{threshold}%</span> threshold
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-800/60 text-slate-400 font-semibold uppercase text-[10px]">
+                  <tr>
+                    <th className="py-2.5 px-3">Student ID</th>
+                    <th className="py-2.5 px-3">Full Name</th>
+                    <th className="py-2.5 px-3">Cohort</th>
+                    <th className="py-2.5 px-3 text-center">Eligible</th>
+                    <th className="py-2.5 px-3 text-center">Attended</th>
+                    <th className="py-2.5 px-3 text-center">Absent</th>
+                    <th className="py-2.5 px-3 text-right">Attendance Rate</th>
+                    <th className="py-2.5 px-3 text-center">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800">
+                  {displayedStudents.map((s) => (
+                    <tr key={s.studentId} className="hover:bg-slate-800/40">
+                      <td className="py-2.5 px-3 font-mono text-teal-400">{s.officialStudentId}</td>
+                      <td className="py-2.5 px-3 font-medium text-white">{s.fullName}</td>
+                      <td className="py-2.5 px-3 text-slate-400">{s.batchCode}</td>
+                      <td className="py-2.5 px-3 text-center font-mono">{s.eligibleFinalizedSessions}</td>
+                      <td className="py-2.5 px-3 text-center font-mono text-emerald-400">{s.attendedSessions}</td>
+                      <td className="py-2.5 px-3 text-center font-mono text-rose-400">{s.missedSessions}</td>
+                      <td className="py-2.5 px-3 text-right font-bold text-teal-400">{s.attendancePercentage}</td>
+                      <td className="py-2.5 px-3 text-center">
+                        {s.isLowAttendance ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                            <AlertTriangle className="h-3 w-3" />
+                            LOW ATTENDANCE
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                            <CheckCircle2 className="h-3 w-3" />
+                            COMPLIANT
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           </div>
         </div>
       )}
-
-      {/* Visual Charts: Trend Line & Present vs Absent Bars */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Trend Line (Span 2) */}
-        <div className="lg:col-span-2 bg-slate-900/80 border border-slate-800 rounded-xl p-6">
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <h2 className="text-base font-bold text-white tracking-tight">
-                Attendance Progression Trend
-              </h2>
-              <p className="text-xs text-slate-400">
-                Official attendance percentages recorded for your conducted sessions
-              </p>
-            </div>
-            <span className="text-xs px-2.5 py-1 rounded-full bg-teal-500/10 text-teal-400 border border-teal-500/20 font-medium">
-              Finalized Timeline
-            </span>
-          </div>
-
-          {trends.length === 0 ? (
-            <div className="h-64 flex flex-col items-center justify-center text-slate-500 text-xs">
-              <Calendar className="h-8 w-8 mb-2 opacity-50" />
-              <span>No finalized sessions recorded in this scope yet</span>
-            </div>
-          ) : (
-            <div className="h-64 w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={trends} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                  <defs>
-                    <linearGradient id="lecturerGradient" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#14b8a6" stopOpacity={0.4} />
-                      <stop offset="95%" stopColor="#14b8a6" stopOpacity={0.0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
-                  <XAxis dataKey="sessionDate" stroke="#64748b" fontSize={11} tickLine={false} />
-                  <YAxis domain={[0, 100]} stroke="#64748b" fontSize={11} tickFormatter={(v) => `${v}%`} tickLine={false} />
-                  <Tooltip 
-                    contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '0.5rem', fontSize: '12px' }}
-                    formatter={(val) => [`${val}%`, 'Attendance Rate']}
-                    labelFormatter={(label, payload) => {
-                      if (payload && payload[0]?.payload) {
-                        const item = payload[0].payload;
-                        return `${item.sessionCode} (${item.moduleCode}) — ${item.sessionDate}`;
-                      }
-                      return label;
-                    }}
-                  />
-                  <Area type="monotone" dataKey="percentageNumeric" stroke="#14b8a6" strokeWidth={2.5} fillOpacity={1} fill="url(#lecturerGradient)" />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
-          )}
-        </div>
-
-        {/* Present vs Absent Ratio (Span 1) */}
-        <div className="bg-slate-900/80 border border-slate-800 rounded-xl p-6 flex flex-col justify-between">
-          <div>
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <h2 className="text-base font-bold text-white tracking-tight">
-                  Present vs Absent Slots
-                </h2>
-                <p className="text-xs text-slate-400">
-                  Aggregate student attendance counts
-                </p>
-              </div>
-            </div>
-
-            {overview?.totalExpectedSlots === 0 ? (
-              <div className="h-64 flex flex-col items-center justify-center text-slate-500 text-xs">
-                <Users className="h-8 w-8 mb-2 opacity-50" />
-                <span>No attendance slots recorded</span>
-              </div>
-            ) : (
-              <div className="h-56 w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={slotData} margin={{ top: 20, right: 10, left: -20, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
-                    <XAxis dataKey="name" stroke="#64748b" fontSize={11} tickLine={false} />
-                    <YAxis stroke="#64748b" fontSize={11} tickLine={false} />
-                    <Tooltip contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '0.5rem', fontSize: '12px' }} />
-                    <Legend wrapperStyle={{ fontSize: '11px', paddingTop: '10px' }} />
-                    <Bar dataKey="Present" fill="#14b8a6" radius={[4, 4, 0, 0]} />
-                    <Bar dataKey="Absent" fill="#f43f5e" radius={[4, 4, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            )}
-          </div>
-
-          <div className="pt-4 border-t border-slate-800 text-[11px] text-slate-400">
-            <span>Only finalized sessions commit official absentee records</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Session Comparison Chart */}
-      <div className="bg-slate-900/80 border border-slate-800 rounded-xl p-6">
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h2 className="text-base font-bold text-white tracking-tight">
-              Session Attendance Comparison
-            </h2>
-            <p className="text-xs text-slate-400">
-              Comparative attendance rate across individual sessions
-            </p>
-          </div>
-        </div>
-
-        {sessions.length === 0 ? (
-          <div className="h-48 flex flex-col items-center justify-center text-slate-500 text-xs">
-            <span>No session records available</span>
-          </div>
-        ) : (
-          <div className="h-56 w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={sessions.filter(s => s.percentageNumeric != null)} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
-                <XAxis dataKey="sessionCode" stroke="#64748b" fontSize={11} tickLine={false} />
-                <YAxis domain={[0, 100]} stroke="#64748b" fontSize={11} tickFormatter={(v) => `${v}%`} tickLine={false} />
-                <Tooltip 
-                  contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '0.5rem', fontSize: '12px' }}
-                  formatter={(val) => [`${val}%`, 'Attendance Rate']}
-                  labelFormatter={(label, payload) => {
-                    if (payload && payload[0]?.payload) {
-                      const item = payload[0].payload;
-                      return `${item.sessionCode} (${item.moduleCode}) — ${item.presentCount}/${item.expectedStudentCount} attended`;
-                    }
-                    return label;
-                  }}
-                />
-                <Bar dataKey="percentageNumeric" fill="#6366f1" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        )}
-      </div>
-
-      {/* Module and Batch Tables */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Module-wise Breakdown */}
-        <div className="bg-slate-900/80 border border-slate-800 rounded-xl p-6">
-          <h2 className="text-base font-bold text-white tracking-tight mb-3">
-            Module Performance Breakdown
-          </h2>
-          {modules.length === 0 ? (
-            <div className="py-8 text-center text-slate-500 text-xs">No module data found</div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
-                <thead>
-                  <tr className="border-b border-slate-800 text-[11px] font-semibold text-slate-400 uppercase">
-                    <th className="pb-2">Module</th>
-                    <th className="pb-2 text-center">Sessions</th>
-                    <th className="pb-2 text-center">Slots</th>
-                    <th className="pb-2 text-right">Attendance</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-800/60 text-slate-300">
-                  {modules.map((m) => (
-                    <tr key={m.moduleId} className="hover:bg-slate-800/30">
-                      <td className="py-2.5">
-                        <div className="font-semibold text-white">{m.moduleCode}</div>
-                        <div className="text-[11px] text-slate-400 truncate max-w-[160px]">{m.moduleName}</div>
-                      </td>
-                      <td className="py-2.5 text-center">
-                        <span className="text-emerald-400 font-semibold">{m.finalizedSessions}</span>
-                        {m.activeSessions > 0 && (
-                          <span className="text-amber-400 text-[10px] ml-1 font-mono">
-                            (+{m.activeSessions} act)
-                          </span>
-                        )}
-                      </td>
-                      <td className="py-2.5 text-center text-slate-400">
-                        {m.totalPresent}/{m.totalExpected}
-                      </td>
-                      <td className="py-2.5 text-right font-bold">
-                        <span className={m.percentageNumeric >= 75 ? 'text-teal-400' : 'text-amber-400'}>
-                          {m.attendancePercentage}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-
-        {/* Batch-wise Breakdown */}
-        <div className="bg-slate-900/80 border border-slate-800 rounded-xl p-6">
-          <h2 className="text-base font-bold text-white tracking-tight mb-3">
-            Batch Participation Breakdown
-          </h2>
-          {batches.length === 0 ? (
-            <div className="py-8 text-center text-slate-500 text-xs">No batch data found</div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
-                <thead>
-                  <tr className="border-b border-slate-800 text-[11px] font-semibold text-slate-400 uppercase">
-                    <th className="pb-2">Batch</th>
-                    <th className="pb-2 text-center">Finalized</th>
-                    <th className="pb-2 text-center">Slots</th>
-                    <th className="pb-2 text-right">Attendance</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-800/60 text-slate-300">
-                  {batches.map((b) => (
-                    <tr key={b.batchId} className="hover:bg-slate-800/30">
-                      <td className="py-2.5">
-                        <div className="font-semibold text-white">{b.batchCode}</div>
-                        <div className="text-[11px] text-slate-400">{b.programmeCode || 'Cohort'}</div>
-                      </td>
-                      <td className="py-2.5 text-center text-slate-300">{b.finalizedSessions}</td>
-                      <td className="py-2.5 text-center text-slate-400">
-                        {b.totalPresent}/{b.totalExpected}
-                      </td>
-                      <td className="py-2.5 text-right font-bold">
-                        <span className={b.percentageNumeric >= 75 ? 'text-teal-400' : 'text-amber-400'}>
-                          {b.attendancePercentage}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Student Ranking and Low Attendance Filter Table */}
-      <div className="bg-slate-900/80 border border-slate-800 rounded-xl p-6">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-4">
-          <div>
-            <h2 className="text-base font-bold text-white tracking-tight">
-              Student Attendance Ranking & Compliance
-            </h2>
-            <p className="text-xs text-slate-400">
-              Computed strictly from each session&apos;s snapshot expected list
-            </p>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-3">
-            {/* Search Input */}
-            <div className="relative">
-              <Search className="h-3.5 w-3.5 text-slate-400 absolute left-2.5 top-2.5" />
-              <input
-                type="text"
-                placeholder="Search student ID or name..."
-                value={studentSearch}
-                onChange={(e) => setStudentSearch(e.target.value)}
-                className="bg-slate-950 border border-slate-800 rounded-lg pl-8 pr-3 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-teal-500 w-52"
-              />
-            </div>
-
-            {/* Filter Toggle */}
-            <button
-              onClick={() => setShowLowOnly(!showLowOnly)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition ${
-                showLowOnly
-                  ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 shadow-sm'
-                  : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
-              }`}
-            >
-              {showLowOnly ? `Showing Low (<${threshold}%)` : 'Filter Low Attendance'}
-            </button>
-          </div>
-        </div>
-
-        {displayedStudents.length === 0 ? (
-          <div className="py-12 text-center text-slate-500 text-xs">
-            {showLowOnly ? (
-              <div className="flex flex-col items-center">
-                <CheckCircle2 className="h-8 w-8 text-emerald-400 mb-2" />
-                <span>All students meet the {threshold}% attendance threshold in this scope!</span>
-              </div>
-            ) : (
-              <span>No enrolled student records found matching search filters.</span>
-            )}
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead>
-                <tr className="border-b border-slate-800 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
-                  <th className="pb-3 px-3">Student ID</th>
-                  <th className="pb-3 px-3">Student Name</th>
-                  <th className="pb-3 px-3">Batch</th>
-                  <th className="pb-3 px-3 text-center">Eligible Finalized</th>
-                  <th className="pb-3 px-3 text-center">Attended</th>
-                  <th className="pb-3 px-3 text-center">Missed</th>
-                  <th className="pb-3 px-3 text-right">Attendance Rate</th>
-                  <th className="pb-3 px-3 text-center">Status</th>
-                  <th className="pb-3 px-3 text-right">Action</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-800/60 text-slate-300">
-                {displayedStudents.map((s) => (
-                  <tr key={s.studentId} className="hover:bg-slate-800/30 transition-colors">
-                    <td className="py-3 px-3 font-mono font-medium text-teal-400">
-                      {s.officialStudentId}
-                    </td>
-                    <td className="py-3 px-3 font-semibold text-white">{s.fullName}</td>
-                    <td className="py-3 px-3 text-slate-400">{s.batchCode}</td>
-                    <td className="py-3 px-3 text-center font-mono">{s.eligibleFinalizedSessions}</td>
-                    <td className="py-3 px-3 text-center font-mono text-emerald-400">{s.attendedSessions}</td>
-                    <td className="py-3 px-3 text-center font-mono text-rose-400">{s.missedSessions}</td>
-                    <td className="py-3 px-3 text-right font-bold text-sm">
-                      <span className={
-                        s.percentageNumeric === null 
-                          ? 'text-slate-500' 
-                          : s.isLowAttendance 
-                          ? 'text-amber-400' 
-                          : 'text-teal-400'
-                      }>
-                        {s.attendancePercentage}
-                      </span>
-                    </td>
-                    <td className="py-3 px-3 text-center">
-                      {s.isLowAttendance ? (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20">
-                          <AlertTriangle className="h-3 w-3" />
-                          <span>LOW ATTENDANCE</span>
-                        </span>
-                      ) : s.percentageNumeric !== null ? (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                          <CheckCircle2 className="h-3 w-3" />
-                          <span>COMPLIANT</span>
-                        </span>
-                      ) : (
-                        <span className="text-[10px] text-slate-500">NO FINALIZED SESSIONS</span>
-                      )}
-                    </td>
-                    <td className="py-3 px-3 text-right">
-                      <Link
-                        to={`/lecturer/students?id=${s.studentId}`}
-                        className="inline-flex items-center gap-1 text-[11px] text-teal-400 hover:text-teal-300 font-semibold transition"
-                      >
-                        <span>History</span>
-                        <ExternalLink className="h-3 w-3" />
-                      </Link>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
     </div>
   );
 }

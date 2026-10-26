@@ -62,3 +62,19 @@ export const lecturerService = {
   toggleStatus: (id) => api.patch(`/admin/lecturers/${id}/toggle-status`),
   resetAccess: (id) => api.post(`/admin/lecturers/${id}/reset-access`),
 };
+
+export const academicService = {
+  degreeProgramme: degreeProgrammeService,
+  batch: batchService,
+  module: moduleService,
+  laboratoryHall: laboratoryHallService,
+  lecturerAssignment: lecturerAssignmentService,
+  student: studentService,
+  lecturer: lecturerService,
+  getModules: (params) => moduleService.getModules(params),
+  getBatches: (params) => batchService.getBatches(params),
+  getDegreeProgrammes: (params) => degreeProgrammeService.getProgrammes(params),
+  getLaboratoryHalls: (params) => laboratoryHallService.getHalls(params),
+};
+
+export default academicService;

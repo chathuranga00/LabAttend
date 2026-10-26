@@ -19,6 +19,7 @@ import {
   AdminAllSessionsPage,
   AdminAuditLogsPage,
   AdminAttendanceRecordsPage,
+  AdminReportsPage,
   AdminPlaceholderPage,
 } from '../pages/admin';
 import {
@@ -80,6 +81,7 @@ export default function AppRoutes() {
         <Route path="sessions/:id/summary" element={<SessionSummaryPage />} />
         <Route path="attendance" element={<AdminAttendanceRecordsPage />} />
         <Route path="audits" element={<AdminAuditLogsPage />} />
+        <Route path="reports" element={<AdminReportsPage />} />
       </Route>
 
       {/* Protected Lecturer Routes */}
