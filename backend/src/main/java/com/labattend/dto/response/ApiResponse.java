@@ -39,4 +39,12 @@ public class ApiResponse<T> {
                 .timestamp(OffsetDateTime.now())
                 .build();
     }
+
+    public static <T> ApiResponse<T> message(String message) {
+        return ApiResponse.<T>builder()
+                .success(true)
+                .message(message)
+                .timestamp(OffsetDateTime.now())
+                .build();
+    }
 }

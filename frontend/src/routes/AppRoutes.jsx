@@ -6,8 +6,15 @@ import LoginPage from '../pages/auth/LoginPage';
 import HealthCheck from '../pages/HealthCheck';
 import AdminLayout from '../layouts/AdminLayout';
 import LecturerLayout from '../layouts/LecturerLayout';
-import AdminDashboardPage from '../pages/admin/AdminDashboardPage';
-import AdminPlaceholderPage from '../pages/admin/AdminPlaceholderPage';
+import {
+  AdminDashboardPage,
+  DegreeProgrammesPage,
+  BatchesPage,
+  ModulesPage,
+  LaboratoryHallsPage,
+  AssignmentsPage,
+  AdminPlaceholderPage,
+} from '../pages/admin';
 import LecturerDashboardPage from '../pages/lecturer/LecturerDashboardPage';
 import LecturerPlaceholderPage from '../pages/lecturer/LecturerPlaceholderPage';
 
@@ -46,42 +53,10 @@ export default function AppRoutes() {
       >
         <Route index element={<AdminDashboardPage />} />
         <Route path="dashboard" element={<AdminDashboardPage />} />
-        <Route
-          path="programmes"
-          element={
-            <AdminPlaceholderPage
-              title="Degree Programmes"
-              description="Manage university academic degrees, faculties, and departments"
-            />
-          }
-        />
-        <Route
-          path="batches"
-          element={
-            <AdminPlaceholderPage
-              title="Student Batches"
-              description="Manage student academic intake batches and academic years"
-            />
-          }
-        />
-        <Route
-          path="modules"
-          element={
-            <AdminPlaceholderPage
-              title="Modules & Courses"
-              description="Manage curriculum course codes, module names, and credits"
-            />
-          }
-        />
-        <Route
-          path="lecturers"
-          element={
-            <AdminPlaceholderPage
-              title="Lecturer Module Assignments"
-              description="Allocate certified lecturers to specific course modules per semester"
-            />
-          }
-        />
+        <Route path="programmes" element={<DegreeProgrammesPage />} />
+        <Route path="batches" element={<BatchesPage />} />
+        <Route path="modules" element={<ModulesPage />} />
+        <Route path="lecturers" element={<AssignmentsPage />} />
         <Route
           path="students"
           element={
@@ -91,15 +66,7 @@ export default function AppRoutes() {
             />
           }
         />
-        <Route
-          path="halls"
-          element={
-            <AdminPlaceholderPage
-              title="Laboratory Halls"
-              description="Manage physical lab facilities, seat capacities, and room locations"
-            />
-          }
-        />
+        <Route path="halls" element={<LaboratoryHallsPage />} />
         <Route
           path="audits"
           element={

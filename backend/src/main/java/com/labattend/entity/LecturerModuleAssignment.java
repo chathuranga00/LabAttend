@@ -4,11 +4,7 @@ import jakarta.persistence.*;
 import lombok.*;
 
 @Entity
-@Table(name = "lecturer_module_assignments",
-       uniqueConstraints = @UniqueConstraint(
-           name = "uq_lecturer_module_sem",
-           columnNames = {"lecturer_id", "module_id", "academic_year", "semester"}
-       ))
+@Table(name = "lecturer_module_assignments")
 @Getter
 @Setter
 @NoArgsConstructor
@@ -23,6 +19,10 @@ public class LecturerModuleAssignment extends BaseEntity {
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "module_id", nullable = false)
     private Module module;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "batch_id")
+    private Batch batch;
 
     @Column(name = "academic_year", nullable = false, length = 50)
     private String academicYear;

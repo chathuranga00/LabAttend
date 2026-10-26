@@ -1,8 +1,6 @@
 package com.labattend.entity;
 
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.Table;
+import jakarta.persistence.*;
 import lombok.*;
 
 @Entity
@@ -23,6 +21,16 @@ public class Module extends BaseEntity {
     @Builder.Default
     @Column(name = "credits", nullable = false)
     private Integer credits = 3;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "degree_programme_id")
+    private DegreeProgramme degreeProgramme;
+
+    @Column(name = "academic_year", length = 50)
+    private String academicYear;
+
+    @Column(name = "semester", length = 50)
+    private String semester;
 
     @Builder.Default
     @Column(name = "is_active", nullable = false)
