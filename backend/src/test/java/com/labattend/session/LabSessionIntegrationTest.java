@@ -71,6 +71,9 @@ public class LabSessionIntegrationTest {
     @MockBean
     private LabSessionService labSessionService;
 
+    @MockBean
+    private com.labattend.service.AttendanceService attendanceService;
+
     private User lecturerUser;
     private User adminUser;
     private Lecturer lecturer;

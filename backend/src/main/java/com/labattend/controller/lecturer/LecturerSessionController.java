@@ -1,14 +1,13 @@
 package com.labattend.controller.lecturer;
 
+import com.labattend.dto.request.AttendanceScanRequest;
 import com.labattend.dto.request.LabSessionCancelRequest;
 import com.labattend.dto.request.LabSessionCreateRequest;
-import com.labattend.dto.response.ApiResponse;
-import com.labattend.dto.response.LabSessionResponse;
-import com.labattend.dto.response.LecturerDashboardResponse;
-import com.labattend.dto.response.LecturerSessionOptionsResponse;
-import com.labattend.dto.response.PageResponse;
+import com.labattend.dto.request.ManualAttendanceRequest;
+import com.labattend.dto.response.*;
 import com.labattend.entity.enums.SessionStatus;
 import com.labattend.security.CustomUserDetails;
+import com.labattend.service.AttendanceService;
 import com.labattend.service.LabSessionService;
 import jakarta.validation.Valid;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -19,6 +18,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
+import java.util.List;
 import java.util.UUID;
 
 @RestController
@@ -27,9 +27,11 @@ import java.util.UUID;
 public class LecturerSessionController {
 
     private final LabSessionService labSessionService;
+    private final AttendanceService attendanceService;
 
-    public LecturerSessionController(LabSessionService labSessionService) {
+    public LecturerSessionController(LabSessionService labSessionService, AttendanceService attendanceService) {
         this.labSessionService = labSessionService;
+        this.attendanceService = attendanceService;
     }
 
     @PostMapping
@@ -103,6 +105,52 @@ public class LecturerSessionController {
             @AuthenticationPrincipal CustomUserDetails userDetails
     ) {
         LecturerDashboardResponse result = labSessionService.getLecturerDashboard(userDetails.getId());
+        return ResponseEntity.ok(ApiResponse.success(result));
+    }
+
+    @PostMapping("/{id}/scan")
+    public ResponseEntity<ApiResponse<AttendanceScanResponse>> scanQrAttendance(
+            @PathVariable UUID id,
+            @Valid @RequestBody AttendanceScanRequest request,
+            @AuthenticationPrincipal CustomUserDetails userDetails
+    ) {
+        AttendanceScanResponse result = attendanceService.scanQrAttendance(userDetails.getId(), id, request);
+        return ResponseEntity.ok(ApiResponse.success(result.getMessage(), result));
+    }
+
+    @PostMapping("/{id}/manual-attendance")
+    public ResponseEntity<ApiResponse<AttendanceScanResponse>> recordManualAttendance(
+            @PathVariable UUID id,
+            @Valid @RequestBody ManualAttendanceRequest request,
+            @AuthenticationPrincipal CustomUserDetails userDetails
+    ) {
+        AttendanceScanResponse result = attendanceService.recordManualAttendance(userDetails.getId(), id, request);
+        return ResponseEntity.ok(ApiResponse.success(result.getMessage(), result));
+    }
+
+    @GetMapping("/{id}/attendance")
+    public ResponseEntity<ApiResponse<PageResponse<AttendanceRecordResponse>>> getSessionAttendance(
+            @PathVariable UUID id,
+            @RequestParam(required = false) String search,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size,
+            @AuthenticationPrincipal CustomUserDetails userDetails
+    ) {
+        PageResponse<AttendanceRecordResponse> result = attendanceService.getSessionAttendance(
+                userDetails.getId(), id, search, page, size
+        );
+        return ResponseEntity.ok(ApiResponse.success(result));
+    }
+
+    @GetMapping("/{id}/expected-students")
+    public ResponseEntity<ApiResponse<List<SessionExpectedStudentResponse>>> getExpectedStudents(
+            @PathVariable UUID id,
+            @RequestParam(required = false) String query,
+            @AuthenticationPrincipal CustomUserDetails userDetails
+    ) {
+        List<SessionExpectedStudentResponse> result = attendanceService.getSessionExpectedStudents(
+                userDetails.getId(), id, query
+        );
         return ResponseEntity.ok(ApiResponse.success(result));
     }
 }

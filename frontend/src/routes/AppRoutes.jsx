@@ -24,6 +24,7 @@ import {
   MyLabSessionsPage,
   CreateLabSessionPage,
   LabSessionDetailsPage,
+  QRScannerPage,
   LecturerPlaceholderPage,
 } from '../pages/lecturer';
 
@@ -96,15 +97,8 @@ export default function AppRoutes() {
         <Route path="sessions" element={<MyLabSessionsPage />} />
         <Route path="sessions/new" element={<CreateLabSessionPage />} />
         <Route path="sessions/:id" element={<LabSessionDetailsPage />} />
-        <Route
-          path="scanner"
-          element={
-            <LecturerPlaceholderPage
-              title="Live Badge QR Scanner"
-              description="html5-qrcode camera badge check-in terminal with instant feedback"
-            />
-          }
-        />
+        <Route path="sessions/:id/scanner" element={<QRScannerPage />} />
+        <Route path="scanner" element={<QRScannerPage />} />
         <Route
           path="reports"
           element={
