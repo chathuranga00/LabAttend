@@ -40,9 +40,11 @@ api.interceptors.response.use(
       window.dispatchEvent(new Event('labattend:unauthorized'));
     }
 
-    const errorData = error.response?.data || {
-      message: error.message || 'An unexpected network error occurred',
-      status: status || 500,
+    const errorData = {
+      ...(error.response?.data || {}),
+      status: status || 0,
+      message: error.response?.data?.message || (error.code === 'ERR_NETWORK' || !error.response ? 'Unable to connect to the server. Check your connection and try again.' : error.message || 'An unexpected error occurred'),
+      isNetworkError: !error.response,
     };
     return Promise.reject(errorData);
   }

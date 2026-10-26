@@ -224,17 +224,12 @@ export default function QRScannerPage() {
         });
       }
     } catch (err) {
-      const status = err.response?.status;
-      let errorMsg = err.message || 'Verification failed';
-
-      // Network disconnect check
-      if (!err.response) {
-        errorMsg = 'Unable to connect to the server. Check your connection and try again.';
-      }
+      const isNetwork = err.isNetworkError || err.status === 0;
+      const errorMsg = err.message || (isNetwork ? 'Unable to connect to the server. Check your connection and try again.' : 'Verification failed');
 
       setLastScanResult({
         type: 'ERROR',
-        title: status === 400 ? 'Verification Denied' : 'Network Error',
+        title: isNetwork ? 'Network Error' : (err.status === 400 || err.status === 404 ? 'Verification Denied' : 'Scan Rejected'),
         message: errorMsg,
         rawIdentifier: trimmed,
         time: new Date().toISOString(),
