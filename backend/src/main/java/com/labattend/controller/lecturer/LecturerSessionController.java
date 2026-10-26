@@ -153,4 +153,37 @@ public class LecturerSessionController {
         );
         return ResponseEntity.ok(ApiResponse.success(result));
     }
+
+    @PostMapping("/{id}/finalize")
+    public ResponseEntity<ApiResponse<SessionSummaryResponse>> finalizeSession(
+            @PathVariable UUID id,
+            @RequestBody(required = false) com.labattend.dto.request.SessionFinalizeRequest request,
+            @AuthenticationPrincipal CustomUserDetails userDetails
+    ) {
+        SessionSummaryResponse result = labSessionService.finalizeSession(userDetails.getId(), id, request);
+        return ResponseEntity.ok(ApiResponse.success("Session finalized successfully", result));
+    }
+
+    @GetMapping("/{id}/summary")
+    public ResponseEntity<ApiResponse<SessionSummaryResponse>> getSessionSummary(
+            @PathVariable UUID id,
+            @AuthenticationPrincipal CustomUserDetails userDetails
+    ) {
+        SessionSummaryResponse result = labSessionService.getSessionSummary(userDetails.getId(), id, false);
+        return ResponseEntity.ok(ApiResponse.success(result));
+    }
+
+    @PostMapping("/{id}/attendance/{recordId}/correct")
+    public ResponseEntity<ApiResponse<AttendanceRecordResponse>> correctAttendance(
+            @PathVariable UUID id,
+            @PathVariable UUID recordId,
+            @Valid @RequestBody com.labattend.dto.request.AttendanceCorrectionRequest request,
+            @AuthenticationPrincipal CustomUserDetails userDetails
+    ) {
+        AttendanceRecordResponse result = attendanceService.correctAttendanceRecord(
+                userDetails.getId(), id, recordId, request, false
+        );
+        return ResponseEntity.ok(ApiResponse.success("Attendance record corrected successfully", result));
+    }
 }
+

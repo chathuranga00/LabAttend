@@ -72,3 +72,20 @@ For **LabAttend**, we employ the standard `Authorization: Bearer <jwt_token>` he
      - Modern deployments often separate the React client (e.g. Vercel, Netlify, or AWS S3/CloudFront) from the Spring Boot API (e.g. AWS EC2, Render, Railway, or institutional VM). Cookie management across different top-level domains or subdomains requires complex `SameSite=None; Secure` flags and third-party cookie permissions (which modern browsers increasingly partition or block).
      - The Authorization header works friction-free across decoupled cross-domain SPA/API environments while maintaining strict CORS boundaries.
 
+---
+
+## 6. Post-Finalization Attendance Corrections & Audit Authority
+
+### Policy and Access Rules
+1. **Authorized Actors**:
+   - `ADMIN`: Institution/department administrator may correct any attendance record in any finalized session (e.g. for student appeals, official medical leave, administrative audits).
+   - `LECTURER`: The assigned lecturer who conducted the session may correct attendance records for their own finalized sessions (e.g. if a student was marked absent due to temporary badge failure, or scanned accidentally). Lecturers cannot modify sessions belonging to other lecturers.
+2. **Mandatory Justification Reason**:
+   - Every attendance correction requires a non-empty, meaningful reason string (e.g., "Medical certificate verified by department", "Badge defective during session, manually confirmed present").
+   - Requests without a reason or with blank whitespace are strictly rejected with HTTP 400.
+3. **Immutable Audit Logging**:
+   - Every correction is permanently recorded in `audit_logs` with action `ATTENDANCE_CORRECTION`.
+   - The log captures the actor ID, student ID, session ID, previous status, new status, and justification reason.
+   - The attendance record itself stores `is_corrected = true`, `corrected_at`, `corrected_by`, `previous_status`, and `justification_notes`.
+4. **Ordinary Scans Stay Rejected**:
+   - Once a session is `FINALIZED`, the QR scan endpoint (`POST /api/lecturer/sessions/{id}/scan`) remains strictly blocked. All subsequent changes must go through the auditable correction workflow.

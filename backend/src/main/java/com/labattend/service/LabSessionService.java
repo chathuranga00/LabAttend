@@ -2,11 +2,14 @@ package com.labattend.service;
 
 import com.labattend.dto.request.LabSessionCancelRequest;
 import com.labattend.dto.request.LabSessionCreateRequest;
+import com.labattend.dto.request.SessionFinalizeRequest;
 import com.labattend.dto.response.LabSessionResponse;
 import com.labattend.dto.response.LecturerDashboardResponse;
 import com.labattend.dto.response.LecturerSessionOptionsResponse;
 import com.labattend.dto.response.PageResponse;
+import com.labattend.dto.response.SessionSummaryResponse;
 import com.labattend.entity.*;
+import com.labattend.entity.enums.AttendanceMethod;
 import com.labattend.entity.enums.AttendanceStatus;
 import com.labattend.entity.enums.SessionStatus;
 import com.labattend.exception.BadRequestException;
@@ -43,6 +46,7 @@ public class LabSessionService {
     private final StudentRepository studentRepository;
     private final SessionStudentRepository sessionStudentRepository;
     private final AttendanceRecordRepository attendanceRecordRepository;
+    private final UserRepository userRepository;
     private final AuditLogService auditLogService;
 
     private static final String CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -57,6 +61,7 @@ public class LabSessionService {
                              StudentRepository studentRepository,
                              SessionStudentRepository sessionStudentRepository,
                              AttendanceRecordRepository attendanceRecordRepository,
+                             UserRepository userRepository,
                              AuditLogService auditLogService) {
         this.labSessionRepository = labSessionRepository;
         this.lecturerRepository = lecturerRepository;
@@ -67,6 +72,7 @@ public class LabSessionService {
         this.studentRepository = studentRepository;
         this.sessionStudentRepository = sessionStudentRepository;
         this.attendanceRecordRepository = attendanceRecordRepository;
+        this.userRepository = userRepository;
         this.auditLogService = auditLogService;
     }
 
@@ -271,6 +277,162 @@ public class LabSessionService {
                 "CANCELLED: " + request.getCancellationReason().trim());
 
         return response;
+    }
+
+    // =========================================================================
+    // 4b. FINALIZE LAB SESSION (ACTIVE -> FINALIZED with Pessimistic Lock)
+    // =========================================================================
+    public SessionSummaryResponse finalizeSession(UUID userId, UUID sessionId, SessionFinalizeRequest request) {
+        Lecturer lecturer = getLecturerByUserId(userId);
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+
+        // Acquire pessimistic write lock so concurrent scans block until commit
+        LabSession session = labSessionRepository.findByIdWithPessimisticLock(sessionId)
+                .orElseThrow(() -> new ResourceNotFoundException("LabSession", "id", sessionId));
+
+        if (!session.getLecturer().getId().equals(lecturer.getId())) {
+            throw new BadRequestException("Access denied. You can only finalize your own lab sessions.");
+        }
+
+        if (session.getStatus() != SessionStatus.ACTIVE) {
+            throw new BadRequestException("Invalid state transition: Only ACTIVE sessions can be finalized. Current status: " + session.getStatus());
+        }
+
+        OffsetDateTime now = OffsetDateTime.now(COLOMBO_ZONE);
+
+        // Fetch expected students
+        List<SessionStudent> sessionStudents = sessionStudentRepository.findBySessionId(sessionId);
+
+        // Fetch existing attendance records
+        List<AttendanceRecord> existingRecords = attendanceRecordRepository.findBySessionId(sessionId);
+        Set<UUID> studentsWithExistingAttendance = existingRecords.stream()
+                .map(r -> r.getStudent().getId())
+                .collect(Collectors.toSet());
+
+        // Create ABSENT records for every expected student without an attendance record
+        List<AttendanceRecord> absentRecordsToCreate = new ArrayList<>();
+        for (SessionStudent ss : sessionStudents) {
+            if (!studentsWithExistingAttendance.contains(ss.getStudent().getId())) {
+                AttendanceRecord absentRecord = AttendanceRecord.builder()
+                        .student(ss.getStudent())
+                        .session(session)
+                        .status(AttendanceStatus.ABSENT)
+                        .method(AttendanceMethod.MANUAL)
+                        .markedAt(now)
+                        .markedBy(user)
+                        .justificationNotes("System session finalization: student was absent")
+                        .isCorrected(false)
+                        .build();
+                absentRecordsToCreate.add(absentRecord);
+            }
+        }
+
+        if (!absentRecordsToCreate.isEmpty()) {
+            attendanceRecordRepository.saveAll(absentRecordsToCreate);
+        }
+
+        // Transition session to FINALIZED
+        session.setStatus(SessionStatus.FINALIZED);
+        session.setFinalizedAt(now);
+        session.setActualEndedAt(now);
+        if (request != null && request.getNotes() != null && !request.getNotes().isBlank()) {
+            session.setFinalizationNotes(request.getNotes().trim());
+        }
+
+        LabSession finalizedSession = labSessionRepository.save(session);
+
+        // Compute final statistics
+        long expected = sessionStudents.size();
+        long present = attendanceRecordRepository.countBySessionIdAndStatusIn(
+                sessionId,
+                Arrays.asList(AttendanceStatus.PRESENT, AttendanceStatus.LATE)
+        );
+        long absent = attendanceRecordRepository.countBySessionIdAndStatus(sessionId, AttendanceStatus.ABSENT);
+
+        // Audit log
+        Map<String, Object> previousState = new HashMap<>();
+        previousState.put("status", SessionStatus.ACTIVE.name());
+
+        Map<String, Object> newState = new HashMap<>();
+        newState.put("status", SessionStatus.FINALIZED.name());
+        newState.put("finalizedAt", now.toString());
+        newState.put("expected", expected);
+        newState.put("present", present);
+        newState.put("absent", absent);
+        if (request != null && request.getNotes() != null) {
+            newState.put("notes", request.getNotes());
+        }
+
+        auditLogService.logAction("LabSession", session.getId(), "SESSION_FINALIZED", previousState, newState);
+
+        return buildSessionSummaryResponse(finalizedSession);
+    }
+
+    // =========================================================================
+    // 4c. SESSION SUMMARY & CONFIRMATION PREVIEW
+    // =========================================================================
+    @Transactional(readOnly = true)
+    public SessionSummaryResponse getSessionSummary(UUID userId, UUID sessionId, boolean isAdmin) {
+        LabSession session = labSessionRepository.findById(sessionId)
+                .orElseThrow(() -> new ResourceNotFoundException("LabSession", "id", sessionId));
+
+        if (!isAdmin) {
+            Lecturer lecturer = getLecturerByUserId(userId);
+            if (!session.getLecturer().getId().equals(lecturer.getId())) {
+                throw new BadRequestException("Access denied. You can only view summaries for your own lab sessions.");
+            }
+        }
+
+        return buildSessionSummaryResponse(session);
+    }
+
+    private SessionSummaryResponse buildSessionSummaryResponse(LabSession session) {
+        long expected = sessionStudentRepository.countBySessionId(session.getId());
+        long present = attendanceRecordRepository.countBySessionIdAndStatusIn(
+                session.getId(),
+                Arrays.asList(AttendanceStatus.PRESENT, AttendanceStatus.LATE)
+        );
+
+        long absent;
+        long unmarked;
+        if (session.getStatus() == SessionStatus.FINALIZED) {
+            absent = attendanceRecordRepository.countBySessionIdAndStatus(session.getId(), AttendanceStatus.ABSENT);
+            unmarked = 0;
+        } else {
+            // Provisional preview
+            unmarked = Math.max(0, expected - present);
+            absent = unmarked;
+        }
+
+        String percentageStr = (expected == 0)
+                ? "N/A"
+                : String.format(Locale.US, "%.1f%%", (present * 100.0) / expected);
+
+        return SessionSummaryResponse.builder()
+                .sessionId(session.getId())
+                .sessionCode(session.getSessionCode())
+                .moduleCode(session.getModule() != null ? session.getModule().getModuleCode() : null)
+                .moduleName(session.getModule() != null ? session.getModule().getName() : null)
+                .batchName(session.getBatch() != null ? session.getBatch().getBatchCode() : null)
+                .hallName(session.getHall() != null ? session.getHall().getName() : null)
+                .hallCode(session.getHall() != null ? session.getHall().getHallCode() : null)
+                .lecturerName(session.getLecturer() != null ? session.getLecturer().getFullName() : null)
+                .sessionDate(session.getSessionDate())
+                .startTime(session.getStartTime())
+                .endTime(session.getEndTime())
+                .actualStartedAt(session.getActualStartedAt())
+                .actualEndedAt(session.getActualEndedAt())
+                .finalizedAt(session.getFinalizedAt())
+                .status(session.getStatus().name())
+                .isFinalized(session.getStatus() == SessionStatus.FINALIZED)
+                .expectedStudentCount(expected)
+                .presentCount(present)
+                .absentCount(absent)
+                .unmarkedCount(unmarked)
+                .attendancePercentage(percentageStr)
+                .finalizationNotes(session.getFinalizationNotes())
+                .build();
     }
 
     // =========================================================================

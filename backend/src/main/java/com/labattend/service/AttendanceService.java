@@ -2,6 +2,7 @@ package com.labattend.service;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.labattend.dto.request.AttendanceCorrectionRequest;
 import com.labattend.dto.request.AttendanceScanRequest;
 import com.labattend.dto.request.ManualAttendanceRequest;
 import com.labattend.dto.response.AttendanceRecordResponse;
@@ -249,7 +250,9 @@ public class AttendanceService {
         Pageable pageable = PageRequest.of(page, size, Sort.by("markedAt").descending());
         String searchTerm = (search != null && !search.isBlank()) ? search.trim() : null;
 
-        Page<AttendanceRecord> records = attendanceRecordRepository.findBySessionIdWithSearch(session.getId(), searchTerm, pageable);
+        Page<AttendanceRecord> records = attendanceRecordRepository.searchAttendanceRecords(
+                session.getId(), null, null, null, null, searchTerm, pageable
+        );
 
         return PageResponse.of(records.map(this::mapToAttendanceRecordResponse));
     }
@@ -349,6 +352,112 @@ public class AttendanceService {
                 .build();
     }
 
+    @Transactional
+    public AttendanceRecordResponse correctAttendanceRecord(
+            UUID userId,
+            UUID sessionId,
+            UUID recordId,
+            AttendanceCorrectionRequest request,
+            boolean isAdmin
+    ) {
+        User currentUser = userRepository.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+
+        LabSession session = labSessionRepository.findById(sessionId)
+                .orElseThrow(() -> new ResourceNotFoundException("Laboratory session not found"));
+
+        // If not admin, verify lecturer owns the session
+        if (!isAdmin) {
+            Lecturer lecturer = getAuthorizedLecturer(userId);
+            if (!session.getLecturer().getId().equals(lecturer.getId())) {
+                throw new BadRequestException("Unauthorized: You do not own this laboratory session");
+            }
+        }
+
+        // Must be FINALIZED
+        if (session.getStatus() != SessionStatus.FINALIZED) {
+            throw new BadRequestException("Attendance corrections can only be made on FINALIZED sessions. Current status: " + session.getStatus());
+        }
+
+        // Justification reason is required
+        if (request.getReason() == null || request.getReason().trim().isBlank()) {
+            throw new BadRequestException("A justification reason is required for attendance correction");
+        }
+
+        AttendanceRecord record = attendanceRecordRepository.findById(recordId)
+                .orElseThrow(() -> new ResourceNotFoundException("Attendance record not found"));
+
+        if (!record.getSession().getId().equals(sessionId)) {
+            throw new BadRequestException("Attendance record does not belong to the specified session");
+        }
+
+        AttendanceStatus previousStatus = record.getStatus();
+        AttendanceStatus newStatus = request.getStatus();
+
+        // Update record
+        record.setPreviousStatus(previousStatus);
+        record.setStatus(newStatus);
+        record.setIsCorrected(true);
+        record.setCorrectedAt(OffsetDateTime.now());
+        record.setCorrectedBy(currentUser);
+        record.setJustificationNotes(request.getReason().trim());
+
+        AttendanceRecord saved = attendanceRecordRepository.save(record);
+
+        // Audit log
+        Map<String, Object> previousState = new HashMap<>();
+        previousState.put("status", previousStatus.name());
+        previousState.put("recordId", record.getId());
+
+        Map<String, Object> newState = new HashMap<>();
+        newState.put("status", newStatus.name());
+        newState.put("recordId", record.getId());
+        newState.put("reason", request.getReason().trim());
+        newState.put("correctedBy", currentUser.getEmail());
+
+        auditLogService.logAction("AttendanceRecord", record.getId(), "ATTENDANCE_CORRECTION", previousState, newState);
+
+        return mapToAttendanceRecordResponse(saved);
+    }
+
+    @Transactional(readOnly = true)
+    public PageResponse<AttendanceRecordResponse> searchAttendanceRecords(
+            UUID userId,
+            UUID sessionId,
+            UUID studentId,
+            AttendanceStatus status,
+            AttendanceMethod method,
+            Boolean isCorrected,
+            String search,
+            int page,
+            int size,
+            String sortBy,
+            String sortDir,
+            boolean isAdmin
+    ) {
+        if (!isAdmin && sessionId != null) {
+            Lecturer lecturer = getAuthorizedLecturer(userId);
+            getSessionAndVerifyOwnership(sessionId, lecturer);
+        }
+
+        Sort sort = sortDir.equalsIgnoreCase("asc") ? Sort.by(sortBy).ascending() : Sort.by(sortBy).descending();
+        Pageable pageable = PageRequest.of(page, size, sort);
+
+        String searchTerm = (search != null && !search.isBlank()) ? search.trim() : null;
+
+        Page<AttendanceRecord> records = attendanceRecordRepository.searchAttendanceRecords(
+                sessionId,
+                studentId,
+                status,
+                method,
+                isCorrected,
+                searchTerm,
+                pageable
+        );
+
+        return PageResponse.of(records.map(this::mapToAttendanceRecordResponse));
+    }
+
     private AttendanceRecordResponse mapToAttendanceRecordResponse(AttendanceRecord record) {
         return AttendanceRecordResponse.builder()
                 .id(record.getId())
@@ -361,6 +470,14 @@ public class AttendanceService {
                 .markedAt(record.getMarkedAt())
                 .markedByName(record.getMarkedBy() != null ? record.getMarkedBy().getFullName() : null)
                 .justificationNotes(record.getJustificationNotes())
+                .isCorrected(record.getIsCorrected())
+                .correctedAt(record.getCorrectedAt())
+                .correctedByName(record.getCorrectedBy() != null ? record.getCorrectedBy().getFullName() : null)
+                .previousStatus(record.getPreviousStatus() != null ? record.getPreviousStatus().name() : null)
+                .sessionId(record.getSession() != null ? record.getSession().getId() : null)
+                .sessionCode(record.getSession() != null ? record.getSession().getSessionCode() : null)
+                .moduleCode(record.getSession() != null && record.getSession().getModule() != null ? record.getSession().getModule().getModuleCode() : null)
                 .build();
     }
 }
+

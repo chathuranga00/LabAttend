@@ -193,6 +193,16 @@ export default function LabSessionDetailsPage() {
               </Link>
             )}
 
+            {isFinalized && (
+              <Link
+                to={`/lecturer/sessions/${session.id}/summary`}
+                className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-teal-500 hover:bg-teal-600 text-slate-950 font-bold text-sm shadow-lg shadow-teal-500/20 transition"
+              >
+                <CheckCircle2 className="h-4 w-4" />
+                <span>View Attendance Summary</span>
+              </Link>
+            )}
+
             {(isDraft || isActive) && (
               <button
                 onClick={() => {

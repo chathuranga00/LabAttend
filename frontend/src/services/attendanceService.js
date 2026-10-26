@@ -14,6 +14,19 @@ export const attendanceService = {
     api.get(`/lecturer/sessions/${sessionId}/expected-students`, {
       params: query ? { query } : {},
     }),
+
+  correctAttendance: (sessionId, recordId, data) =>
+    api.post(`/lecturer/sessions/${sessionId}/attendance/${recordId}/correct`, data),
+
+  adminCorrectAttendance: (sessionId, recordId, data) =>
+    api.post(`/admin/sessions/${sessionId}/attendance/${recordId}/correct`, data),
+
+  getAdminAttendance: (params = {}) =>
+    api.get('/admin/attendance', { params }),
+
+  getAdminAuditLogs: (params = {}) =>
+    api.get('/admin/audits', { params }),
 };
 
 export default attendanceService;
+

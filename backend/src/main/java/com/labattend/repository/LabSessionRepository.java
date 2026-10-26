@@ -88,4 +88,8 @@ public interface LabSessionRepository extends JpaRepository<LabSession, UUID> {
 
     long countByLecturerIdAndStatusIn(UUID lecturerId, List<SessionStatus> statuses);
     long countByLecturerId(UUID lecturerId);
+
+    @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT s FROM LabSession s WHERE s.id = :id")
+    Optional<LabSession> findByIdWithPessimisticLock(@Param("id") UUID id);
 }

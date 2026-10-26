@@ -35,4 +35,18 @@ public class AttendanceRecordResponse {
     private String markedByName;
 
     private String justificationNotes;
+
+    private Boolean isCorrected;
+
+    private OffsetDateTime correctedAt;
+
+    private String correctedByName;
+
+    private String previousStatus;
+
+    private UUID sessionId;
+
+    private String sessionCode;
+
+    private String moduleCode;
 }

@@ -72,6 +72,45 @@ public class AuditLogService {
         }
     }
 
+    @Transactional(readOnly = true)
+    public com.labattend.dto.response.PageResponse<com.labattend.dto.response.AuditLogResponse> searchAuditLogs(
+            UUID actorId, String action, String entityName,
+            OffsetDateTime startDate, OffsetDateTime endDate,
+            String search, int page, int size, String sortBy, String sortDir
+    ) {
+        org.springframework.data.domain.Sort sort = sortDir.equalsIgnoreCase("asc")
+                ? org.springframework.data.domain.Sort.by(sortBy).ascending()
+                : org.springframework.data.domain.Sort.by(sortBy).descending();
+        org.springframework.data.domain.Pageable pageable = org.springframework.data.domain.PageRequest.of(page, size, sort);
+
+        org.springframework.data.domain.Page<AuditLog> auditPage = auditLogRepository.searchAuditLogs(
+                actorId,
+                action != null && !action.isBlank() ? action.trim() : null,
+                entityName != null && !entityName.isBlank() ? entityName.trim() : null,
+                startDate, endDate,
+                search != null && !search.isBlank() ? search.trim() : null,
+                pageable
+        );
+
+        return com.labattend.dto.response.PageResponse.of(auditPage.map(this::mapToResponse));
+    }
+
+    private com.labattend.dto.response.AuditLogResponse mapToResponse(AuditLog a) {
+        return com.labattend.dto.response.AuditLogResponse.builder()
+                .id(a.getId())
+                .entityName(a.getEntityName())
+                .entityId(a.getEntityId())
+                .action(a.getAction())
+                .performedById(a.getPerformedBy() != null ? a.getPerformedBy().getId() : null)
+                .performedByName(a.getPerformedBy() != null ? a.getPerformedBy().getFullName() : "SYSTEM")
+                .performedByEmail(a.getPerformedBy() != null ? a.getPerformedBy().getEmail() : null)
+                .performedByRole(a.getPerformedBy() != null && a.getPerformedBy().getRole() != null ? a.getPerformedBy().getRole().name() : null)
+                .details(a.getDetails())
+                .ipAddress(a.getIpAddress())
+                .timestamp(a.getTimestamp())
+                .build();
+    }
+
     private User resolveCurrentUser() {
         try {
             Authentication auth = SecurityContextHolder.getContext().getAuthentication();

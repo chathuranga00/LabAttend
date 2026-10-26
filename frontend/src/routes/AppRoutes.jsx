@@ -17,6 +17,8 @@ import {
   StudentsPage,
   StudentDetailsPage,
   AdminAllSessionsPage,
+  AdminAuditLogsPage,
+  AdminAttendanceRecordsPage,
   AdminPlaceholderPage,
 } from '../pages/admin';
 import {
@@ -25,6 +27,7 @@ import {
   CreateLabSessionPage,
   LabSessionDetailsPage,
   QRScannerPage,
+  SessionSummaryPage,
   LecturerPlaceholderPage,
 } from '../pages/lecturer';
 
@@ -72,15 +75,9 @@ export default function AppRoutes() {
         <Route path="students/:id" element={<StudentDetailsPage />} />
         <Route path="halls" element={<LaboratoryHallsPage />} />
         <Route path="sessions" element={<AdminAllSessionsPage />} />
-        <Route
-          path="audits"
-          element={
-            <AdminPlaceholderPage
-              title="System Audit Ledger"
-              description="Immutable audit trail of session state changes and administrative modifications"
-            />
-          }
-        />
+        <Route path="sessions/:id/summary" element={<SessionSummaryPage />} />
+        <Route path="attendance" element={<AdminAttendanceRecordsPage />} />
+        <Route path="audits" element={<AdminAuditLogsPage />} />
       </Route>
 
       {/* Protected Lecturer Routes */}
@@ -97,6 +94,7 @@ export default function AppRoutes() {
         <Route path="sessions" element={<MyLabSessionsPage />} />
         <Route path="sessions/new" element={<CreateLabSessionPage />} />
         <Route path="sessions/:id" element={<LabSessionDetailsPage />} />
+        <Route path="sessions/:id/summary" element={<SessionSummaryPage />} />
         <Route path="sessions/:id/scanner" element={<QRScannerPage />} />
         <Route path="scanner" element={<QRScannerPage />} />
         <Route

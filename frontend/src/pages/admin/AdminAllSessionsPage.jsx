@@ -332,7 +332,13 @@ export default function AdminAllSessionsPage() {
               </div>
             )}
 
-            <div className="flex justify-end pt-2">
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <Link
+                to={`/admin/sessions/${selectedSession.id}/summary`}
+                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-semibold transition"
+              >
+                View Attendance Summary & Records
+              </Link>
               <button
                 type="button"
                 onClick={() => setSelectedSession(null)}

@@ -45,4 +45,19 @@ public class AttendanceRecord extends BaseEntity {
 
     @Column(name = "justification_notes", columnDefinition = "TEXT")
     private String justificationNotes;
+
+    @Builder.Default
+    @Column(name = "is_corrected", nullable = false)
+    private Boolean isCorrected = false;
+
+    @Column(name = "corrected_at")
+    private OffsetDateTime correctedAt;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "corrected_by")
+    private User correctedBy;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "previous_status", length = 20)
+    private AttendanceStatus previousStatus;
 }

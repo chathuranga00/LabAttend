@@ -17,22 +17,40 @@ public interface AttendanceRecordRepository extends JpaRepository<AttendanceReco
     List<AttendanceRecord> findByStudentId(UUID studentId);
     boolean existsBySessionIdAndStudentId(UUID sessionId, UUID studentId);
     long countBySessionId(UUID sessionId);
+    long countBySessionIdAndStatus(UUID sessionId, AttendanceStatus status);
     long countBySessionIdAndStatusIn(UUID sessionId, java.util.Collection<AttendanceStatus> statuses);
 
     @org.springframework.data.jpa.repository.Query(
         value = "SELECT a FROM AttendanceRecord a " +
                 "JOIN FETCH a.student s " +
+                "JOIN FETCH a.session ses " +
+                "LEFT JOIN FETCH ses.module m " +
                 "LEFT JOIN FETCH a.markedBy u " +
-                "WHERE a.session.id = :sessionId AND " +
+                "LEFT JOIN FETCH a.correctedBy cu " +
+                "WHERE (:sessionId IS NULL OR ses.id = :sessionId) AND " +
+                "(:studentId IS NULL OR s.id = :studentId) AND " +
+                "(:status IS NULL OR a.status = :status) AND " +
+                "(:method IS NULL OR a.method = :method) AND " +
+                "(:isCorrected IS NULL OR a.isCorrected = :isCorrected) AND " +
                 "(:search IS NULL OR LOWER(s.studentId) LIKE LOWER(CONCAT('%', :search, '%')) OR " +
-                "LOWER(s.fullName) LIKE LOWER(CONCAT('%', :search, '%')))",
+                "LOWER(s.fullName) LIKE LOWER(CONCAT('%', :search, '%')) OR " +
+                "LOWER(ses.sessionCode) LIKE LOWER(CONCAT('%', :search, '%')))",
         countQuery = "SELECT COUNT(a) FROM AttendanceRecord a " +
-                     "WHERE a.session.id = :sessionId AND " +
+                     "WHERE (:sessionId IS NULL OR a.session.id = :sessionId) AND " +
+                     "(:studentId IS NULL OR a.student.id = :studentId) AND " +
+                     "(:status IS NULL OR a.status = :status) AND " +
+                     "(:method IS NULL OR a.method = :method) AND " +
+                     "(:isCorrected IS NULL OR a.isCorrected = :isCorrected) AND " +
                      "(:search IS NULL OR LOWER(a.student.studentId) LIKE LOWER(CONCAT('%', :search, '%')) OR " +
-                     "LOWER(a.student.fullName) LIKE LOWER(CONCAT('%', :search, '%')))"
+                     "LOWER(a.student.fullName) LIKE LOWER(CONCAT('%', :search, '%')) OR " +
+                     "LOWER(a.session.sessionCode) LIKE LOWER(CONCAT('%', :search, '%')))"
     )
-    org.springframework.data.domain.Page<AttendanceRecord> findBySessionIdWithSearch(
+    org.springframework.data.domain.Page<AttendanceRecord> searchAttendanceRecords(
             @org.springframework.data.repository.query.Param("sessionId") UUID sessionId,
+            @org.springframework.data.repository.query.Param("studentId") UUID studentId,
+            @org.springframework.data.repository.query.Param("status") AttendanceStatus status,
+            @org.springframework.data.repository.query.Param("method") com.labattend.entity.enums.AttendanceMethod method,
+            @org.springframework.data.repository.query.Param("isCorrected") Boolean isCorrected,
             @org.springframework.data.repository.query.Param("search") String search,
             org.springframework.data.domain.Pageable pageable
     );

@@ -47,6 +47,8 @@ public class LabSessionServiceTest {
     @Mock
     private AttendanceRecordRepository attendanceRecordRepository;
     @Mock
+    private UserRepository userRepository;
+    @Mock
     private AuditLogService auditLogService;
 
     private LabSessionService labSessionService;
@@ -70,6 +72,7 @@ public class LabSessionServiceTest {
                 studentRepository,
                 sessionStudentRepository,
                 attendanceRecordRepository,
+                userRepository,
                 auditLogService
         );
 

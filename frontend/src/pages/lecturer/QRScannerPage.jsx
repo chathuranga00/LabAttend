@@ -25,6 +25,7 @@ import { attendanceService } from '../../services/attendanceService';
 import { sessionService } from '../../services/sessionService';
 import { useToast } from '../../context/ToastContext';
 import { Modal } from '../../components/common';
+import EndSessionModal from '../../components/session/EndSessionModal';
 
 export default function QRScannerPage() {
   const [searchParams] = useSearchParams();
@@ -74,6 +75,7 @@ export default function QRScannerPage() {
 
   // End Session modal state
   const [isEndSessionModalOpen, setIsEndSessionModalOpen] = useState(false);
+  const [finalizing, setFinalizing] = useState(false);
 
   // 1. Fetch lecturer's active sessions if no session or to populate selector
   const fetchActiveSessions = useCallback(async () => {
@@ -409,6 +411,26 @@ export default function QRScannerPage() {
     }
   };
 
+  const handleFinalizeSession = async (notes) => {
+    if (!selectedSessionId) return;
+    try {
+      setFinalizing(true);
+      if (isScanning) {
+        await stopCamera();
+      }
+      const res = await sessionService.finalizeSession(selectedSessionId, { notes });
+      if (res.success) {
+        showToast('Session finalized successfully! Absentee records generated.', 'success');
+        setIsEndSessionModalOpen(false);
+        navigate(`/lecturer/sessions/${selectedSessionId}/summary`);
+      }
+    } catch (err) {
+      showToast(err.message || 'Failed to finalize session', 'error');
+    } finally {
+      setFinalizing(false);
+    }
+  };
+
   const attendancePercent = counters.expected > 0
     ? ((counters.present / counters.expected) * 100).toFixed(1)
     : '0.0';
@@ -516,8 +538,8 @@ export default function QRScannerPage() {
               </div>
             </div>
 
-            {/* Manual Check-in Button */}
-            <div className="flex items-center gap-3">
+            {/* Actions */}
+            <div className="flex flex-wrap items-center gap-3">
               <button
                 onClick={handleOpenManualModal}
                 disabled={session.status !== 'ACTIVE'}
@@ -526,6 +548,26 @@ export default function QRScannerPage() {
                 <FileEdit className="h-4 w-4 text-cyan-400" />
                 <span>Manual Student Entry</span>
               </button>
+
+              {session.status === 'ACTIVE' && (
+                <button
+                  onClick={() => setIsEndSessionModalOpen(true)}
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-amber-600 to-rose-600 hover:from-amber-500 hover:to-rose-500 text-white font-bold text-xs shadow-lg shadow-rose-950/40 transition"
+                >
+                  <CheckCircle2 className="h-4 w-4" />
+                  <span>End Attendance Session</span>
+                </button>
+              )}
+
+              {session.status === 'FINALIZED' && (
+                <Link
+                  to={`/lecturer/sessions/${session.id}/summary`}
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-500 text-white font-bold text-xs shadow-lg shadow-teal-950/40 transition"
+                >
+                  <CheckCircle2 className="h-4 w-4" />
+                  <span>View Session Summary</span>
+                </Link>
+              )}
             </div>
           </div>
         </div>
@@ -944,46 +986,19 @@ export default function QRScannerPage() {
         </div>
       </Modal>
 
-      {/* End Session Confirmation Modal (Phase 6 Hand-off) */}
-      <Modal
+      {/* End Session Confirmation Modal */}
+      <EndSessionModal
         isOpen={isEndSessionModalOpen}
         onClose={() => setIsEndSessionModalOpen(false)}
-        title="End Attendance Scanning"
-      >
-        <div className="space-y-4">
-          <div className="p-3.5 bg-amber-950/40 border border-amber-800/60 rounded-xl flex items-start gap-3">
-            <AlertTriangle className="h-5 w-5 text-amber-400 shrink-0 mt-0.5" />
-            <div className="text-xs text-amber-200 space-y-1">
-              <span className="font-bold block">Session Attendance Summary:</span>
-              <p>
-                <strong>{counters.present}</strong> student(s) marked present out of <strong>{counters.expected}</strong> expected.
-              </p>
-              <p className="text-amber-300">
-                <strong>{counters.remaining}</strong> student(s) remain unmarked. Final absentee reconciliation and immutable session closure will be performed in Phase 6.
-              </p>
-            </div>
-          </div>
-
-          <div className="flex justify-end gap-3 pt-2">
-            <button
-              onClick={() => setIsEndSessionModalOpen(false)}
-              className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white transition"
-            >
-              Resume Scanning
-            </button>
-            <button
-              onClick={() => {
-                stopCamera();
-                setIsEndSessionModalOpen(false);
-                navigate(`/lecturer/sessions/${selectedSessionId}`);
-              }}
-              className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs shadow-lg shadow-amber-500/20 transition"
-            >
-              Return to Session Overview
-            </button>
-          </div>
-        </div>
-      </Modal>
+        session={session}
+        counters={counters}
+        attendancePercentage={attendancePercent ? `${attendancePercent}%` : undefined}
+        onFinalize={handleFinalizeSession}
+        onReviewRoster={() => {
+          handleOpenManualModal();
+        }}
+        loading={finalizing}
+      />
     </div>
   );
 }
