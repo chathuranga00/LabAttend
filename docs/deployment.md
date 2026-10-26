@@ -1,291 +1,290 @@
-# NSBM Green University AttendX - Production Deployment Manual & Operations Runbook
+# LabAttend - Production Deployment Manual & Operations Runbook
 
-This guide outlines the deployment architecture, configuration files, production security hardening, migration procedures, backup strategies, and release workflows for **AttendX**.
-
-> **Note**: This document provides verified deployment configurations and runbooks ready for staging/production deployment. No live cloud production deployments have been executed or claimed.
+This runbook provides complete, step-by-step instructions for deploying **LabAttend** to production cloud environments with zero hardcoded credentials, automated database migrations, multi-stage containerization, and secure client-side routing.
 
 ---
 
-## 1. Production Hosting Topology
+## 1. Production Architecture Overview
 
 ```
-                                  [ Global CDN / Edge Layer ]
-                                               │
-                       ┌───────────────────────┴───────────────────────┐
-                       ▼                                               ▼
-         [ Web Client: Vercel / Netlify ]              [ Mobile Client: Android / iOS ]
-         - React 19 + TypeScript + Vite                - Flutter 3.47.1 Release Build
-         - Edge Caching & Asset Compression            - Obfuscated bytecode & Keystore signed
-         - SPA Rewrites to index.html                  - Injects API_BASE_URL via dart-define
-                       │                                               │
-                       │ HTTPS (TLS 1.3)                               │ HTTPS (TLS 1.3)
-                       ▼                                               ▼
-      ┌─────────────────────────────────────────────────────────────────────────────────┐
-      │                        Backend API: Render / Railway / Docker                   │
-      │  - Containerized Node.js 20 Express Service (Port 5000)                        │
-      │  - Reverse Proxy SSL Termination & Strict CORS Filter                           │
-      │  - Global, Submission & Export Rate Limiters                                    │
-      │  - Ephemeral 30s QR Rotation & Haversine Geofencing Engine                      │
-      └─────────────────────────────────────────────────────────────────────────────────┘
-                                               │
-                                               │ Encrypted PostgreSQL Connection
-                                               │ (Transaction Pooler - Port 6543)
-                                               ▼
-      ┌─────────────────────────────────────────────────────────────────────────────────┐
-      │                         Database & Identity: Supabase Managed                   │
-      │  - PostgreSQL 15+ Engine with Row-Level Security (RLS) on all 12 tables        │
-      │  - Supabase Auth Service (Cryptographic JWT Token Issuer)                      │
-      │  - Automated Point-in-Time Recovery (PITR) & Daily Snapshots                    │
-      └─────────────────────────────────────────────────────────────────────────────────┘
-```
-
----
-
-## 2. Backend API Hosting (Render / Railway / Docker)
-
-### Option A: Render Managed Web Service
-The repository includes a ready-to-use Render Blueprint specification: [render.yaml](file:///q:/MY%20Projects/AttendX/render.yaml).
-
-1. Connect the GitHub repository to [Render](https://render.com).
-2. Create a new **Blueprint Instance** pointing to `render.yaml`.
-3. Configure the secret environment variables in the Render Dashboard:
-   - `SUPABASE_URL`: Production Supabase HTTPS endpoint.
-   - `SUPABASE_ANON_KEY`: Public anonymous key.
-   - `SUPABASE_SERVICE_ROLE_KEY`: Administrative service role secret key.
-   - `CORS_ORIGIN`: Comma-separated allowed web dashboard domains (e.g., `https://attendx.nsbm.ac.lk,https://attendx-web.vercel.app`).
-4. **Health Check Path**: `/api/health`
-5. **Auto-Deploy**: Enabled on commits to the `main` branch.
-
-### Option B: Railway Container Service
-1. Link GitHub repository on [Railway](https://railway.app).
-2. Set the Root Directory to `/server`.
-3. Railway automatically detects [server/Dockerfile](file:///q:/MY%20Projects/AttendX/server/Dockerfile).
-4. Configure variables in Railway Variables dashboard (`PORT=5000`, `NODE_ENV=production`, `SUPABASE_*`).
-5. Configure custom domain with automatic SSL certification.
-
-### Option C: Self-Hosted Multi-Stage Docker Container
-Build and run the production container locally or on any cloud VM (AWS EC2, GCP Compute Engine, DigitalOcean Droplet):
-
-```bash
-# Build multi-stage optimized image
-cd server
-docker build -t attendx-api:latest .
-
-# Run container with production environment file
-docker run -d \
-  --name attendx-api \
-  --restart unless-stopped \
-  -p 5000:5000 \
-  --env-file .env.production \
-  attendx-api:latest
-
-# Verify health status
-curl -f http://localhost:5000/api/health
+                                      [ Global CDN / Edge Layer ]
+                                      (Cloudflare / Vercel Edge / Netlify)
+                                                   │
+                                                   │ HTTPS (TLS 1.3)
+                                                   ▼
+                                      ┌─────────────────────────┐
+                                      │  Frontend Web Client    │
+                                      │  (Vercel or Netlify)    │
+                                      │  - React 18 + Vite      │
+                                      │  - Tailwind CSS         │
+                                      │  - html5-qrcode Scanner │
+                                      │  - SPA Routing Fallback │
+                                      └────────────┬────────────┘
+                                                   │
+                                                   │ HTTPS REST API
+                                                   │ (CORS Restricted, Bearer JWT)
+                                                   ▼
+                                      ┌─────────────────────────┐
+                                      │  Backend API Engine     │
+                                      │  (Render / Railway /    │
+                                      │   Fly.io / Docker)      │
+                                      │  - Spring Boot 3.3.5    │
+                                      │  - Java 21 JRE (Alpine) │
+                                      │  - Flyway Migrations    │
+                                      │  - Structured Logging   │
+                                      │  - Rate Limiting Shield │
+                                      │  - Health: /api/health  │
+                                      └────────────┬────────────┘
+                                                   │
+                                                   │ Encrypted PostgreSQL (TLS)
+                                                   │ (Pooled or Direct JDBC)
+                                                   ▼
+                                      ┌─────────────────────────┐
+                                      │   Supabase PostgreSQL   │
+                                      │   - 12 Relational Tables│
+                                      │   - Immutable Audit Logs│
+                                      │   - ACID Transactions   │
+                                      └─────────────────────────┘
 ```
 
 ---
 
-## 3. Supabase Production Settings & Hardening
+## 2. Supabase PostgreSQL Connection Architecture
 
-1. **Connection Pooling & PgBouncer**:
-   - For serverless or high-concurrency environments, connect via Supabase's **Transaction Connection Pooler** on port `6543` rather than direct port `5432` to prevent connection starvation.
-   - Set `pool_mode = transaction`.
-2. **SSL Enforcement**:
-   - Ensure all database connections mandate SSL: `sslmode=require`.
-3. **Database Security & RLS**:
-   - Row-Level Security (RLS) is active across all 12 tables (`profiles`, `academic_years`, `semesters`, `courses`, `course_enrollments`, `lecturer_course_assignments`, `laboratory_rooms`, `laboratory_sessions`, `qr_tokens`, `attendance_records`, `attendance_verification_attempts`, `attendance_audit_logs`).
-   - The `handle_new_user` trigger enforces role default to `'student'`. Privilege escalation to `'admin'` or `'lecturer'` requires administrative DB execution.
-4. **Auth Email Rate Limits & SMTP**:
-   - Replace default Supabase email service with institutional custom SMTP (e.g., Amazon SES or SendGrid) configured for `@nsbm.ac.lk` and `@students.nsbm.ac.lk` domains.
-   - Set rate limit to 30 password reset emails per hour per IP.
-5. **Backups & Point-in-Time Recovery (PITR)**:
-   - Enable Supabase **Point-In-Time Recovery (PITR)** (available on Pro/Team plans) providing 7 to 30 days of granular, second-level point-in-time recovery.
+When deploying Spring Boot with HikariCP to connect to Supabase PostgreSQL, choosing the correct connection endpoint is critical to prevent connection starvation and DNS resolution errors.
+
+### Direct Connection vs. Connection Pooler
+
+| Feature | Direct Connection | Session Mode Pooler | Transaction Mode Pooler |
+| :--- | :--- | :--- | :--- |
+| **Endpoint Format** | `db.<ref>.supabase.co:5432` | `aws-0-<region>.pooler.supabase.com:5432` | `aws-0-<region>.pooler.supabase.com:6543` |
+| **Port** | `5432` | `5432` | `6543` |
+| **IP Routing** | **IPv6 only** (unless IPv4 add-on purchased) | **IPv4 & IPv6 supported** | **IPv4 & IPv6 supported** |
+| **Prepared Statements** | Supported natively | Supported natively | Requires `prepareThreshold=0` |
+| **Recommended For** | Dedicated VMs with IPv6 egress | **Spring Boot on Render / Railway / Fly.io** | Serverless / AWS Lambda / Vercel Edge |
+
+### Which Connection Should You Use?
+
+> **RECOMMENDATION**: For cloud hosts like **Render**, **Railway**, and **Fly.io**, use the **Supabase Session Mode Pooler** (Port `5432`) or **Transaction Mode Pooler** (Port `6543`) with `prepareThreshold=0`.
+> 
+> **Why?** Many shared cloud hosts do not support outbound IPv6 networking on standard tiers. Supabase's direct connection (`db.<ref>.supabase.co`) is strictly IPv6 on modern Supabase tiers. The Supabase Pooler endpoint (`aws-0-<region>.pooler.supabase.com`) provides full IPv4 routing.
+
+#### 1. Session Mode Pooler (Port 5432) — *Recommended for Spring Boot*
+```
+jdbc:postgresql://aws-0-<region>.pooler.supabase.com:5432/<database_name>?sslmode=require
+```
+
+#### 2. Transaction Mode Pooler (Port 6543) — *Alternative*
+If using port 6543, you MUST append `prepareThreshold=0` because PgBouncer/Supavisor transaction pooling does not maintain server-side prepared statement caches between transactions:
+```
+jdbc:postgresql://aws-0-<region>.pooler.supabase.com:6543/<database_name>?sslmode=require&prepareThreshold=0
+```
 
 ---
 
-## 4. React Web Dashboard Deployment (Vercel / Netlify)
+## 3. Backend Deployment (Render / Railway / Fly.io)
 
-The web dashboard is an optimized single-page React application configured with client-side routing.
+The backend includes a production-grade multi-stage [Dockerfile](file:///q:/MY%20Projects/Lab%20Attend/backend/Dockerfile) utilizing Eclipse Temurin OpenJDK 21 on Alpine Linux, running as an unprivileged non-root user (`appuser`).
 
-### Option A: Vercel Deployment
-The repository includes [web/vercel.json](file:///q:/MY%20Projects/AttendX/web/vercel.json):
-1. Import repository into [Vercel](https://vercel.com).
-2. Configure project settings:
-   - **Framework Preset**: Vite
-   - **Root Directory**: `web`
+### Option A: Render (Web Service)
+
+1. Sign in to [Render Dashboard](https://dashboard.render.com).
+2. Click **New +** -> **Web Service**.
+3. Connect your GitHub repository: `https://github.com/<your-username>/LabAttend`.
+4. Configure service parameters:
+   - **Name**: `labattend-backend`
+   - **Region**: Select the region closest to your Supabase instance (e.g., `Singapore` or `Frankfurt`).
+   - **Root Directory**: `backend`
+   - **Environment**: `Docker`
+   - **Dockerfile Path**: `Dockerfile` (relative to the `backend` root)
+   - **Instance Type**: `Starter` (0.5 CPU, 512 MB RAM or higher)
+5. Add the **Environment Variables** (see Section 5 below).
+6. Configure the Health Check:
+   - **Health Check Path**: `/api/health`
+7. Click **Create Web Service**.
+8. Render will build the Docker container and automatically deploy it.
+
+---
+
+### Option B: Railway (Container Service)
+
+1. Sign in to [Railway](https://railway.app).
+2. Click **New Project** -> **Deploy from GitHub repo**.
+3. Select the `LabAttend` repository.
+4. In the service settings:
+   - Go to **Settings** -> **Source Directory** -> set to `/backend`.
+   - Railway automatically detects `backend/Dockerfile`.
+5. Go to **Variables** tab and inject all required environment variables.
+6. Under **Settings** -> **Networking** -> click **Generate Domain** (e.g., `labattend-backend.up.railway.app`).
+7. Railway will build and launch the container on the allocated port.
+
+---
+
+### Option C: Fly.io
+
+1. Install Fly CLI: `powershell -Command "iwr https://fly.io/install.ps1 -useb | iex"`.
+2. Authenticate: `fly auth login`.
+3. In terminal, navigate to the `backend/` directory:
+   ```bash
+   cd backend
+   fly launch --no-deploy
+   ```
+4. Configure `fly.toml`:
+   - Set internal port: `internal_port = 8080`.
+   - Set health check path: `/api/health`.
+5. Set production secrets in Fly:
+   ```bash
+   fly secrets set \
+     SPRING_PROFILES_ACTIVE=prod \
+     SPRING_DATASOURCE_URL="jdbc:postgresql://aws-0-<region>.pooler.supabase.com:5432/postgres?sslmode=require" \
+     SPRING_DATASOURCE_USERNAME="postgres.<project-ref>" \
+     SPRING_DATASOURCE_PASSWORD="<supabase-db-password>" \
+     JWT_SECRET="<your-generated-256bit-secret>" \
+     CORS_ALLOWED_ORIGINS="https://labattend.vercel.app"
+   ```
+6. Deploy: `fly deploy`.
+
+---
+
+## 4. Frontend Deployment (Vercel / Netlify)
+
+The React frontend requires single-page application (SPA) rewrite rules so that deep links (`/admin/dashboard`, `/lecturer/sessions/active`) do not result in HTTP 404 errors when reloaded.
+
+The repository includes pre-configured fallback configurations:
+- **Vercel**: [vercel.json](file:///q:/MY%20Projects/Lab%20Attend/frontend/vercel.json)
+- **Netlify**: [netlify.toml](file:///q:/MY%20Projects/Lab%20Attend/frontend/netlify.toml) & [public/_redirects](file:///q:/MY%20Projects/Lab%20Attend/frontend/public/_redirects)
+
+### Option A: Vercel (Recommended)
+
+1. Sign in to [Vercel](https://vercel.com).
+2. Click **Add New...** -> **Project**.
+3. Import your `LabAttend` GitHub repository.
+4. In the configuration modal:
+   - **Framework Preset**: `Vite`
+   - **Root Directory**: Click edit and select `frontend`
    - **Build Command**: `npm run build`
    - **Output Directory**: `dist`
-3. Add Environment Variables:
-   - `VITE_API_URL`: Production backend URL (e.g. `https://api.attendx.nsbm.ac.lk/api`)
-   - `VITE_SUPABASE_URL`: Supabase project URL
-   - `VITE_SUPABASE_ANON_KEY`: Supabase anon public key
-4. Deploy. Vercel automatically routes all paths (`/*`) to `/index.html` and applies institutional security headers.
-
-### Option B: Netlify Deployment
-The repository includes [web/netlify.toml](file:///q:/MY%20Projects/AttendX/web/netlify.toml):
-1. Import repository into [Netlify](https://netlify.com).
-2. Base directory: `web`.
-3. Build command: `npm run build`.
-4. Publish directory: `web/dist`.
-5. Netlify applies 200 rewrite rules for client-side routing and cache controls.
+5. Expand **Environment Variables** and add:
+   - `VITE_API_BASE_URL`: `https://<your-backend-host>/api` (e.g., `https://labattend-backend.onrender.com/api`)
+6. Click **Deploy**.
+7. Vercel automatically deploys with edge caching, asset compression, and SPA rewrite rules.
 
 ---
 
-## 5. Flutter Mobile Release Build (Android APK & AAB)
+### Option B: Netlify
 
-### 1. Release Keystore Generation
-Generate an institutional upload keystore using Java `keytool`:
-
-```bash
-keytool -genkey -v -keystore attendx-upload-keystore.jks \
-  -alias attendx-release-key \
-  -keyalg RSA -keysize 2048 -validity 10000 \
-  -dname "CN=NSBM AttendX, OU=IT, O=NSBM Green University, L=Pitipana, ST=Western, C=LK"
-```
-
-### 2. Configure Keystore Credentials
-Copy [mobile/android/key.properties.example](file:///q:/MY%20Projects/AttendX/mobile/android/key.properties.example) to `mobile/android/key.properties`:
-
-```properties
-storePassword=YOUR_STRONG_STORE_PASSWORD
-keyPassword=YOUR_STRONG_KEY_PASSWORD
-keyAlias=attendx-release-key
-storeFile=/absolute/path/to/attendx-upload-keystore.jks
-```
-
-### 3. Build Google Play App Bundle (AAB)
-```bash
-cd mobile
-
-# Clean and resolve dependencies
-flutter clean
-flutter pub get
-
-# Build production Android App Bundle with injected production API URL and code obfuscation
-flutter build appbundle --release \
-  --dart-define=API_BASE_URL=https://api.attendx.nsbm.ac.lk/api \
-  --obfuscate \
-  --split-debug-info=build/app/outputs/symbols
-```
-*Output: `build/app/outputs/bundle/release/app-release.aab`*
-
-### 4. Build Standalone Universal / Architecture-Split APKs
-For direct university distribution or Firebase App Distribution:
-
-```bash
-# Architecture-split APKs (arm64-v8a, armeabi-v7a, x86_64)
-flutter build apk --release \
-  --split-per-abi \
-  --dart-define=API_BASE_URL=https://api.attendx.nsbm.ac.lk/api
-
-# Universal APK
-flutter build apk --release \
-  --dart-define=API_BASE_URL=https://api.attendx.nsbm.ac.lk/api
-```
-*Output: `build/app/outputs/flutter-apk/app-release.apk`*
+1. Sign in to [Netlify](https://www.netlify.com).
+2. Click **Add new site** -> **Import an existing project**.
+3. Select GitHub and pick the `LabAttend` repository.
+4. Configure Build settings:
+   - **Base directory**: `frontend`
+   - **Build command**: `npm run build`
+   - **Publish directory**: `frontend/dist`
+5. Under **Environment variables**, add:
+   - `VITE_API_BASE_URL`: `https://<your-backend-host>/api`
+6. Click **Deploy site**.
+7. Netlify detects `public/_redirects` and routes all traffic to `index.html` with HTTP 200.
 
 ---
 
-## 6. Production Environment Variables Reference
+## 5. Production Environment Variables Reference
 
-| Variable Name | Component | Scope / Visibility | Purpose & Example Value |
-| :--- | :--- | :--- | :--- |
-| `NODE_ENV` | Backend | Server Private | Environment mode: `production` |
-| `PORT` | Backend | Server Private | HTTP server listening port: `5000` |
-| `CORS_ORIGIN` | Backend | Server Private | Allowed web client origins: `https://attendx.nsbm.ac.lk,https://attendx-web.vercel.app` |
-| `SUPABASE_URL` | Backend & Web | Public / Server | Supabase project endpoint: `https://xyzcompany.supabase.co` |
-| `SUPABASE_ANON_KEY` | Backend & Web | Public Client Safe | Supabase anonymous API key for client-side Auth |
-| `SUPABASE_SERVICE_ROLE_KEY` | Backend | Server Secret ONLY | Supabase administrative bypass key; **NEVER** expose to web/mobile |
-| `JWT_SECRET` | Backend | Server Private | Optional Supabase JWT secret for offline signature verification |
-| `VITE_API_URL` | Web | Injected at Build | Backend API base URL: `https://api.attendx.nsbm.ac.lk/api` |
-| `API_BASE_URL` | Mobile | Injected at Build | Backend API URL passed via `--dart-define=API_BASE_URL=...` |
+> [!CAUTION]
+> Never commit actual credentials, database passwords, or JWT secrets to Git. Always inject them via the cloud provider's dashboard or CLI secret manager.
 
----
+### Backend Environment Variables (`backend`)
 
-## 7. HTTPS, SSL Termination, & CORS Architecture
+| Variable Name | Required | Default / Example Value | Description |
+| :--- | :---: | :--- | :--- |
+| `SPRING_PROFILES_ACTIVE` | **YES** | `prod` | Activates production profile with structured logging and hardened security. |
+| `PORT` or `SERVER_PORT` | Auto | `8080` | Port bound by the cloud provider (Render/Railway inject `PORT` automatically). |
+| `SPRING_DATASOURCE_URL` | **YES** | `jdbc:postgresql://aws-0-<region>.pooler.supabase.com:5432/postgres?sslmode=require` | Supabase JDBC connection URL with SSL enabled. |
+| `SPRING_DATASOURCE_USERNAME` | **YES** | `postgres.<project-ref>` (pooler) or `postgres` | Supabase database username. |
+| `SPRING_DATASOURCE_PASSWORD` | **YES** | `(your-secret-password)` | Supabase PostgreSQL user password. |
+| `JWT_SECRET` | **YES** | `(64-char hex or base64 string)` | Cryptographic secret key (minimum 256 bits) for signing JJWT tokens. |
+| `JWT_EXPIRATION_MS` | NO | `86400000` (24 hours) | Token validity lifetime in milliseconds. |
+| `CORS_ALLOWED_ORIGINS` | **YES** | `https://labattend.vercel.app,https://labattend.netlify.app` | Comma-separated list of allowed production frontend domains. |
+| `SPRING_FLYWAY_ENABLED` | NO | `true` | Automatically applies pending database migrations on startup. |
+| `DB_POOL_MAX` | NO | `10` | Maximum HikariCP database connections in pool. |
+| `DB_POOL_MIN` | NO | `2` | Minimum idle connections maintained in pool. |
+| `INITIAL_ADMIN_EMAIL` | NO | `admin@labattend.local` | Email for initial administrator bootstrap (if database is empty). |
+| `INITIAL_ADMIN_PASSWORD` | NO | `Admin@Secure2026!` | Password for initial administrator bootstrap. |
+| `INITIAL_ADMIN_NAME` | NO | `System Administrator` | Full name for initial administrator account. |
 
-1. **Strict Transport Security (HSTS)**:
-   - Backend Helmet middleware enforces `Strict-Transport-Security: max-age=31536000; includeSubDomains; preload`.
-2. **CORS Security**:
-   - The backend checks incoming `Origin` headers against the validated list in `CORS_ORIGIN`.
-   - Wildcards (`*`) with credentials (`credentials: true`) are explicitly disallowed in [server/src/app.ts](file:///q:/MY%20Projects/AttendX/server/src/app.ts).
-3. **Security Headers**:
-   - Both Web and Server enforce:
-     - `X-Content-Type-Options: nosniff`
-     - `X-Frame-Options: DENY`
-     - `Referrer-Policy: strict-origin-when-cross-origin`
+### Frontend Environment Variables (`frontend`)
 
----
-
-## 8. Database Migrations & Version Control Pipeline
-
-Execute PostgreSQL migrations sequentially in order against the production Supabase instance:
-
-```bash
-# Using Supabase CLI
-supabase db push
-
-# Or using psql directly via connection string:
-psql "$SUPABASE_DB_URL" -f database/migrations/00001_initial_schema.sql
-psql "$SUPABASE_DB_URL" -f database/migrations/00002_create_profiles.sql
-psql "$SUPABASE_DB_URL" -f database/migrations/00003_fix_rls_and_constraints.sql
-psql "$SUPABASE_DB_URL" -f database/migrations/00004_fix_profile_trigger.sql
-
-# Optional initial institutional seed data (Admin, Academic Years, Semesters, Rooms):
-psql "$SUPABASE_DB_URL" -f database/seeds/00001_seed_initial_data.sql
-```
-
-### Safe Migration Rules:
-- Never drop a column in production without a preceding deprecation cycle.
-- Add new columns as `NULL` or with safe default values.
-- Table indexes should use `CREATE INDEX CONCURRENTLY` in live production environments.
+| Variable Name | Required | Example Value | Description |
+| :--- | :---: | :--- | :--- |
+| `VITE_API_BASE_URL` | **YES** | `https://labattend-backend.onrender.com/api` | Public base URL of the Spring Boot backend REST API. Must include `/api` with no trailing slash. |
+| `VITE_APP_NAME` | NO | `LabAttend` | Application branding title displayed in page headers. |
 
 ---
 
-## 9. Backup and Disaster Recovery Strategy
+## 6. Mobile QR Camera Scanner & HTTPS Strict Requirements
 
-### Recovery Objectives
-- **RPO (Recovery Point Objective)**: < 1 hour (Data loss window limited to maximum 1 hour via continuous WAL archiving).
-- **RTO (Recovery Time Objective)**: < 30 minutes (Full service restoration from cold backup or standby instance).
+To scan physical student badge QR codes using `html5-qrcode` in mobile browsers (e.g. Chrome on Android, Safari on iOS):
 
-### Daily Cold Backup Runbook (`cron` scheduled)
-```bash
-#!/usr/bin/env bash
-# attendx_db_backup.sh - Daily automated encrypted backup to Cloud Storage
-set -euo pipefail
+1. **HTTPS Enforcement**:
+   - Modern mobile operating systems (iOS WebKit and Android Chromium) strictly enforce the **Secure Context API**.
+   - `navigator.mediaDevices.getUserMedia` will **fail silently or throw an error** if the frontend is served over unencrypted HTTP (unless on `localhost`).
+   - The production frontend MUST be accessed via `https://` (provided automatically by Vercel and Netlify).
 
-TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
-BACKUP_DIR="/var/backups/attendx"
-BACKUP_FILE="${BACKUP_DIR}/attendx_dump_${TIMESTAMP}.sql.gz"
+2. **Camera Permissions**:
+   - On the first scan attempt, the browser displays a standard permission dialog: *"labattend.vercel.app wants to use your camera"*.
+   - Instruct lecturers to tap **Allow**.
+   - If accidentally blocked, navigate to browser site settings -> Permissions -> Camera -> set to **Allow**.
 
-mkdir -p "$BACKUP_DIR"
+---
 
-# Perform compressed pg_dump of relational schema and data
-pg_dump -h "$SUPABASE_DB_HOST" -p 5432 -U postgres -d postgres -F p | gzip > "$BACKUP_FILE"
+## 7. Post-Deployment Verification Checklist
 
-# Encrypt backup with OpenSSL AES-256
-openssl enc -aes-256-cbc -salt -pbkdf2 -in "$BACKUP_FILE" -out "${BACKUP_FILE}.enc" -pass env:BACKUP_ENCRYPTION_KEY
-rm "$BACKUP_FILE"
+Execute this checklist immediately after deploying to verify system integrity:
 
-# Upload to secure cold storage (AWS S3 / Google Cloud Storage)
-aws s3 cp "${BACKUP_FILE}.enc" "s3://nsbm-attendx-backups/database/${TIMESTAMP}/"
+- [ ] **1. HTTPS Certificate & Security Headers**:
+  - Open the deployed frontend URL (`https://labattend.vercel.app`) in a browser.
+  - Confirm the browser padlock icon shows a valid TLS certificate with zero mixed content warnings.
 
-# Retain local backups for 7 days
-find "$BACKUP_DIR" -type f -name "*.enc" -mtime +7 -delete
+- [ ] **2. Health Check Endpoint**:
+  - Run: `curl -i https://<backend-url>/api/health`
+  - Verify HTTP `200 OK` response with JSON body:
+    ```json
+    {
+      "success": true,
+      "message": "LabAttend System Health Status: UP",
+      "data": {
+        "status": "UP",
+        "database": "CONNECTED",
+        "version": "1.0.0",
+        "environment": "prod"
+      }
+    }
+    ```
 
-echo "Backup completed successfully at ${TIMESTAMP}"
-```
+- [ ] **3. Flyway Database Migrations**:
+  - Inspect backend startup logs (in Render / Railway dashboard).
+  - Verify Flyway logged: `Successfully applied 5 migration(s) to schema "public"`.
+  - Confirm all 12 tables exist in Supabase Table Editor.
 
-### Disaster Recovery Restoration Runbook
-1. Provision standby Supabase / PostgreSQL instance.
-2. Download and decrypt latest backup:
-   ```bash
-   openssl enc -d -aes-256-cbc -pbkdf2 -in attendx_dump_latest.sql.gz.enc -out attendx_dump.sql.gz -pass env:BACKUP_ENCRYPTION_KEY
-   gunzip attendx_dump.sql.gz
-   ```
-3. Restore database schema and records:
-   ```bash
-   psql -h "$NEW_DB_HOST" -U postgres -d postgres -f attendx_dump.sql
-   ```
-4. Update `SUPABASE_URL` and `SUPABASE_*` credentials in backend hosting environment.
-5. Trigger redeployment of the backend API service.
+- [ ] **4. Administrator Authentication**:
+  - Navigate to `https://<frontend-url>/login`.
+  - Sign in using `INITIAL_ADMIN_EMAIL` and `INITIAL_ADMIN_PASSWORD`.
+  - Verify redirection to `/admin/dashboard` with summary cards and real database metrics.
+
+- [ ] **5. Lecturer Authentication**:
+  - Sign in as an authorized lecturer account.
+  - Verify redirection to `/lecturer/dashboard`.
+  - Confirm assigned modules and lab sessions appear correctly.
+
+- [ ] **6. Real Mobile Phone Camera QR Scanning**:
+  - Open `https://<frontend-url>` on a physical mobile phone (iPhone or Android).
+  - Log in as lecturer and launch an active lab session scanner.
+  - Allow camera access and point the device at a sample student badge QR token.
+  - Verify instant green audio-visual confirmation card with student name, registration number, and timestamp.
+  - Rescan the exact same badge to verify rejection with yellow *"Already Marked Present"* card.
+
+- [ ] **7. SPA Routing Fallback**:
+  - While on `/admin/dashboard` or `/lecturer/sessions`, press browser Refresh (F5).
+  - Confirm the page reloads cleanly without throwing an HTTP 404 error.
+
+- [ ] **8. Security & Secret Exposure Audit**:
+  - Verify `git status` and Git history: confirm `.env`, `.env.production`, database passwords, and JWT secret keys have zero commits in the repository.

@@ -1,7 +1,47 @@
-# Production Profile
+# ==============================================================================
+# LabAttend Backend - Production Profile Configuration
+# ==============================================================================
+# Active when SPRING_PROFILES_ACTIVE=prod
+# Designed for Supabase PostgreSQL (JDBC) on hosts like Render, Railway, Fly.io
+# ==============================================================================
+
+server:
+  port: ${PORT:${SERVER_PORT:8080}}
+  forward-headers-strategy: framework
+  servlet:
+    session:
+      cookie:
+        secure: true
+        http-only: true
+
 spring:
+  datasource:
+    url: ${SPRING_DATASOURCE_URL}
+    username: ${SPRING_DATASOURCE_USERNAME}
+    password: ${SPRING_DATASOURCE_PASSWORD}
+    hikari:
+      pool-name: LabAttendHikariPool-Prod
+      maximum-pool-size: ${DB_POOL_MAX:10}
+      minimum-idle: ${DB_POOL_MIN:2}
+      idle-timeout: 30000
+      connection-timeout: 30000
+      max-lifetime: 600000
+      keepalive-time: 30000
+      connection-test-query: SELECT 1
+
   jpa:
     show-sql: false
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        format_sql: false
+
+  flyway:
+    enabled: ${SPRING_FLYWAY_ENABLED:true}
+    baseline-on-migrate: true
+    validate-on-migrate: true
 
 logging:
   level:
@@ -9,3 +49,4 @@ logging:
     com.labattend: INFO
     org.springframework.security: WARN
     org.flywaydb: INFO
+    org.springframework.boot.web.embedded.tomcat: INFO

@@ -45,8 +45,10 @@ public class HealthController {
             details.put("databaseError", e.getMessage());
         }
 
+        boolean isHealthy = "CONNECTED".equals(dbStatus);
+
         HealthResponse healthResponse = HealthResponse.builder()
-                .status("UP")
+                .status(isHealthy ? "UP" : "DOWN")
                 .database(dbStatus)
                 .version("1.0.0")
                 .environment(activeProfile)
@@ -54,6 +56,11 @@ public class HealthController {
                 .details(details)
                 .build();
 
-        return ResponseEntity.ok(ApiResponse.success("LabAttend System Health Status", healthResponse));
+        if (isHealthy) {
+            return ResponseEntity.ok(ApiResponse.success("LabAttend System Health Status: UP", healthResponse));
+        } else {
+            return ResponseEntity.status(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE)
+                    .body(ApiResponse.error("LabAttend System Health Status: DOWN", healthResponse));
+        }
     }
 }
