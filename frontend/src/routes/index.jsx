@@ -1,2 +1,1 @@
-// React Router configuration placeholder
-export {};
+export { default as AppRoutes } from './AppRoutes';

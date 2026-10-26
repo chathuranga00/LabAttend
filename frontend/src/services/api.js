@@ -22,15 +22,27 @@ api.interceptors.request.use(
   }
 );
 
-// Response Interceptor: Uniform error extraction
+// Response Interceptor: Uniform error extraction and 401 handling
 api.interceptors.response.use(
   (response) => {
     return response.data;
   },
   (error) => {
+    const status = error.response?.status;
+    const isLoginEndpoint = error.config?.url?.includes('/auth/login');
+
+    if (status === 401 && !isLoginEndpoint) {
+      // Clear expired credentials and notify auth flow
+      localStorage.removeItem('labattend_token');
+      localStorage.removeItem('labattend_user');
+      
+      // Dispatch custom event for AuthContext to sync
+      window.dispatchEvent(new Event('labattend:unauthorized'));
+    }
+
     const errorData = error.response?.data || {
       message: error.message || 'An unexpected network error occurred',
-      status: error.response?.status || 500,
+      status: status || 500,
     };
     return Promise.reject(errorData);
   }

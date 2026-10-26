@@ -48,3 +48,27 @@ This document records the foundational architectural decisions and technical ass
 - The React frontend manages token persistence in browser memory/storage for user convenience only.
 - Spring Boot's `SecurityFilterChain` independently verifies the HMAC-SHA256 signature and extracts the `role` (`ADMIN` or `LECTURER`) from the validated JWT claims on every HTTP request.
 - Frontend request bodies or headers specifying user roles are ignored and rejected.
+
+---
+
+## 5. Authentication Token Transport Decision & Security Trade-Offs
+
+### Architectural Decision: Authorization Header (`Bearer <token>`)
+For **LabAttend**, we employ the standard `Authorization: Bearer <jwt_token>` header transmitted with every authenticated Axios request, returned in the JSON payload of `POST /api/auth/login`.
+
+### Security Trade-Off Analysis
+
+1. **Authorization Header vs HttpOnly Cookies**:
+   - **Cross-Site Request Forgery (CSRF)**:
+     - *HttpOnly Cookies*: Vulnerable to CSRF attacks by default because browsers automatically attach cookies on cross-origin requests. Mitigating this requires CSRF tokens (SameSite=Strict, double-submit cookie, or Spring Security CSRF synchronizer token).
+     - *Authorization Header*: Completely immune to standard CSRF attacks because browsers NEVER automatically attach custom `Authorization` request headers on cross-site requests or embedded links/forms. This allows a clean, stateless REST API architecture without CSRF token overhead.
+   - **Cross-Site Scripting (XSS)**:
+     - *HttpOnly Cookies*: Protects tokens from direct JavaScript `document.cookie` reading in the event of an XSS vulnerability.
+     - *Authorization Header*: If stored in `localStorage`, a severe XSS vulnerability could allow reading the token. We mitigate this through:
+       1. Strict React JSX escaping (default XSS prevention).
+       2. Strict Content Security Policy (CSP) and CORS configuration restricted strictly to the authorized frontend domain (`http://localhost:5173` in development, institutional domain in production).
+       3. Short token lifespan (`JWT_EXPIRATION_MS`, default 24h or configurable shorter sessions) with backend invalidation on role changes.
+   - **Cross-Origin & Multi-Host Architecture**:
+     - Modern deployments often separate the React client (e.g. Vercel, Netlify, or AWS S3/CloudFront) from the Spring Boot API (e.g. AWS EC2, Render, Railway, or institutional VM). Cookie management across different top-level domains or subdomains requires complex `SameSite=None; Secure` flags and third-party cookie permissions (which modern browsers increasingly partition or block).
+     - The Authorization header works friction-free across decoupled cross-domain SPA/API environments while maintaining strict CORS boundaries.
+
