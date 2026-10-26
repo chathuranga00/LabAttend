@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { ShieldCheck, Mail, Lock, Eye, EyeOff, AlertCircle, ArrowRight, Loader2 } from 'lucide-react';
+import ThemeToggle from '../../components/common/ThemeToggle';
 
 export default function LoginPage() {
   const navigate = useNavigate();
@@ -67,17 +68,22 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen bg-slate-950 flex flex-col justify-center py-12 sm:px-6 lg:px-8 relative selection:bg-emerald-500 selection:text-white">
+      {/* Top right Theme Toggle */}
+      <div className="absolute top-6 right-6 z-20">
+        <ThemeToggle />
+      </div>
+
       {/* Background ambient lighting */}
       <div className="fixed inset-0 overflow-hidden pointer-events-none">
         <div className="absolute -top-40 -left-40 w-96 h-96 bg-emerald-600/10 rounded-full blur-3xl"></div>
-        <div className="absolute -bottom-40 -right-40 w-96 h-96 bg-indigo-600/10 rounded-full blur-3xl"></div>
+        <div className="absolute -bottom-40 -right-40 w-96 h-96 bg-emerald-600/10 rounded-full blur-3xl"></div>
       </div>
 
       <div className="sm:mx-auto sm:w-full sm:max-w-md relative z-10 px-4">
         {/* University / App Brand */}
         <div className="flex flex-col items-center text-center">
-          <div className="h-14 w-14 rounded-2xl bg-gradient-to-tr from-emerald-500 to-teal-400 flex items-center justify-center shadow-xl shadow-emerald-500/20 mb-4 ring-1 ring-white/20">
-            <ShieldCheck className="h-8 w-8 text-slate-950" />
+          <div className="h-20 w-48 rounded-2xl bg-white p-2.5 flex items-center justify-center shadow-xl shadow-emerald-500/15 mb-4 ring-1 ring-emerald-500/20">
+            <img src="/logo.png" alt="NSBM Green University Town" className="h-full w-full object-contain" />
           </div>
           <h1 className="text-3xl font-extrabold tracking-tight text-white">
             LabAttend
@@ -86,7 +92,7 @@ export default function LoginPage() {
             Laboratory & Lecture Attendance Management System
           </p>
           <div className="mt-2 inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-900 border border-slate-800 text-xs text-slate-400">
-            <span>Authorized Personnel Only</span>
+            <span>NSBM Green University</span>
             <span className="text-slate-600">•</span>
             <span className="text-emerald-400 font-medium">ADMIN & LECTURER</span>
           </div>

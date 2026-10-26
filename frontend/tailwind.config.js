@@ -1,5 +1,6 @@
 /** @type {import('tailwindcss').Config} */
 export default {
+  darkMode: 'class',
   content: [
     "./index.html",
     "./src/**/*.{js,ts,jsx,tsx}",
@@ -16,10 +17,18 @@ export default {
           800: '#166534',
           900: '#14532d',
         },
+        nsbm: {
+          green: '#2ea54a',
+          lime: '#7cb342',
+          blue: '#1b4d9b',
+          darkBlue: '#0f3166',
+        },
         slate: {
-          850: '#151e2e',
-          900: '#0f172a',
-          950: '#020617',
+          700: 'rgb(var(--color-slate-700) / <alpha-value>)',
+          800: 'rgb(var(--color-slate-800) / <alpha-value>)',
+          850: 'rgb(var(--color-slate-850) / <alpha-value>)',
+          900: 'rgb(var(--color-slate-900) / <alpha-value>)',
+          950: 'rgb(var(--color-slate-950) / <alpha-value>)',
         }
       }
     },

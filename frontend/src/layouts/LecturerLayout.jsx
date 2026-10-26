@@ -15,6 +15,7 @@ import {
   Menu,
   X
 } from 'lucide-react';
+import ThemeToggle from '../components/common/ThemeToggle';
 
 const navItems = [
   { name: 'Dashboard', path: '/lecturer/dashboard', icon: LayoutDashboard },
@@ -50,17 +51,17 @@ export default function LecturerLayout() {
       }`}>
         <div className="overflow-y-auto">
           {/* Logo Header */}
-          <div className="h-16 px-6 flex items-center justify-between border-b border-slate-800/80 bg-slate-900/50">
-            <div className="flex items-center gap-3">
-              <div className="h-9 w-9 rounded-xl bg-gradient-to-tr from-teal-500 to-cyan-400 flex items-center justify-center shadow-lg shadow-teal-500/20">
-                <ShieldCheck className="h-5 w-5 text-slate-950 font-bold" />
+          <div className="h-16 px-4 flex items-center justify-between border-b border-slate-800/80 bg-slate-900/50">
+            <div className="flex items-center gap-2.5">
+              <div className="h-10 w-10 rounded-xl bg-white p-1 flex items-center justify-center shadow-md shadow-emerald-500/10 border border-slate-200/40 shrink-0">
+                <img src="/logo.png" alt="NSBM Green University" className="h-full w-full object-contain" />
               </div>
-              <div>
-                <span className="font-bold tracking-tight text-white block leading-tight">
+              <div className="overflow-hidden">
+                <span className="font-bold tracking-tight text-white block leading-tight text-sm">
                   LabAttend
                 </span>
-                <span className="text-[10px] font-semibold text-teal-400 tracking-wider uppercase">
-                  Lecturer Portal
+                <span className="text-[10px] font-semibold text-emerald-500 tracking-wider uppercase truncate block">
+                  NSBM Lecturer
                 </span>
               </div>
             </div>
@@ -152,10 +153,11 @@ export default function LecturerLayout() {
             <span className="text-xs text-slate-400 hidden sm:inline">Classroom Session & Scanner Console</span>
           </div>
 
-          <div className="flex items-center gap-4 text-xs text-slate-400">
+          <div className="flex items-center gap-3 text-xs text-slate-400">
+            <ThemeToggle />
             <NavLink
               to="/health"
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 text-slate-300 border border-slate-700/50 transition-colors"
             >
               <Activity className="h-3.5 w-3.5 text-teal-400" />
               <span className="hidden sm:inline">System Health</span>
