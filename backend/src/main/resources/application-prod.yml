@@ -1,0 +1,11 @@
+# Production Profile
+spring:
+  jpa:
+    show-sql: false
+
+logging:
+  level:
+    root: WARN
+    com.labattend: INFO
+    org.springframework.security: WARN
+    org.flywaydb: INFO
