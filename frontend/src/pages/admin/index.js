@@ -7,4 +7,5 @@ export { default as AssignmentsPage } from './AssignmentsPage';
 export { default as LecturersPage } from './LecturersPage';
 export { default as StudentsPage } from './StudentsPage';
 export { default as StudentDetailsPage } from './StudentDetailsPage';
+export { default as AdminAllSessionsPage } from './AdminAllSessionsPage';
 export { default as AdminPlaceholderPage } from './AdminPlaceholderPage';

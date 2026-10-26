@@ -6,6 +6,7 @@ import lombok.*;
 
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.time.OffsetDateTime;
 
 @Entity
 @Table(name = "lab_sessions")
@@ -22,6 +23,10 @@ public class LabSession extends BaseEntity {
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "module_id", nullable = false)
     private Module module;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "batch_id")
+    private Batch batch;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "lecturer_id", nullable = false)
@@ -43,7 +48,16 @@ public class LabSession extends BaseEntity {
     @Enumerated(EnumType.STRING)
     @Builder.Default
     @Column(name = "status", nullable = false, length = 20)
-    private SessionStatus status = SessionStatus.SCHEDULED;
+    private SessionStatus status = SessionStatus.DRAFT;
+
+    @Column(name = "actual_started_at")
+    private OffsetDateTime actualStartedAt;
+
+    @Column(name = "cancelled_at")
+    private OffsetDateTime cancelledAt;
+
+    @Column(name = "cancellation_reason", columnDefinition = "TEXT")
+    private String cancellationReason;
 
     @Column(name = "finalization_notes", columnDefinition = "TEXT")
     private String finalizationNotes;

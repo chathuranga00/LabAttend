@@ -16,10 +16,16 @@ import {
   LecturersPage,
   StudentsPage,
   StudentDetailsPage,
+  AdminAllSessionsPage,
   AdminPlaceholderPage,
 } from '../pages/admin';
-import LecturerDashboardPage from '../pages/lecturer/LecturerDashboardPage';
-import LecturerPlaceholderPage from '../pages/lecturer/LecturerPlaceholderPage';
+import {
+  LecturerDashboardPage,
+  MyLabSessionsPage,
+  CreateLabSessionPage,
+  LabSessionDetailsPage,
+  LecturerPlaceholderPage,
+} from '../pages/lecturer';
 
 function RootRedirect() {
   const { isAuthenticated, role, loading } = useAuth();
@@ -64,6 +70,7 @@ export default function AppRoutes() {
         <Route path="students" element={<StudentsPage />} />
         <Route path="students/:id" element={<StudentDetailsPage />} />
         <Route path="halls" element={<LaboratoryHallsPage />} />
+        <Route path="sessions" element={<AdminAllSessionsPage />} />
         <Route
           path="audits"
           element={
@@ -86,15 +93,9 @@ export default function AppRoutes() {
       >
         <Route index element={<LecturerDashboardPage />} />
         <Route path="dashboard" element={<LecturerDashboardPage />} />
-        <Route
-          path="sessions"
-          element={
-            <LecturerPlaceholderPage
-              title="My Laboratory Sessions"
-              description="View, schedule, and open attendance windows for your assigned courses"
-            />
-          }
-        />
+        <Route path="sessions" element={<MyLabSessionsPage />} />
+        <Route path="sessions/new" element={<CreateLabSessionPage />} />
+        <Route path="sessions/:id" element={<LabSessionDetailsPage />} />
         <Route
           path="scanner"
           element={

@@ -16,6 +16,7 @@ public interface LaboratoryHallRepository extends JpaRepository<LaboratoryHall, 
     Optional<LaboratoryHall> findByHallCode(String hallCode);
     boolean existsByHallCode(String hallCode);
     boolean existsByHallCodeAndIdNot(String hallCode, UUID id);
+    java.util.List<LaboratoryHall> findByIsActiveTrue();
 
     @Query("SELECT lh FROM LaboratoryHall lh WHERE " +
            "(:search IS NULL OR LOWER(lh.name) LIKE LOWER(CONCAT('%', :search, '%')) OR LOWER(lh.hallCode) LIKE LOWER(CONCAT('%', :search, '%')) OR LOWER(lh.location) LIKE LOWER(CONCAT('%', :search, '%')))")

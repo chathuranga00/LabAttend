@@ -24,6 +24,9 @@ public interface StudentRepository extends JpaRepository<Student, UUID> {
     boolean existsByQrTokenHash(String qrTokenHash);
     boolean existsByQrTokenHashAndIdNot(String qrTokenHash, UUID id);
 
+    java.util.List<Student> findByBatchIdAndIsActiveTrue(UUID batchId);
+    long countByBatchIdAndIsActiveTrue(UUID batchId);
+
     @Query("SELECT s FROM Student s WHERE " +
            "(:programmeId IS NULL OR s.degreeProgramme.id = :programmeId) AND " +
            "(:batchId IS NULL OR s.batch.id = :batchId) AND " +

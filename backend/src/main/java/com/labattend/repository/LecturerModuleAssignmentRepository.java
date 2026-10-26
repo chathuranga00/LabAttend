@@ -15,8 +15,18 @@ import java.util.UUID;
 @Repository
 public interface LecturerModuleAssignmentRepository extends JpaRepository<LecturerModuleAssignment, UUID> {
     List<LecturerModuleAssignment> findByLecturerId(UUID lecturerId);
+    List<LecturerModuleAssignment> findByLecturerIdAndIsActiveTrue(UUID lecturerId);
     List<LecturerModuleAssignment> findByModuleId(UUID moduleId);
     List<LecturerModuleAssignment> findByBatchId(UUID batchId);
+
+    @Query("SELECT COUNT(lma) > 0 FROM LecturerModuleAssignment lma WHERE " +
+           "lma.lecturer.id = :lecturerId AND lma.module.id = :moduleId AND " +
+           "(lma.batch.id = :batchId OR lma.batch IS NULL) AND lma.isActive = true")
+    boolean isLecturerAssignedToModuleAndBatch(
+            @Param("lecturerId") UUID lecturerId,
+            @Param("moduleId") UUID moduleId,
+            @Param("batchId") UUID batchId
+    );
 
     @Query("SELECT lma FROM LecturerModuleAssignment lma WHERE " +
            "lma.lecturer.id = :lecturerId AND lma.module.id = :moduleId AND " +

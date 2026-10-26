@@ -13,7 +13,8 @@ import {
   FileText, 
   LogOut, 
   User as UserIcon,
-  Activity
+  Activity,
+  CalendarClock
 } from 'lucide-react';
 
 const navItems = [
@@ -25,6 +26,7 @@ const navItems = [
   { name: 'Module Assignments', path: '/admin/assignments', icon: Activity },
   { name: 'Student Rosters', path: '/admin/students', icon: UserCheck },
   { name: 'Laboratory Halls', path: '/admin/halls', icon: Building2 },
+  { name: 'Lab Sessions', path: '/admin/sessions', icon: CalendarClock },
   { name: 'System Audit Logs', path: '/admin/audits', icon: FileText },
 ];
 
