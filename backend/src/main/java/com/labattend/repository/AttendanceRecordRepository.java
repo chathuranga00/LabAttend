@@ -54,4 +54,63 @@ public interface AttendanceRecordRepository extends JpaRepository<AttendanceReco
             @org.springframework.data.repository.query.Param("search") String search,
             org.springframework.data.domain.Pageable pageable
     );
+
+    @org.springframework.data.jpa.repository.Query(
+        "SELECT a.student.id, COUNT(a.id) FROM AttendanceRecord a " +
+        "JOIN a.session s " +
+        "LEFT JOIN s.batch b " +
+        "JOIN s.module m " +
+        "WHERE s.status IN (com.labattend.entity.enums.SessionStatus.FINALIZED, com.labattend.entity.enums.SessionStatus.CLOSED) AND " +
+        "a.status IN (com.labattend.entity.enums.AttendanceStatus.PRESENT, com.labattend.entity.enums.AttendanceStatus.LATE) AND " +
+        "(:lecturerId IS NULL OR s.lecturer.id = :lecturerId) AND " +
+        "(:moduleId IS NULL OR m.id = :moduleId) AND " +
+        "(:batchId IS NULL OR b.id = :batchId) AND " +
+        "(:programmeId IS NULL OR m.degreeProgramme.id = :programmeId OR (b IS NOT NULL AND b.degreeProgramme.id = :programmeId)) AND " +
+        "(:startDate IS NULL OR s.sessionDate >= :startDate) AND " +
+        "(:endDate IS NULL OR s.sessionDate <= :endDate) AND " +
+        "(:semester IS NULL OR m.semester = :semester) " +
+        "GROUP BY a.student.id"
+    )
+    List<Object[]> countAttendedSessionsPerStudent(
+            @org.springframework.data.repository.query.Param("lecturerId") UUID lecturerId,
+            @org.springframework.data.repository.query.Param("moduleId") UUID moduleId,
+            @org.springframework.data.repository.query.Param("batchId") UUID batchId,
+            @org.springframework.data.repository.query.Param("programmeId") UUID programmeId,
+            @org.springframework.data.repository.query.Param("startDate") java.time.LocalDate startDate,
+            @org.springframework.data.repository.query.Param("endDate") java.time.LocalDate endDate,
+            @org.springframework.data.repository.query.Param("semester") String semester
+    );
+
+    @org.springframework.data.jpa.repository.Query(
+        "SELECT a.status, COUNT(a.id) FROM AttendanceRecord a " +
+        "JOIN a.session s " +
+        "LEFT JOIN s.batch b " +
+        "JOIN s.module m " +
+        "WHERE s.status IN (com.labattend.entity.enums.SessionStatus.FINALIZED, com.labattend.entity.enums.SessionStatus.CLOSED) AND " +
+        "(:lecturerId IS NULL OR s.lecturer.id = :lecturerId) AND " +
+        "(:moduleId IS NULL OR m.id = :moduleId) AND " +
+        "(:batchId IS NULL OR b.id = :batchId) AND " +
+        "(:programmeId IS NULL OR m.degreeProgramme.id = :programmeId OR (b IS NOT NULL AND b.degreeProgramme.id = :programmeId)) AND " +
+        "(:startDate IS NULL OR s.sessionDate >= :startDate) AND " +
+        "(:endDate IS NULL OR s.sessionDate <= :endDate) AND " +
+        "(:semester IS NULL OR m.semester = :semester) " +
+        "GROUP BY a.status"
+    )
+    List<Object[]> countFinalizedAttendanceSlotsByStatus(
+            @org.springframework.data.repository.query.Param("lecturerId") UUID lecturerId,
+            @org.springframework.data.repository.query.Param("moduleId") UUID moduleId,
+            @org.springframework.data.repository.query.Param("batchId") UUID batchId,
+            @org.springframework.data.repository.query.Param("programmeId") UUID programmeId,
+            @org.springframework.data.repository.query.Param("startDate") java.time.LocalDate startDate,
+            @org.springframework.data.repository.query.Param("endDate") java.time.LocalDate endDate,
+            @org.springframework.data.repository.query.Param("semester") String semester
+    );
+
+    @org.springframework.data.jpa.repository.Query(
+        "SELECT a FROM AttendanceRecord a WHERE a.student.id = :studentId AND a.session.id IN :sessionIds"
+    )
+    List<AttendanceRecord> findByStudentIdAndSessionIdIn(
+            @org.springframework.data.repository.query.Param("studentId") UUID studentId,
+            @org.springframework.data.repository.query.Param("sessionIds") java.util.Collection<UUID> sessionIds
+    );
 }

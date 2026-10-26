@@ -28,6 +28,8 @@ import {
   LabSessionDetailsPage,
   QRScannerPage,
   SessionSummaryPage,
+  LecturerReportsPage,
+  LecturerStudentAttendancePage,
   LecturerPlaceholderPage,
 } from '../pages/lecturer';
 
@@ -97,15 +99,8 @@ export default function AppRoutes() {
         <Route path="sessions/:id/summary" element={<SessionSummaryPage />} />
         <Route path="sessions/:id/scanner" element={<QRScannerPage />} />
         <Route path="scanner" element={<QRScannerPage />} />
-        <Route
-          path="reports"
-          element={
-            <LecturerPlaceholderPage
-              title="Attendance Analytics & Reports"
-              description="Attendance percentages, finalized absentee lists, and export summaries"
-            />
-          }
-        />
+        <Route path="reports" element={<LecturerReportsPage />} />
+        <Route path="students" element={<LecturerStudentAttendancePage />} />
       </Route>
 
       {/* Catch-all redirect */}

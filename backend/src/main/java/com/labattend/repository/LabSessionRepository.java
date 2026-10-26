@@ -92,4 +92,73 @@ public interface LabSessionRepository extends JpaRepository<LabSession, UUID> {
     @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT s FROM LabSession s WHERE s.id = :id")
     Optional<LabSession> findByIdWithPessimisticLock(@Param("id") UUID id);
+
+    @Query("SELECT s.status, COUNT(s) FROM LabSession s WHERE " +
+           "(:lecturerId IS NULL OR s.lecturer.id = :lecturerId) AND " +
+           "(:moduleId IS NULL OR s.module.id = :moduleId) AND " +
+           "(:batchId IS NULL OR s.batch.id = :batchId) AND " +
+           "(:programmeId IS NULL OR s.module.degreeProgramme.id = :programmeId OR (s.batch IS NOT NULL AND s.batch.degreeProgramme.id = :programmeId)) AND " +
+           "(:startDate IS NULL OR s.sessionDate >= :startDate) AND " +
+           "(:endDate IS NULL OR s.sessionDate <= :endDate) AND " +
+           "(:semester IS NULL OR s.module.semester = :semester) " +
+           "GROUP BY s.status")
+    List<Object[]> countSessionsByStatus(
+            @Param("lecturerId") UUID lecturerId,
+            @Param("moduleId") UUID moduleId,
+            @Param("batchId") UUID batchId,
+            @Param("programmeId") UUID programmeId,
+            @Param("startDate") LocalDate startDate,
+            @Param("endDate") LocalDate endDate,
+            @Param("semester") String semester
+    );
+
+    @Query("SELECT s FROM LabSession s " +
+           "JOIN FETCH s.module m " +
+           "LEFT JOIN FETCH s.batch b " +
+           "JOIN FETCH s.lecturer l " +
+           "JOIN FETCH s.hall h " +
+           "WHERE s.status IN (com.labattend.entity.enums.SessionStatus.FINALIZED, com.labattend.entity.enums.SessionStatus.CLOSED) AND " +
+           "(:lecturerId IS NULL OR s.lecturer.id = :lecturerId) AND " +
+           "(:moduleId IS NULL OR s.module.id = :moduleId) AND " +
+           "(:batchId IS NULL OR s.batch.id = :batchId) AND " +
+           "(:programmeId IS NULL OR m.degreeProgramme.id = :programmeId OR (b IS NOT NULL AND b.degreeProgramme.id = :programmeId)) AND " +
+           "(:startDate IS NULL OR s.sessionDate >= :startDate) AND " +
+           "(:endDate IS NULL OR s.sessionDate <= :endDate) AND " +
+           "(:semester IS NULL OR m.semester = :semester) " +
+           "ORDER BY s.sessionDate ASC, s.startTime ASC")
+    List<LabSession> findFinalizedSessionsForTrends(
+            @Param("lecturerId") UUID lecturerId,
+            @Param("moduleId") UUID moduleId,
+            @Param("batchId") UUID batchId,
+            @Param("programmeId") UUID programmeId,
+            @Param("startDate") LocalDate startDate,
+            @Param("endDate") LocalDate endDate,
+            @Param("semester") String semester
+    );
+
+    @Query("SELECT s FROM LabSession s " +
+           "JOIN FETCH s.module m " +
+           "LEFT JOIN FETCH s.batch b " +
+           "JOIN FETCH s.lecturer l " +
+           "JOIN FETCH s.hall h " +
+           "WHERE s.status != com.labattend.entity.enums.SessionStatus.CANCELLED AND " +
+           "(:status IS NULL OR s.status = :status) AND " +
+           "(:lecturerId IS NULL OR s.lecturer.id = :lecturerId) AND " +
+           "(:moduleId IS NULL OR s.module.id = :moduleId) AND " +
+           "(:batchId IS NULL OR s.batch.id = :batchId) AND " +
+           "(:programmeId IS NULL OR m.degreeProgramme.id = :programmeId OR (b IS NOT NULL AND b.degreeProgramme.id = :programmeId)) AND " +
+           "(:startDate IS NULL OR s.sessionDate >= :startDate) AND " +
+           "(:endDate IS NULL OR s.sessionDate <= :endDate) AND " +
+           "(:semester IS NULL OR m.semester = :semester) " +
+           "ORDER BY s.sessionDate DESC, s.startTime DESC")
+    List<LabSession> findSessionsForAnalytics(
+            @Param("lecturerId") UUID lecturerId,
+            @Param("moduleId") UUID moduleId,
+            @Param("batchId") UUID batchId,
+            @Param("programmeId") UUID programmeId,
+            @Param("status") SessionStatus status,
+            @Param("startDate") LocalDate startDate,
+            @Param("endDate") LocalDate endDate,
+            @Param("semester") String semester
+    );
 }

@@ -10,7 +10,8 @@ import {
   LogOut, 
   User as UserIcon,
   Activity,
-  Award
+  Award,
+  UserCheck
 } from 'lucide-react';
 
 const navItems = [
@@ -18,6 +19,7 @@ const navItems = [
   { name: 'My Lab Sessions', path: '/lecturer/sessions', icon: CalendarClock },
   { name: 'Live QR Scanner', path: '/lecturer/scanner', icon: QrCode },
   { name: 'Attendance Reports', path: '/lecturer/reports', icon: BarChart3 },
+  { name: 'Student Attendance', path: '/lecturer/students', icon: UserCheck },
 ];
 
 export default function LecturerLayout() {
