@@ -44,7 +44,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         JwtAuthenticationEntryPoint.class,
         CustomAccessDeniedHandler.class,
         GlobalExceptionHandler.class,
-        AuthService.class
+        AuthService.class,
+        RateLimitingFilter.class,
+        RateLimiterService.class
 })
 public class AuthIntegrationTest {
 

@@ -114,7 +114,7 @@ public class GlobalExceptionHandler {
                 .success(false)
                 .status(HttpStatus.INTERNAL_SERVER_ERROR.value())
                 .error(HttpStatus.INTERNAL_SERVER_ERROR.getReasonPhrase())
-                .message(ex.getMessage() != null ? ex.getMessage() : "An unexpected internal server error occurred")
+                .message("An unexpected internal error occurred. Please contact the administrator.")
                 .path(request.getRequestURI())
                 .timestamp(OffsetDateTime.now())
                 .build();

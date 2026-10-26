@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { 
@@ -11,7 +11,9 @@ import {
   User as UserIcon,
   Activity,
   Award,
-  UserCheck
+  UserCheck,
+  Menu,
+  X
 } from 'lucide-react';
 
 const navItems = [
@@ -25,6 +27,7 @@ const navItems = [
 export default function LecturerLayout() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const [isMobileOpen, setIsMobileOpen] = useState(false);
 
   const handleLogout = async () => {
     await logout();
@@ -32,23 +35,41 @@ export default function LecturerLayout() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex">
-      {/* Sidebar */}
-      <aside className="w-64 bg-slate-900/90 border-r border-slate-800 flex flex-col justify-between shrink-0">
-        <div>
+    <div className="min-h-screen bg-slate-950 text-slate-100 flex relative overflow-x-hidden">
+      {/* Mobile Drawer Backdrop */}
+      {isMobileOpen && (
+        <div 
+          className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-40 md:hidden"
+          onClick={() => setIsMobileOpen(false)}
+        />
+      )}
+
+      {/* Sidebar (Responsive drawer on mobile, static on desktop) */}
+      <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-slate-900 border-r border-slate-800 flex flex-col justify-between shrink-0 transition-transform duration-200 ease-in-out md:static md:translate-x-0 ${
+        isMobileOpen ? 'translate-x-0' : '-translate-x-full'
+      }`}>
+        <div className="overflow-y-auto">
           {/* Logo Header */}
-          <div className="h-16 px-6 flex items-center gap-3 border-b border-slate-800/80 bg-slate-900/50">
-            <div className="h-9 w-9 rounded-xl bg-gradient-to-tr from-teal-500 to-cyan-400 flex items-center justify-center shadow-lg shadow-teal-500/20">
-              <ShieldCheck className="h-5 w-5 text-slate-950 font-bold" />
+          <div className="h-16 px-6 flex items-center justify-between border-b border-slate-800/80 bg-slate-900/50">
+            <div className="flex items-center gap-3">
+              <div className="h-9 w-9 rounded-xl bg-gradient-to-tr from-teal-500 to-cyan-400 flex items-center justify-center shadow-lg shadow-teal-500/20">
+                <ShieldCheck className="h-5 w-5 text-slate-950 font-bold" />
+              </div>
+              <div>
+                <span className="font-bold tracking-tight text-white block leading-tight">
+                  LabAttend
+                </span>
+                <span className="text-[10px] font-semibold text-teal-400 tracking-wider uppercase">
+                  Lecturer Portal
+                </span>
+              </div>
             </div>
-            <div>
-              <span className="font-bold tracking-tight text-white block leading-tight">
-                LabAttend
-              </span>
-              <span className="text-[10px] font-semibold text-teal-400 tracking-wider uppercase">
-                Lecturer Portal
-              </span>
-            </div>
+            <button 
+              onClick={() => setIsMobileOpen(false)}
+              className="p-1 rounded-lg text-slate-400 hover:text-white md:hidden"
+            >
+              <X className="h-5 w-5" />
+            </button>
           </div>
 
           {/* Navigation Links */}
@@ -62,6 +83,7 @@ export default function LecturerLayout() {
                 <NavLink
                   key={item.path}
                   to={item.path}
+                  onClick={() => setIsMobileOpen(false)}
                   className={({ isActive }) =>
                     `flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-medium transition-all ${
                       isActive
@@ -113,14 +135,21 @@ export default function LecturerLayout() {
       </aside>
 
       {/* Main Layout Area */}
-      <div className="flex-1 flex flex-col overflow-hidden">
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {/* Top Bar */}
-        <header className="h-16 border-b border-slate-800 bg-slate-900/40 backdrop-blur-md px-8 flex items-center justify-between">
+        <header className="h-16 border-b border-slate-800 bg-slate-900/40 backdrop-blur-md px-4 sm:px-6 lg:px-8 flex items-center justify-between">
           <div className="flex items-center gap-3">
+            <button
+              onClick={() => setIsMobileOpen(true)}
+              className="p-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 md:hidden"
+              aria-label="Open navigation menu"
+            >
+              <Menu className="h-5 w-5" />
+            </button>
             <span className="text-xs px-2.5 py-1 rounded-full bg-teal-500/10 text-teal-400 border border-teal-500/20 font-semibold">
               ROLE: LECTURER
             </span>
-            <span className="text-xs text-slate-400">Classroom Session & Scanner Console</span>
+            <span className="text-xs text-slate-400 hidden sm:inline">Classroom Session & Scanner Console</span>
           </div>
 
           <div className="flex items-center gap-4 text-xs text-slate-400">
@@ -129,13 +158,13 @@ export default function LecturerLayout() {
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors"
             >
               <Activity className="h-3.5 w-3.5 text-teal-400" />
-              <span>System Health</span>
+              <span className="hidden sm:inline">System Health</span>
             </NavLink>
           </div>
         </header>
 
         {/* Page Content */}
-        <main className="flex-1 overflow-y-auto p-8 bg-slate-950">
+        <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 bg-slate-950">
           <Outlet />
         </main>
       </div>

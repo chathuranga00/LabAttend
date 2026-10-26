@@ -60,7 +60,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         JwtAuthenticationFilter.class,
         JwtAuthenticationEntryPoint.class,
         CustomAccessDeniedHandler.class,
-        GlobalExceptionHandler.class
+        GlobalExceptionHandler.class,
+        RateLimitingFilter.class,
+        RateLimiterService.class
 })
 public class StudentLecturerTest {
 

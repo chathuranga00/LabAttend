@@ -3,6 +3,7 @@ package com.labattend.config;
 import com.labattend.security.CustomAccessDeniedHandler;
 import com.labattend.security.JwtAuthenticationEntryPoint;
 import com.labattend.security.JwtAuthenticationFilter;
+import com.labattend.security.RateLimitingFilter;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -33,15 +34,19 @@ public class SecurityConfig {
     private final JwtAuthenticationEntryPoint jwtAuthenticationEntryPoint;
     private final CustomAccessDeniedHandler customAccessDeniedHandler;
 
+    private final RateLimitingFilter rateLimitingFilter;
+
     @Value("${app.cors.allowed-origins:http://localhost:5173}")
     private String allowedOrigins;
 
     public SecurityConfig(JwtAuthenticationFilter jwtAuthenticationFilter,
                           JwtAuthenticationEntryPoint jwtAuthenticationEntryPoint,
-                          CustomAccessDeniedHandler customAccessDeniedHandler) {
+                          CustomAccessDeniedHandler customAccessDeniedHandler,
+                          RateLimitingFilter rateLimitingFilter) {
         this.jwtAuthenticationFilter = jwtAuthenticationFilter;
         this.jwtAuthenticationEntryPoint = jwtAuthenticationEntryPoint;
         this.customAccessDeniedHandler = customAccessDeniedHandler;
+        this.rateLimitingFilter = rateLimitingFilter;
     }
 
     @Bean
@@ -64,6 +69,7 @@ public class SecurityConfig {
                 // All other endpoints require authentication (e.g. /api/auth/me, /api/auth/logout)
                 .anyRequest().authenticated()
             )
+            .addFilterBefore(rateLimitingFilter, UsernamePasswordAuthenticationFilter.class)
             .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
