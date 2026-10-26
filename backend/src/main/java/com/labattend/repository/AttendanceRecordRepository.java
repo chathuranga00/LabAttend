@@ -27,19 +27,19 @@ public interface AttendanceRecordRepository extends JpaRepository<AttendanceReco
                 "LEFT JOIN FETCH ses.module m " +
                 "LEFT JOIN FETCH a.markedBy u " +
                 "LEFT JOIN FETCH a.correctedBy cu " +
-                "WHERE (:sessionId IS NULL OR ses.id = :sessionId) AND " +
-                "(:studentId IS NULL OR s.id = :studentId) AND " +
-                "(:status IS NULL OR a.status = :status) AND " +
-                "(:method IS NULL OR a.method = :method) AND " +
+                "WHERE (cast(:sessionId as string) IS NULL OR ses.id = :sessionId) AND " +
+                "(cast(:studentId as string) IS NULL OR s.id = :studentId) AND " +
+                "(cast(:status as string) IS NULL OR a.status = :status) AND " +
+                "(cast(:method as string) IS NULL OR a.method = :method) AND " +
                 "(:isCorrected IS NULL OR a.isCorrected = :isCorrected) AND " +
                 "(:search IS NULL OR LOWER(s.studentId) LIKE :search OR " +
                 "LOWER(s.fullName) LIKE :search OR " +
                 "LOWER(ses.sessionCode) LIKE :search)",
         countQuery = "SELECT COUNT(a) FROM AttendanceRecord a " +
-                     "WHERE (:sessionId IS NULL OR a.session.id = :sessionId) AND " +
-                     "(:studentId IS NULL OR a.student.id = :studentId) AND " +
-                     "(:status IS NULL OR a.status = :status) AND " +
-                     "(:method IS NULL OR a.method = :method) AND " +
+                     "WHERE (cast(:sessionId as string) IS NULL OR a.session.id = :sessionId) AND " +
+                     "(cast(:studentId as string) IS NULL OR a.student.id = :studentId) AND " +
+                     "(cast(:status as string) IS NULL OR a.status = :status) AND " +
+                     "(cast(:method as string) IS NULL OR a.method = :method) AND " +
                      "(:isCorrected IS NULL OR a.isCorrected = :isCorrected) AND " +
                      "(:search IS NULL OR LOWER(a.student.studentId) LIKE :search OR " +
                      "LOWER(a.student.fullName) LIKE :search OR " +
@@ -62,13 +62,13 @@ public interface AttendanceRecordRepository extends JpaRepository<AttendanceReco
         "JOIN s.module m " +
         "WHERE s.status IN (com.labattend.entity.enums.SessionStatus.FINALIZED, com.labattend.entity.enums.SessionStatus.CLOSED) AND " +
         "a.status IN (com.labattend.entity.enums.AttendanceStatus.PRESENT, com.labattend.entity.enums.AttendanceStatus.LATE) AND " +
-        "(:lecturerId IS NULL OR s.lecturer.id = :lecturerId) AND " +
-        "(:moduleId IS NULL OR m.id = :moduleId) AND " +
-        "(:batchId IS NULL OR b.id = :batchId) AND " +
-        "(:programmeId IS NULL OR m.degreeProgramme.id = :programmeId OR (b IS NOT NULL AND b.degreeProgramme.id = :programmeId)) AND " +
-        "(:startDate IS NULL OR s.sessionDate >= :startDate) AND " +
-        "(:endDate IS NULL OR s.sessionDate <= :endDate) AND " +
-        "(:semester IS NULL OR m.semester = :semester) " +
+        "(cast(:lecturerId as string) IS NULL OR s.lecturer.id = :lecturerId) AND " +
+        "(cast(:moduleId as string) IS NULL OR m.id = :moduleId) AND " +
+        "(cast(:batchId as string) IS NULL OR b.id = :batchId) AND " +
+        "(cast(:programmeId as string) IS NULL OR m.degreeProgramme.id = :programmeId OR (b IS NOT NULL AND b.degreeProgramme.id = :programmeId)) AND " +
+        "(cast(:startDate as string) IS NULL OR s.sessionDate >= :startDate) AND " +
+        "(cast(:endDate as string) IS NULL OR s.sessionDate <= :endDate) AND " +
+        "(cast(:semester as string) IS NULL OR m.semester = :semester) " +
         "GROUP BY a.student.id"
     )
     List<Object[]> countAttendedSessionsPerStudent(

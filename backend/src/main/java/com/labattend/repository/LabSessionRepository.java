@@ -168,15 +168,15 @@ public interface LabSessionRepository extends JpaRepository<LabSession, UUID> {
            "JOIN FETCH s.lecturer l " +
            "JOIN FETCH s.hall h " +
            "WHERE s.status IN (com.labattend.entity.enums.SessionStatus.FINALIZED, com.labattend.entity.enums.SessionStatus.CLOSED) AND " +
-           "(:hallId IS NULL OR h.id = :hallId) AND " +
-           "(:sessionDate IS NULL OR s.sessionDate = :sessionDate) AND " +
-           "(:startDate IS NULL OR s.sessionDate >= :startDate) AND " +
-           "(:endDate IS NULL OR s.sessionDate <= :endDate) AND " +
-           "(:moduleId IS NULL OR m.id = :moduleId) AND " +
-           "(:batchId IS NULL OR b.id = :batchId) AND " +
-           "(:programmeId IS NULL OR m.degreeProgramme.id = :programmeId OR (b IS NOT NULL AND b.degreeProgramme.id = :programmeId)) AND " +
-           "(:semester IS NULL OR m.semester = :semester) AND " +
-           "(:lecturerId IS NULL OR l.id = :lecturerId) " +
+           "(cast(:hallId as string) IS NULL OR h.id = :hallId) AND " +
+           "(cast(:sessionDate as string) IS NULL OR s.sessionDate = :sessionDate) AND " +
+           "(cast(:startDate as string) IS NULL OR s.sessionDate >= :startDate) AND " +
+           "(cast(:endDate as string) IS NULL OR s.sessionDate <= :endDate) AND " +
+           "(cast(:moduleId as string) IS NULL OR m.id = :moduleId) AND " +
+           "(cast(:batchId as string) IS NULL OR b.id = :batchId) AND " +
+           "(cast(:programmeId as string) IS NULL OR m.degreeProgramme.id = :programmeId OR (b IS NOT NULL AND b.degreeProgramme.id = :programmeId)) AND " +
+           "(cast(:semester as string) IS NULL OR m.semester = :semester) AND " +
+           "(cast(:lecturerId as string) IS NULL OR l.id = :lecturerId) " +
            "ORDER BY s.sessionDate DESC, s.startTime DESC")
     List<LabSession> findFinalizedSessionsForReports(
             @Param("hallId") UUID hallId,

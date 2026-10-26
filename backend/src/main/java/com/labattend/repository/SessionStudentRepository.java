@@ -37,13 +37,13 @@ public interface SessionStudentRepository extends JpaRepository<SessionStudent, 
         "LEFT JOIN s.batch b " +
         "JOIN s.module m " +
         "WHERE s.status != com.labattend.entity.enums.SessionStatus.CANCELLED AND " +
-        "(:lecturerId IS NULL OR s.lecturer.id = :lecturerId) AND " +
-        "(:moduleId IS NULL OR m.id = :moduleId) AND " +
-        "(:batchId IS NULL OR b.id = :batchId) AND " +
-        "(:programmeId IS NULL OR m.degreeProgramme.id = :programmeId OR (b IS NOT NULL AND b.degreeProgramme.id = :programmeId)) AND " +
-        "(:startDate IS NULL OR s.sessionDate >= :startDate) AND " +
-        "(:endDate IS NULL OR s.sessionDate <= :endDate) AND " +
-        "(:semester IS NULL OR m.semester = :semester) " +
+        "(cast(:lecturerId as string) IS NULL OR s.lecturer.id = :lecturerId) AND " +
+        "(cast(:moduleId as string) IS NULL OR m.id = :moduleId) AND " +
+        "(cast(:batchId as string) IS NULL OR b.id = :batchId) AND " +
+        "(cast(:programmeId as string) IS NULL OR m.degreeProgramme.id = :programmeId OR (b IS NOT NULL AND b.degreeProgramme.id = :programmeId)) AND " +
+        "(cast(:startDate as string) IS NULL OR s.sessionDate >= :startDate) AND " +
+        "(cast(:endDate as string) IS NULL OR s.sessionDate <= :endDate) AND " +
+        "(cast(:semester as string) IS NULL OR m.semester = :semester) " +
         "GROUP BY ss.student.id, ss.student.studentId, ss.student.fullName, ss.student.batch.batchCode"
     )
     List<Object[]> countEligibleFinalizedSessionsPerStudent(
@@ -62,13 +62,13 @@ public interface SessionStudentRepository extends JpaRepository<SessionStudent, 
         "LEFT JOIN s.batch b " +
         "JOIN s.module m " +
         "WHERE s.status IN (com.labattend.entity.enums.SessionStatus.FINALIZED, com.labattend.entity.enums.SessionStatus.CLOSED) AND " +
-        "(:lecturerId IS NULL OR s.lecturer.id = :lecturerId) AND " +
-        "(:moduleId IS NULL OR m.id = :moduleId) AND " +
-        "(:batchId IS NULL OR b.id = :batchId) AND " +
-        "(:programmeId IS NULL OR m.degreeProgramme.id = :programmeId OR (b IS NOT NULL AND b.degreeProgramme.id = :programmeId)) AND " +
-        "(:startDate IS NULL OR s.sessionDate >= :startDate) AND " +
-        "(:endDate IS NULL OR s.sessionDate <= :endDate) AND " +
-        "(:semester IS NULL OR m.semester = :semester)"
+        "(cast(:lecturerId as string) IS NULL OR s.lecturer.id = :lecturerId) AND " +
+        "(cast(:moduleId as string) IS NULL OR m.id = :moduleId) AND " +
+        "(cast(:batchId as string) IS NULL OR b.id = :batchId) AND " +
+        "(cast(:programmeId as string) IS NULL OR m.degreeProgramme.id = :programmeId OR (b IS NOT NULL AND b.degreeProgramme.id = :programmeId)) AND " +
+        "(cast(:startDate as string) IS NULL OR s.sessionDate >= :startDate) AND " +
+        "(cast(:endDate as string) IS NULL OR s.sessionDate <= :endDate) AND " +
+        "(cast(:semester as string) IS NULL OR m.semester = :semester)"
     )
     long countTotalExpectedFinalizedSlots(
             @org.springframework.data.repository.query.Param("lecturerId") UUID lecturerId,
@@ -89,10 +89,10 @@ public interface SessionStudentRepository extends JpaRepository<SessionStudent, 
         "JOIN FETCH s.lecturer l " +
         "WHERE ss.student.id = :studentId AND " +
         "s.status != com.labattend.entity.enums.SessionStatus.CANCELLED AND " +
-        "(:lecturerId IS NULL OR s.lecturer.id = :lecturerId) AND " +
-        "(:moduleId IS NULL OR m.id = :moduleId) AND " +
-        "(:startDate IS NULL OR s.sessionDate >= :startDate) AND " +
-        "(:endDate IS NULL OR s.sessionDate <= :endDate) " +
+        "(cast(:lecturerId as string) IS NULL OR s.lecturer.id = :lecturerId) AND " +
+        "(cast(:moduleId as string) IS NULL OR m.id = :moduleId) AND " +
+        "(cast(:startDate as string) IS NULL OR s.sessionDate >= :startDate) AND " +
+        "(cast(:endDate as string) IS NULL OR s.sessionDate <= :endDate) " +
         "ORDER BY s.sessionDate DESC, s.startTime DESC"
     )
     List<SessionStudent> findStudentEligibleSessions(

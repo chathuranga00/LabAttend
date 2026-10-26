@@ -44,8 +44,7 @@ export const reportService = {
   // ADMIN REPORTS
   // =========================================================================
   getAdminReportPreview: async (type, params) => {
-    const response = await api.get(`/admin/reports/${type}/preview`, { params });
-    return response.data;
+    return await api.get(`/admin/reports/${type}/preview`, { params });
   },
 
   downloadAdminReport: async (type, format, params) => {
@@ -58,8 +57,7 @@ export const reportService = {
   // LECTURER REPORTS
   // =========================================================================
   getLecturerReportPreview: async (type, params) => {
-    const response = await api.get(`/lecturer/reports/${type}/preview`, { params });
-    return response.data;
+    return await api.get(`/lecturer/reports/${type}/preview`, { params });
   },
 
   downloadLecturerReport: async (type, format, params) => {
