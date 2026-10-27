@@ -57,6 +57,9 @@ public class ConcurrentAttendanceScanTest {
     @Mock
     private AuditLogService auditLogService;
 
+    @Mock
+    private com.labattend.service.QrCodeService qrCodeService;
+
     @InjectMocks
     private AttendanceService attendanceService;
 
@@ -69,6 +72,9 @@ public class ConcurrentAttendanceScanTest {
 
     @BeforeEach
     void setUp() {
+        lenient().when(qrCodeService.generateTokenHash(any())).thenAnswer(inv -> HashUtils.sha256Hex(inv.getArgument(0)));
+        lenient().when(qrCodeService.verifyToken(any(), anyInt(), any())).thenReturn(true);
+
         userId = UUID.randomUUID();
         sessionId = UUID.randomUUID();
 

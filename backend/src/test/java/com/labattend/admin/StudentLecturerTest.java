@@ -82,6 +82,9 @@ public class StudentLecturerTest {
     private StudentService studentService;
 
     @MockBean
+    private com.labattend.service.QrCodeService qrCodeService;
+
+    @MockBean
     private LecturerService lecturerService;
 
     private User adminUser;

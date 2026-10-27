@@ -27,6 +27,8 @@ public class StudentResponse {
     private String labGroupName;
     private String qrTokenHash;
     private Boolean hasQrToken;
+    private Integer qrVersion;
+    private OffsetDateTime qrGeneratedAt;
     private Boolean isActive;
     private OffsetDateTime createdAt;
     private OffsetDateTime updatedAt;

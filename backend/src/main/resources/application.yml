@@ -51,4 +51,9 @@ app:
     admin-email: ${INITIAL_ADMIN_EMAIL:admin@labattend.local}
     admin-password: ${INITIAL_ADMIN_PASSWORD:Admin@123456}
     admin-name: ${INITIAL_ADMIN_NAME:System Administrator}
+  qr:
+    hmac-secret: ${QR_HMAC_SECRET:c7b9e1a84f30d25e89a1c6b5d4e3f2a1087654321fedcba0123456789abcdef0}
+    bulk-max-students: ${QR_BULK_MAX_STUDENTS:500}
+    bulk-rate-limit-per-minute: ${QR_BULK_RATE_LIMIT:30}
+
 

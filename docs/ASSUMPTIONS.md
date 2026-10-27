@@ -4,25 +4,55 @@ This document records the foundational architectural decisions and technical ass
 
 ---
 
-## 1. Student Identification, Admin QR Generation & Token Resolution [Updated 2026-10]
+## 1. Student Identification, Admin QR Generation & Cryptographic Token Architecture [Updated 2026-10 - Step 13]
 
 ### Context & Constraint Shift
 - Originally, the system assumed a strict scanner-only model where physical cards were issued externally and no QR generation occurred in-app.
-- **Updated Requirement (2026-10)**: The institution requires the `ADMIN` to generate, view, download (PNG), and bulk-download (ZIP by batch or lab group) student QR codes directly from student records.
-- Lecturers retain a **scanner-only** role and are strictly prohibited from generating or exporting QR codes.
+- **Updated Requirement (Step 13)**: The institution requires the `ADMIN` to generate, view, download (individual PNG & print-ready sticker), regenerate, and bulk-download (ZIP of PNGs and printable 3x8 PDF sticker sheet by batch or lab group) student QR codes directly from student records.
+- Lecturers retain a **scanner-only** role and are strictly prohibited from generating, downloading, or regenerating QR codes (enforced with HTTP 403 Forbidden).
 - Students have **no login accounts**, no student portal, and cannot view, generate, or mark their own attendance.
 
-### Architectural Decision: Opaque Unpredictable QR Tokens
-- **Zero Personal Data (PII) in QR**:
-  - The QR code payload must **never** contain plain-text student numbers, names, emails, national identity numbers, or any readable PII. Embedding plain PII exposes students to shoulder-surfing, data scraping, and unauthorized profiling.
-  - Instead, the QR payload consists of a cryptographically secure, opaque, and unpredictable token (e.g., high-entropy UUIDv4 or a 32-byte cryptographically secure random hex string) that maps to **exactly one student** in the database.
-- **Database Resolution & 1-to-1 Matching**:
-  - The `students` table stores `qr_token` (VARCHAR(64), UNIQUE) and/or `qr_token_hash` (VARCHAR(64), UNIQUE).
-  - When the scanner reads the opaque token, the backend executes a single indexed query resolving the token to precisely one active student record.
-  - If a token does not exist, is malformed, or maps to multiple records, the backend rejects the scan immediately (`404 STUDENT_NOT_FOUND` or `400 INVALID_QR_TOKEN`).
-- **Bulk Download & Format**:
-  - The Admin can download an individual student's QR code as a standard PNG image with institutional branding.
-  - The Admin can initiate a bulk ZIP download of QR codes filtered by Academic Batch or specific Lab Group. File names are standardized as `<StudentID>_QR.png` to facilitate physical card printing or digital distribution by administrative staff.
+### Cryptographic Token Design & Zero-PII Security Model
+- **Token Generation Formula**:
+  - Each student is issued an opaque, high-entropy cryptographic token derived via HMAC-SHA256:
+    $$\text{token} = \text{Base64URL}(\text{HMAC-SHA256}(K_{\text{server}}, \text{student\_uuid} + \text{":"} + \text{qr\_version}))$$
+  - Base64URL encoding is unpadded (~43 characters), making it compact and optimal for QR code density and high-speed optical scanning.
+  - The server key $K_{\text{server}}$ (`QR_HMAC_SECRET`) is strictly injected via environment variables and never stored in source code.
+- **Strict Zero Personal Data (PII) in QR**:
+  - The QR code payload encodes **ONLY the opaque token**.
+  - It contains **zero PII** (no student ID, no student name, no batch name, no email, no national identity number).
+  - Anyone scanning the raw QR code with a commercial phone camera sees only an unreadable cryptographic hash string that cannot be reverse-engineered or spoofed without the server secret.
+- **Database Tracking & Indexed Lookup**:
+  - Schema additions in `students` table:
+    - `qr_version` (INT NOT NULL DEFAULT 1): Tracks sticker generation lifecycle.
+    - `qr_generated_at` (TIMESTAMPTZ): Records generation timestamp.
+    - `qr_token_hash` (VARCHAR(64) UNIQUE, indexed with `idx_students_qr_token_hash`): Stores the SHA-256 hash of the generated token.
+  - Plaintext tokens do not need to be stored in the database. When a QR is scanned, the backend hashes the incoming token with SHA-256 and performs an indexed $O(1)$ database lookup.
+- **Version Invalidation & Token Regeneration**:
+  - If a student loses their printed badge sticker, or if a QR code is suspected to be leaked, an Admin can regenerate the student's QR code (`POST /api/admin/students/{id}/qr/regenerate`).
+  - Regeneration requires a non-empty `reason` string and increments `qr_version` ($v \to v + 1$).
+  - Because the token formula binds $\text{student\_uuid}$ and $\text{qr\_version}$, incrementing the version immediately renders the old token and all physical prints using it **permanently invalid**.
+  - Every regeneration event is written to `audit_logs` capturing previous version, new version, actor, and justification reason.
+- **Scan Resolution & Verification Workflow**:
+  1. The scanner sub-system transmits the scanned string payload to `POST /api/lecturer/sessions/{id}/scan`.
+  2. The backend computes the SHA-256 hash of the token and queries `students` by `qr_token_hash`.
+  3. If no student matches, or if the student is inactive, the backend immediately halts and returns `"Invalid QR Code — Student Not Found"`.
+  4. The backend re-computes the expected HMAC-SHA256 token using the student's UUID and current `qr_version`, then verifies it using constant-time string comparison (`MessageDigest.isEqual`) to protect against timing attacks.
+  5. If valid, the resolved student's details (`fullName`, `studentId`, `labGroupName`, `isCrossGroup`) are returned to the lecturer UI for real-time visual confirmation.
+  6. Existing historical attendance records remain completely intact and unaffected by QR version changes or regenerations.
+
+### Backend Endpoints (ADMIN Only)
+- `GET /api/admin/students/{id}/qr`:
+  - Returns a high-resolution PNG image generated via ZXing (`ErrorCorrectionLevel.H`).
+  - Supports query parameter `?layout=sticker` (or `?sticker=true`) to return a print-ready sticker canvas (500x660 px) featuring the institutional badge header, centered QR code, full student name, monospace student ID pill, and academic batch/group metadata.
+- `POST /api/admin/students/{id}/qr/regenerate`:
+  - Requires `{ "reason": "Lost badge" }`. Increments `qr_version`, updates token hash and timestamp, logs audit event, and returns updated student DTO.
+- `GET /api/admin/students/qr/bulk?batchId=&groupId=&format=`:
+  - Supports exporting a ZIP archive of individual PNGs named `StudentID_Name.png`.
+  - Supports exporting a printable PDF sticker sheet formatted for standard A4 paper (3 columns x 8 rows = 24 stickers per page) generated via OpenPDF.
+  - Rate limited (30 requests/min) and capped at a maximum of 500 students per request to protect server resources.
+- **Zero Trust Security**:
+  - Lecturers attempting to access any `/api/admin/students/.../qr*` endpoints are strictly rejected with HTTP 403 Forbidden.
 
 ---
 

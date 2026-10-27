@@ -41,6 +41,20 @@ export const lecturerAssignmentService = {
   deleteAssignment: (id) => api.delete(`/admin/assignments/${id}`),
 };
 
+export const triggerBlobDownload = (blob, filename) => {
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.style.display = 'none';
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => {
+    window.URL.revokeObjectURL(url);
+    document.body.removeChild(a);
+  }, 100);
+};
+
 export const studentService = {
   getStudents: (params = {}) => api.get('/admin/students', { params }),
   getStudentById: (id) => api.get(`/admin/students/${id}`),
@@ -48,6 +62,12 @@ export const studentService = {
   updateStudent: (id, data) => api.put(`/admin/students/${id}`, data),
   toggleStatus: (id) => api.patch(`/admin/students/${id}/toggle-status`),
   getAttendanceHistory: (id) => api.get(`/admin/students/${id}/attendance`),
+  getQrCode: (id, layout = 'standard') =>
+    api.get(`/admin/students/${id}/qr`, { params: { layout }, responseType: 'blob' }),
+  regenerateQrCode: (id, reason) =>
+    api.post(`/admin/students/${id}/qr/regenerate`, { reason }),
+  downloadBulkQr: (params = {}) =>
+    api.get('/admin/students/qr/bulk', { params, responseType: 'blob' }),
   importCsv: (formData) =>
     api.post('/admin/students/import-csv', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },

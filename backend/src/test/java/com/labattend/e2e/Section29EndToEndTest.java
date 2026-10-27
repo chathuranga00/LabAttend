@@ -69,6 +69,8 @@ public class Section29EndToEndTest {
     private UserRepository userRepository;
     @Mock
     private AuditLogService auditLogService;
+    @Mock
+    private com.labattend.service.QrCodeService qrCodeService;
 
     private LabSessionService labSessionService;
     private AttendanceService attendanceService;
@@ -106,8 +108,12 @@ public class Section29EndToEndTest {
                 studentRepository,
                 lecturerRepository,
                 userRepository,
-                auditLogService
+                auditLogService,
+                qrCodeService
         );
+
+        org.mockito.Mockito.lenient().when(qrCodeService.generateTokenHash(any())).thenAnswer(inv -> HashUtils.sha256Hex(inv.getArgument(0)));
+        org.mockito.Mockito.lenient().when(qrCodeService.verifyToken(any(), anyInt(), any())).thenReturn(true);
 
         userId = UUID.randomUUID();
         sessionId = UUID.randomUUID();

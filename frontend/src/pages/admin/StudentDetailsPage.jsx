@@ -11,11 +11,15 @@ import {
   Clock, 
   ShieldCheck, 
   AlertCircle,
-  FileText
+  FileText,
+  Download,
+  RefreshCw,
+  Printer,
+  ShieldAlert
 } from 'lucide-react';
-import { studentService } from '../../services/academicService';
+import { studentService, triggerBlobDownload } from '../../services/academicService';
 import { useToast } from '../../context/ToastContext';
-import { StatusBadge } from '../../components/common';
+import { StatusBadge, Modal } from '../../components/common';
 
 export default function StudentDetailsPage() {
   const { id } = useParams();
@@ -25,6 +29,28 @@ export default function StudentDetailsPage() {
   const [student, setStudent] = useState(null);
   const [historyData, setHistoryData] = useState(null);
   const [loading, setLoading] = useState(true);
+
+  // QR Preview & Action states
+  const [qrPreviewUrl, setQrPreviewUrl] = useState(null);
+  const [qrLoading, setQrLoading] = useState(false);
+  const [isRegenerateModalOpen, setIsRegenerateModalOpen] = useState(false);
+  const [regenerateReason, setRegenerateReason] = useState('');
+  const [regenerating, setRegenerating] = useState(false);
+  const [downloadingFormat, setDownloadingFormat] = useState(null);
+
+  const fetchQrPreview = useCallback(async (studentId) => {
+    try {
+      setQrLoading(true);
+      const res = await studentService.getQrCode(studentId, 'standard');
+      const blob = res.data || res;
+      const objectUrl = URL.createObjectURL(blob);
+      setQrPreviewUrl(objectUrl);
+    } catch (err) {
+      console.error('Failed to load QR preview', err);
+    } finally {
+      setQrLoading(false);
+    }
+  }, []);
 
   const fetchStudentData = useCallback(async () => {
     try {
@@ -36,6 +62,7 @@ export default function StudentDetailsPage() {
 
       if (studentRes.success && studentRes.data) {
         setStudent(studentRes.data);
+        fetchQrPreview(studentRes.data.id);
       }
       if (historyRes.success && historyRes.data) {
         setHistoryData(historyRes.data);
@@ -45,7 +72,60 @@ export default function StudentDetailsPage() {
     } finally {
       setLoading(false);
     }
-  }, [id, showToast]);
+  }, [id, fetchQrPreview, showToast]);
+
+  const handleDownloadPng = async () => {
+    if (!student) return;
+    try {
+      setDownloadingFormat('png');
+      const res = await studentService.getQrCode(student.id, 'standard');
+      const blob = res.data || res;
+      triggerBlobDownload(blob, `${student.studentId}_QR.png`);
+      showToast('Student QR code PNG downloaded', 'success');
+    } catch (err) {
+      showToast(err.message || 'Failed to download QR code', 'error');
+    } finally {
+      setDownloadingFormat(null);
+    }
+  };
+
+  const handleDownloadSticker = async () => {
+    if (!student) return;
+    try {
+      setDownloadingFormat('sticker');
+      const res = await studentService.getQrCode(student.id, 'sticker');
+      const blob = res.data || res;
+      triggerBlobDownload(blob, `${student.studentId}_Sticker.png`);
+      showToast('Print-ready sticker badge downloaded', 'success');
+    } catch (err) {
+      showToast(err.message || 'Failed to download sticker layout', 'error');
+    } finally {
+      setDownloadingFormat(null);
+    }
+  };
+
+  const handleRegenerateSubmit = async (e) => {
+    e.preventDefault();
+    if (!regenerateReason.trim()) {
+      showToast('Please provide an official justification reason', 'error');
+      return;
+    }
+    try {
+      setRegenerating(true);
+      const res = await studentService.regenerateQrCode(student.id, regenerateReason.trim());
+      if (res.success && res.data) {
+        setStudent(res.data);
+      }
+      showToast('QR token successfully regenerated. Old physical prints invalidated.', 'success');
+      setIsRegenerateModalOpen(false);
+      setRegenerateReason('');
+      fetchQrPreview(student.id);
+    } catch (err) {
+      showToast(err.message || 'Failed to regenerate QR token', 'error');
+    } finally {
+      setRegenerating(false);
+    }
+  };
 
   useEffect(() => {
     fetchStudentData();
@@ -139,6 +219,107 @@ export default function StudentDetailsPage() {
                 </span>
               </div>
             </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Institutional QR Badge & Credential Panel */}
+      <div className="bg-slate-900/80 border border-slate-800/80 rounded-2xl p-6 shadow-xl relative overflow-hidden">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+          <div className="flex flex-col sm:flex-row items-center sm:items-start gap-6">
+            {/* QR Preview Card */}
+            <div className="relative p-3 bg-white rounded-2xl shadow-md shrink-0 flex flex-col items-center justify-center w-44 h-44 border border-slate-200">
+              {qrLoading ? (
+                <div className="flex flex-col items-center gap-2">
+                  <div className="w-8 h-8 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+                  <span className="text-[10px] text-slate-500 font-medium">Generating QR...</span>
+                </div>
+              ) : qrPreviewUrl ? (
+                <img
+                  src={qrPreviewUrl}
+                  alt={`QR Badge for ${student.studentId}`}
+                  className="w-36 h-36 object-contain"
+                />
+              ) : (
+                <QrCode className="h-20 w-20 text-slate-400" />
+              )}
+            </div>
+
+            {/* QR Metadata & Details */}
+            <div className="space-y-3 text-center sm:text-left">
+              <div>
+                <div className="flex items-center justify-center sm:justify-start gap-2.5">
+                  <h2 className="text-lg font-bold text-white tracking-tight">Institutional QR Badge</h2>
+                  <span className="px-2 py-0.5 rounded text-xs font-mono font-bold bg-emerald-950/60 text-emerald-400 border border-emerald-800/60">
+                    Version v{student.qrVersion || 1}
+                  </span>
+                </div>
+                <p className="text-xs text-slate-400 mt-1 max-w-lg leading-relaxed">
+                  Cryptographically signed HMAC-SHA256 opaque token. Encodes zero personal data (no plain name, no student ID, no email). Lab scanners resolve and verify this token via indexed hash lookup.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                <div className="bg-slate-800/60 px-3 py-2 rounded-xl border border-slate-700/50">
+                  <span className="text-slate-400 block text-[11px]">Security Verification:</span>
+                  <span className="text-emerald-400 font-mono font-medium">HMAC-SHA256 (Base64URL)</span>
+                </div>
+                <div className="bg-slate-800/60 px-3 py-2 rounded-xl border border-slate-700/50">
+                  <span className="text-slate-400 block text-[11px]">Token Generated:</span>
+                  <span className="text-slate-200 font-medium">
+                    {student.qrGeneratedAt
+                      ? new Date(student.qrGeneratedAt).toLocaleString()
+                      : 'Initial Provisioning'}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Action Buttons */}
+          <div className="flex flex-col sm:flex-row md:flex-col gap-2.5 shrink-0 justify-center">
+            <button
+              type="button"
+              onClick={handleDownloadPng}
+              disabled={downloadingFormat === 'png'}
+              className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-xs font-semibold shadow-lg shadow-emerald-600/20 transition"
+              title="Download standalone high-resolution QR PNG"
+            >
+              {downloadingFormat === 'png' ? (
+                <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <Download className="h-3.5 w-3.5" />
+              )}
+              <span>Download PNG</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={handleDownloadSticker}
+              disabled={downloadingFormat === 'sticker'}
+              className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-50 border border-slate-700 text-slate-200 text-xs font-medium transition"
+              title="Download print-ready sticker layout with name, ID, and batch"
+            >
+              {downloadingFormat === 'sticker' ? (
+                <div className="w-3.5 h-3.5 border-2 border-slate-300 border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <Printer className="h-3.5 w-3.5 text-cyan-400" />
+              )}
+              <span>Download Sticker</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setRegenerateReason('');
+                setIsRegenerateModalOpen(true);
+              }}
+              className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-rose-950/40 hover:bg-rose-900/50 border border-rose-800/60 text-rose-300 text-xs font-medium transition"
+              title="Invalidate current badge and generate a new token version"
+            >
+              <RefreshCw className="h-3.5 w-3.5" />
+              <span>Regenerate QR</span>
+            </button>
           </div>
         </div>
       </div>
@@ -289,6 +470,67 @@ export default function StudentDetailsPage() {
           </div>
         )}
       </div>
+
+      {/* QR Regeneration Confirmation Modal */}
+      <Modal
+        isOpen={isRegenerateModalOpen}
+        onClose={() => setIsRegenerateModalOpen(false)}
+        title="Regenerate Student QR Token"
+        subtitle={`Student: ${student.fullName} (${student.studentId})`}
+      >
+        <form onSubmit={handleRegenerateSubmit} className="space-y-4">
+          <div className="p-4 bg-amber-950/40 border border-amber-800/60 rounded-xl flex items-start gap-3">
+            <ShieldAlert className="h-5 w-5 text-amber-400 shrink-0 mt-0.5" />
+            <div className="text-xs text-amber-200 space-y-1">
+              <span className="font-semibold block text-amber-300">
+                Warning: Token Invalidation
+              </span>
+              <p>
+                Regenerating this QR code will increment the token version (v{student.qrVersion || 1} &rarr; v{(student.qrVersion || 1) + 1}).
+              </p>
+              <p className="font-semibold text-rose-300">
+                All previously printed stickers and badges for this student will IMMEDIATELY stop working and will be rejected at lab scanners.
+              </p>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-slate-300 mb-1">
+              Reason for QR Regeneration <span className="text-rose-400">*</span>
+            </label>
+            <textarea
+              required
+              rows={3}
+              value={regenerateReason}
+              onChange={(e) => setRegenerateReason(e.target.value)}
+              placeholder="e.g., Physical sticker damaged, lost ID card, or security leak reported..."
+              className="w-full px-3 py-2 bg-slate-800/80 border border-slate-700 rounded-xl text-sm text-slate-200 focus:outline-none focus:border-amber-500 placeholder:text-slate-500"
+            />
+            <span className="text-[11px] text-slate-500 block mt-1">
+              This justification is permanently recorded in the immutable administrative audit logs.
+            </span>
+          </div>
+
+          <div className="flex justify-end gap-3 pt-3 border-t border-slate-800">
+            <button
+              type="button"
+              onClick={() => setIsRegenerateModalOpen(false)}
+              disabled={regenerating}
+              className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-sm font-medium transition"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={regenerating || !regenerateReason.trim()}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-amber-600 hover:bg-amber-500 disabled:opacity-50 text-white rounded-xl text-sm font-semibold transition"
+            >
+              {regenerating && <RefreshCw className="h-3.5 w-3.5 animate-spin" />}
+              <span>Confirm & Invalidate Old QR</span>
+            </button>
+          </div>
+        </form>
+      </Modal>
     </div>
   );
 }

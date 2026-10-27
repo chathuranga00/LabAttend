@@ -3,6 +3,8 @@ package com.labattend.entity;
 import jakarta.persistence.*;
 import lombok.*;
 
+import java.time.OffsetDateTime;
+
 @Entity
 @Table(name = "students")
 @Getter
@@ -35,6 +37,13 @@ public class Student extends BaseEntity {
 
     @Column(name = "qr_token_hash", unique = true, length = 64)
     private String qrTokenHash;
+
+    @Builder.Default
+    @Column(name = "qr_version", nullable = false)
+    private Integer qrVersion = 1;
+
+    @Column(name = "qr_generated_at")
+    private OffsetDateTime qrGeneratedAt;
 
     @Builder.Default
     @Column(name = "is_active", nullable = false)

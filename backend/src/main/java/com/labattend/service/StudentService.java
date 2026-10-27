@@ -23,6 +23,7 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
+import java.time.OffsetDateTime;
 import java.util.*;
 
 @Service
@@ -36,6 +37,7 @@ public class StudentService {
     private final SessionStudentRepository sessionStudentRepository;
     private final AttendanceRecordRepository attendanceRecordRepository;
     private final AuditLogService auditLogService;
+    private final QrCodeService qrCodeService;
 
     public StudentService(StudentRepository studentRepository,
                           DegreeProgrammeRepository degreeProgrammeRepository,
@@ -43,7 +45,8 @@ public class StudentService {
                           com.labattend.repository.LabGroupRepository labGroupRepository,
                           SessionStudentRepository sessionStudentRepository,
                           AttendanceRecordRepository attendanceRecordRepository,
-                          AuditLogService auditLogService) {
+                          AuditLogService auditLogService,
+                          QrCodeService qrCodeService) {
         this.studentRepository = studentRepository;
         this.degreeProgrammeRepository = degreeProgrammeRepository;
         this.batchRepository = batchRepository;
@@ -51,6 +54,7 @@ public class StudentService {
         this.sessionStudentRepository = sessionStudentRepository;
         this.attendanceRecordRepository = attendanceRecordRepository;
         this.auditLogService = auditLogService;
+        this.qrCodeService = qrCodeService;
     }
 
     @Transactional(readOnly = true)
@@ -117,13 +121,11 @@ public class StudentService {
             }
         }
 
-        String qrTokenHash = null;
-        if (request.getQrToken() != null && !request.getQrToken().isBlank()) {
-            qrTokenHash = HashUtils.sha256Hex(request.getQrToken());
-            if (studentRepository.existsByQrTokenHash(qrTokenHash)) {
-                throw new BadRequestException("QR token identifier already mapped to another student");
-            }
-        }
+        UUID studentUuid = UUID.randomUUID();
+        int initialVersion = 1;
+        OffsetDateTime now = OffsetDateTime.now();
+        String token = qrCodeService.generateToken(studentUuid, initialVersion);
+        String qrTokenHash = qrCodeService.generateTokenHash(token);
 
         Student student = Student.builder()
                 .studentId(studentId)
@@ -132,9 +134,12 @@ public class StudentService {
                 .degreeProgramme(programme)
                 .batch(batch)
                 .labGroup(labGroup)
+                .qrVersion(initialVersion)
+                .qrGeneratedAt(now)
                 .qrTokenHash(qrTokenHash)
                 .isActive(true)
                 .build();
+        student.setId(studentUuid);
 
         Student saved = studentRepository.save(student);
         StudentResponse response = mapToResponse(saved);
@@ -445,15 +450,11 @@ public class StudentService {
                     });
                 }
 
-                String qrTokenHash = null;
-                if (rowQr != null && !rowQr.isBlank()) {
-                    qrTokenHash = HashUtils.sha256Hex(rowQr);
-                    if (seenQrHashes.contains(qrTokenHash) || studentRepository.existsByQrTokenHash(qrTokenHash)) {
-                        errors.add(new StudentCsvImportResponse.CsvRowError(rowNumber, upperStudentId, "Duplicate QR token identifier"));
-                        continue;
-                    }
-                    seenQrHashes.add(qrTokenHash);
-                }
+                UUID newId = UUID.randomUUID();
+                int qrVersion = 1;
+                OffsetDateTime now = OffsetDateTime.now();
+                String token = qrCodeService.generateToken(newId, qrVersion);
+                String qrTokenHash = qrCodeService.generateTokenHash(token);
 
                 seenStudentIds.add(upperStudentId);
                 seenEmails.add(lowerEmail);
@@ -465,9 +466,12 @@ public class StudentService {
                         .degreeProgramme(programme)
                         .batch(batch)
                         .labGroup(assignedGroup)
+                        .qrVersion(qrVersion)
+                        .qrGeneratedAt(now)
                         .qrTokenHash(qrTokenHash)
                         .isActive(true)
                         .build();
+                student.setId(newId);
 
                 studentsToSave.add(student);
             }
@@ -523,6 +527,8 @@ public class StudentService {
                 .labGroupName(s.getLabGroup() != null ? s.getLabGroup().getGroupName() : null)
                 .qrTokenHash(s.getQrTokenHash())
                 .hasQrToken(s.getQrTokenHash() != null && !s.getQrTokenHash().isBlank())
+                .qrVersion(s.getQrVersion())
+                .qrGeneratedAt(s.getQrGeneratedAt())
                 .isActive(s.getIsActive())
                 .createdAt(s.getCreatedAt())
                 .updatedAt(s.getUpdatedAt())

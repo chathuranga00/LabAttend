@@ -39,6 +39,7 @@ public class AttendanceService {
     private final LecturerRepository lecturerRepository;
     private final UserRepository userRepository;
     private final AuditLogService auditLogService;
+    private final QrCodeService qrCodeService;
 
     public AttendanceService(
             AttendanceRecordRepository attendanceRecordRepository,
@@ -47,7 +48,8 @@ public class AttendanceService {
             StudentRepository studentRepository,
             LecturerRepository lecturerRepository,
             UserRepository userRepository,
-            AuditLogService auditLogService
+            AuditLogService auditLogService,
+            QrCodeService qrCodeService
     ) {
         this.attendanceRecordRepository = attendanceRecordRepository;
         this.sessionStudentRepository = sessionStudentRepository;
@@ -56,6 +58,7 @@ public class AttendanceService {
         this.lecturerRepository = lecturerRepository;
         this.userRepository = userRepository;
         this.auditLogService = auditLogService;
+        this.qrCodeService = qrCodeService;
     }
 
     @Transactional(noRollbackFor = DataIntegrityViolationException.class)
@@ -166,7 +169,9 @@ public class AttendanceService {
             student = studentRepository.findById(request.getStudentId())
                     .orElseThrow(() -> new BadRequestException("Student not found"));
         } else if (request.getStudentIdentifier() != null && !request.getStudentIdentifier().isBlank()) {
-            student = resolveStudent(request.getStudentIdentifier().trim())
+            String ident = request.getStudentIdentifier().trim();
+            student = studentRepository.findByStudentId(ident)
+                    .or(() -> resolveStudent(ident))
                     .orElseThrow(() -> new BadRequestException("Student not found"));
         } else {
             throw new BadRequestException("Student ID or identifier must be provided");
@@ -301,12 +306,24 @@ public class AttendanceService {
     }
 
     private Optional<Student> resolveStudent(String rawIdentifier) {
-        String tokenHash = HashUtils.sha256Hex(rawIdentifier);
+        if (rawIdentifier == null || rawIdentifier.trim().isBlank()) {
+            return Optional.empty();
+        }
+        String token = rawIdentifier.trim();
+        String tokenHash = qrCodeService.generateTokenHash(token);
         Optional<Student> studentOpt = studentRepository.findByQrTokenHash(tokenHash);
         if (studentOpt.isEmpty()) {
-            studentOpt = studentRepository.findByStudentId(rawIdentifier);
+            return Optional.empty();
         }
-        return studentOpt;
+        Student student = studentOpt.get();
+        if (Boolean.FALSE.equals(student.getIsActive())) {
+            return Optional.empty();
+        }
+        int version = student.getQrVersion() != null ? student.getQrVersion() : 1;
+        if (!qrCodeService.verifyToken(student.getId(), version, token)) {
+            return Optional.empty();
+        }
+        return Optional.of(student);
     }
 
     private Lecturer getAuthorizedLecturer(UUID userId) {

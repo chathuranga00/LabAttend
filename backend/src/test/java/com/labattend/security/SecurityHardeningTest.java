@@ -84,6 +84,9 @@ public class SecurityHardeningTest {
     private StudentService studentService;
 
     @MockBean
+    private com.labattend.service.QrCodeService qrCodeService;
+
+    @MockBean
     private LecturerService lecturerService;
 
     @MockBean
@@ -187,6 +190,34 @@ public class SecurityHardeningTest {
                         .header("Authorization", "Bearer " + lecturerTokenA))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.success").value(false));
+    }
+
+    @Test
+    @DisplayName("Security: Lecturer cannot generate or download student QR code -> 403 Forbidden")
+    void testLecturerAccessStudentQrForbidden() throws Exception {
+        UUID studentId = UUID.randomUUID();
+        mockMvc.perform(get("/api/admin/students/" + studentId + "/qr")
+                        .header("Authorization", "Bearer " + lecturerTokenA))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @DisplayName("Security: Lecturer cannot regenerate student QR code -> 403 Forbidden")
+    void testLecturerRegenerateStudentQrForbidden() throws Exception {
+        UUID studentId = UUID.randomUUID();
+        mockMvc.perform(post("/api/admin/students/" + studentId + "/qr/regenerate")
+                        .header("Authorization", "Bearer " + lecturerTokenA)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"reason\":\"Sticker lost\"}"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @DisplayName("Security: Lecturer cannot access bulk QR download -> 403 Forbidden")
+    void testLecturerBulkQrDownloadForbidden() throws Exception {
+        mockMvc.perform(get("/api/admin/students/qr/bulk")
+                        .header("Authorization", "Bearer " + lecturerTokenA))
+                .andExpect(status().isForbidden());
     }
 
     // ==========================================

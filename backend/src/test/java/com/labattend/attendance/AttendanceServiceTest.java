@@ -61,6 +61,9 @@ public class AttendanceServiceTest {
     @Mock
     private AuditLogService auditLogService;
 
+    @Mock
+    private com.labattend.service.QrCodeService qrCodeService;
+
     @InjectMocks
     private AttendanceService attendanceService;
 
@@ -78,6 +81,9 @@ public class AttendanceServiceTest {
 
     @BeforeEach
     void setUp() {
+        lenient().when(qrCodeService.generateTokenHash(any())).thenAnswer(inv -> HashUtils.sha256Hex(inv.getArgument(0)));
+        lenient().when(qrCodeService.verifyToken(any(), anyInt(), any())).thenReturn(true);
+
         userId = UUID.randomUUID();
         sessionId = UUID.randomUUID();
 
@@ -165,14 +171,13 @@ public class AttendanceServiceTest {
         when(lecturerRepository.findByUserId(userId)).thenReturn(Optional.of(lecturer));
         when(labSessionRepository.findById(sessionId)).thenReturn(Optional.of(activeSession));
         when(userRepository.findById(userId)).thenReturn(Optional.of(lecturerUser));
-        when(studentRepository.findByQrTokenHash(HashUtils.sha256Hex("IT21001234"))).thenReturn(Optional.empty());
-        when(studentRepository.findByStudentId("IT21001234")).thenReturn(Optional.of(eligibleStudent));
+        when(studentRepository.findByQrTokenHash(HashUtils.sha256Hex("QR-TOKEN-1234"))).thenReturn(Optional.of(eligibleStudent));
         when(sessionStudentRepository.existsBySessionIdAndStudentId(sessionId, eligibleStudent.getId())).thenReturn(true);
         when(attendanceRecordRepository.findBySessionIdAndStudentId(sessionId, eligibleStudent.getId())).thenReturn(Optional.empty());
         when(sessionStudentRepository.countBySessionId(sessionId)).thenReturn(30L);
         when(attendanceRecordRepository.countBySessionIdAndStatusIn(eq(sessionId), any())).thenReturn(1L);
 
-        AttendanceScanRequest req = new AttendanceScanRequest("IT21001234");
+        AttendanceScanRequest req = new AttendanceScanRequest("QR-TOKEN-1234");
         AttendanceScanResponse response = attendanceService.scanQrAttendance(userId, sessionId, req);
 
         assertNotNull(response);
@@ -193,7 +198,6 @@ public class AttendanceServiceTest {
         when(labSessionRepository.findById(sessionId)).thenReturn(Optional.of(activeSession));
         when(userRepository.findById(userId)).thenReturn(Optional.of(lecturerUser));
         when(studentRepository.findByQrTokenHash(any())).thenReturn(Optional.empty());
-        when(studentRepository.findByStudentId("UNKNOWN_BADGE")).thenReturn(Optional.empty());
 
         AttendanceScanRequest req = new AttendanceScanRequest("UNKNOWN_BADGE");
         BadRequestException ex = assertThrows(BadRequestException.class, () ->

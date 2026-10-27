@@ -60,6 +60,8 @@ public class SessionFinalizationTest {
     private UserRepository userRepository;
     @Mock
     private AuditLogService auditLogService;
+    @Mock
+    private com.labattend.service.QrCodeService qrCodeService;
 
     private LabSessionService labSessionService;
     private AttendanceService attendanceService;
@@ -94,7 +96,8 @@ public class SessionFinalizationTest {
                 studentRepository,
                 lecturerRepository,
                 userRepository,
-                auditLogService
+                auditLogService,
+                qrCodeService
         );
 
         userId = UUID.randomUUID();

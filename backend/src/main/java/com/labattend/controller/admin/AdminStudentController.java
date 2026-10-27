@@ -1,13 +1,17 @@
 package com.labattend.controller.admin;
 
+import com.labattend.dto.request.QrRegenerateRequest;
 import com.labattend.dto.request.StudentRequest;
 import com.labattend.dto.response.ApiResponse;
 import com.labattend.dto.response.PageResponse;
 import com.labattend.dto.response.StudentAttendanceHistoryResponse;
 import com.labattend.dto.response.StudentCsvImportResponse;
 import com.labattend.dto.response.StudentResponse;
+import com.labattend.service.QrCodeService;
 import com.labattend.service.StudentService;
 import jakarta.validation.Valid;
+import org.springframework.http.ContentDisposition;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -15,6 +19,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.util.List;
 import java.util.UUID;
 
 @RestController
@@ -23,9 +28,11 @@ import java.util.UUID;
 public class AdminStudentController {
 
     private final StudentService studentService;
+    private final QrCodeService qrCodeService;
 
-    public AdminStudentController(StudentService studentService) {
+    public AdminStudentController(StudentService studentService, QrCodeService qrCodeService) {
         this.studentService = studentService;
+        this.qrCodeService = qrCodeService;
     }
 
     @GetMapping
@@ -90,5 +97,61 @@ public class AdminStudentController {
         StudentCsvImportResponse result = studentService.importStudentsFromCsv(file);
         String msg = String.format("CSV processed: %d imported successfully, %d failed", result.getSuccessCount(), result.getFailureCount());
         return ResponseEntity.ok(ApiResponse.success(msg, result));
+    }
+
+    @GetMapping("/{id}/qr")
+    public ResponseEntity<byte[]> getStudentQrImage(
+            @PathVariable UUID id,
+            @RequestParam(defaultValue = "false") boolean sticker,
+            @RequestParam(required = false) String layout
+    ) {
+        boolean isSticker = sticker || "sticker".equalsIgnoreCase(layout);
+        byte[] imageBytes = qrCodeService.getStudentQrImage(id, isSticker);
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.IMAGE_PNG);
+        headers.setContentDisposition(ContentDisposition.inline()
+                .filename("student_qr_" + (isSticker ? "sticker_" : "") + id + ".png")
+                .build());
+
+        return new ResponseEntity<>(imageBytes, headers, HttpStatus.OK);
+    }
+
+    @PostMapping("/{id}/qr/regenerate")
+    public ResponseEntity<ApiResponse<StudentResponse>> regenerateQrCode(
+            @PathVariable UUID id,
+            @Valid @RequestBody QrRegenerateRequest request
+    ) {
+        StudentResponse result = qrCodeService.regenerateQrCode(id, request.getReason());
+        return ResponseEntity.ok(ApiResponse.success("Student QR code regenerated successfully", result));
+    }
+
+    @GetMapping("/qr/bulk")
+    public ResponseEntity<byte[]> getBulkQrCodes(
+            @RequestParam(required = false) UUID batchId,
+            @RequestParam(required = false) UUID groupId,
+            @RequestParam(required = false) List<UUID> studentIds,
+            @RequestParam(defaultValue = "zip") String format,
+            @RequestParam(defaultValue = "false") boolean sticker,
+            @RequestParam(required = false) String layout
+    ) {
+        boolean isSticker = sticker || "sticker".equalsIgnoreCase(layout);
+        HttpHeaders headers = new HttpHeaders();
+
+        if ("pdf".equalsIgnoreCase(format)) {
+            byte[] pdfBytes = qrCodeService.generateStickerSheetPdf(batchId, groupId, studentIds);
+            headers.setContentType(MediaType.APPLICATION_PDF);
+            headers.setContentDisposition(ContentDisposition.attachment()
+                    .filename("LabAttend_QR_Stickers.pdf")
+                    .build());
+            return new ResponseEntity<>(pdfBytes, headers, HttpStatus.OK);
+        } else {
+            byte[] zipBytes = qrCodeService.generateBulkZip(batchId, groupId, studentIds, isSticker);
+            headers.setContentType(MediaType.parseMediaType("application/zip"));
+            headers.setContentDisposition(ContentDisposition.attachment()
+                    .filename("LabAttend_QR_Codes.zip")
+                    .build());
+            return new ResponseEntity<>(zipBytes, headers, HttpStatus.OK);
+        }
     }
 }

@@ -55,6 +55,8 @@ public class LabGroupServiceTest {
     private UserRepository userRepository;
     @Mock
     private AuditLogService auditLogService;
+    @Mock
+    private com.labattend.service.QrCodeService qrCodeService;
 
     private LabGroupService labGroupService;
     private StudentService studentService;
@@ -85,7 +87,8 @@ public class LabGroupServiceTest {
                 labGroupRepository,
                 sessionStudentRepository,
                 attendanceRecordRepository,
-                auditLogService
+                auditLogService,
+                qrCodeService
         );
 
         labSessionService = new LabSessionService(

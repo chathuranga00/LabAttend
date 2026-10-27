@@ -13,9 +13,19 @@ import {
   RefreshCw, 
   X,
   ShieldAlert,
-  Layers
+  Layers,
+  Download,
+  Printer,
+  FileArchive,
+  ShieldCheck
 } from 'lucide-react';
-import { studentService, degreeProgrammeService, batchService, labGroupService } from '../../services/academicService';
+import { 
+  studentService, 
+  degreeProgrammeService, 
+  batchService, 
+  labGroupService,
+  triggerBlobDownload
+} from '../../services/academicService';
 import { useToast } from '../../context/ToastContext';
 import { DataTable, Pagination, SearchBar, Modal, StatusBadge } from '../../components/common';
 
@@ -43,6 +53,24 @@ export default function StudentsPage() {
   const [bulkGroupId, setBulkGroupId] = useState('');
   const [bulkBatchGroups, setBulkBatchGroups] = useState([]);
   const [bulkAssigning, setBulkAssigning] = useState(false);
+
+  // Bulk QR Modal states
+  const [isBulkQrModalOpen, setIsBulkQrModalOpen] = useState(false);
+  const [bulkQrScope, setBulkQrScope] = useState('batch'); // 'batch' | 'selected'
+  const [bulkQrBatchId, setBulkQrBatchId] = useState('');
+  const [bulkQrGroupId, setBulkQrGroupId] = useState('');
+  const [bulkQrBatchGroups, setBulkQrBatchGroups] = useState([]);
+  const [bulkQrFormat, setBulkQrFormat] = useState('zip'); // 'zip' | 'pdf'
+  const [bulkQrDownloading, setBulkQrDownloading] = useState(false);
+
+  // Single QR Download Modal states
+  const [singleQrModalStudent, setSingleQrModalStudent] = useState(null);
+  const [downloadingSingleQrFormat, setDownloadingSingleQrFormat] = useState(null);
+
+  // New Student Created Success State (QR Generated)
+  const [newlyCreatedStudent, setNewlyCreatedStudent] = useState(null);
+  const [createdQrPreviewUrl, setCreatedQrPreviewUrl] = useState(null);
+  const [isCreatedSuccessModalOpen, setIsCreatedSuccessModalOpen] = useState(false);
 
   // Pagination states
   const [page, setPage] = useState(0);
@@ -224,6 +252,98 @@ export default function StudentsPage() {
     return Object.keys(errs).length === 0;
   };
 
+  const handleDownloadSingleQr = async (studentItem, layout = 'standard') => {
+    try {
+      setDownloadingSingleQrFormat(layout);
+      const res = await studentService.getQrCode(studentItem.id, layout);
+      const blob = res.data || res;
+      const filename = layout === 'sticker' 
+        ? `${studentItem.studentId}_Sticker.png`
+        : `${studentItem.studentId}_QR.png`;
+      triggerBlobDownload(blob, filename);
+      showToast(`${layout === 'sticker' ? 'Print-ready sticker' : 'QR code PNG'} downloaded`, 'success');
+      setSingleQrModalStudent(null);
+    } catch (err) {
+      showToast(err.message || 'Failed to download QR code', 'error');
+    } finally {
+      setDownloadingSingleQrFormat(null);
+    }
+  };
+
+  const handleOpenBulkQrModal = (scope = 'batch') => {
+    setBulkQrScope(scope);
+    const defaultBatch = selectedBatchId || batches[0]?.id || '';
+    setBulkQrBatchId(defaultBatch);
+    setBulkQrGroupId(selectedGroupId || '');
+    setBulkQrFormat('zip');
+    if (defaultBatch) {
+      labGroupService.getGroupsByBatch(defaultBatch)
+        .then(res => {
+          if (res.success && res.data) setBulkQrBatchGroups(res.data);
+        })
+        .catch(() => setBulkQrBatchGroups([]));
+    } else {
+      setBulkQrBatchGroups([]);
+    }
+    setIsBulkQrModalOpen(true);
+  };
+
+  const handleBulkQrBatchChange = (batchId) => {
+    setBulkQrBatchId(batchId);
+    setBulkQrGroupId('');
+    if (batchId) {
+      labGroupService.getGroupsByBatch(batchId)
+        .then(res => {
+          if (res.success && res.data) setBulkQrBatchGroups(res.data);
+        })
+        .catch(() => setBulkQrBatchGroups([]));
+    } else {
+      setBulkQrBatchGroups([]);
+    }
+  };
+
+  const handleDownloadBulkQr = async (e) => {
+    e.preventDefault();
+    if (bulkQrScope === 'batch' && !bulkQrBatchId) {
+      showToast('Please select an academic batch cohort', 'error');
+      return;
+    }
+    if (bulkQrScope === 'selected' && selectedStudentIds.length === 0) {
+      showToast('No students selected', 'error');
+      return;
+    }
+
+    try {
+      setBulkQrDownloading(true);
+      const params = {
+        format: bulkQrFormat,
+      };
+      if (bulkQrScope === 'selected') {
+        params.studentIds = selectedStudentIds.join(',');
+      } else {
+        params.batchId = bulkQrBatchId;
+        if (bulkQrGroupId) {
+          params.groupId = bulkQrGroupId;
+        }
+      }
+
+      const res = await studentService.downloadBulkQr(params);
+      const blob = res.data || res;
+      const extension = bulkQrFormat === 'pdf' ? 'pdf' : 'zip';
+      const scopeLabel = bulkQrScope === 'selected' 
+        ? `Selected_${selectedStudentIds.length}` 
+        : `Batch`;
+      const filename = `LabAttend_QRCodes_${scopeLabel}.${extension}`;
+      triggerBlobDownload(blob, filename);
+      showToast(`Bulk QR ${bulkQrFormat.toUpperCase()} package generated and downloaded`, 'success');
+      setIsBulkQrModalOpen(false);
+    } catch (err) {
+      showToast(err.message || 'Failed to download bulk QR package', 'error');
+    } finally {
+      setBulkQrDownloading(false);
+    }
+  };
+
   const handleSubmitForm = async (e) => {
     e.preventDefault();
     if (!validateForm()) return;
@@ -243,12 +363,26 @@ export default function StudentsPage() {
       if (editingItem) {
         await studentService.updateStudent(editingItem.id, payload);
         showToast('Student record updated successfully', 'success');
+        setIsModalOpen(false);
+        fetchStudents();
       } else {
-        await studentService.createStudent(payload);
-        showToast('Student record registered successfully', 'success');
+        const createRes = await studentService.createStudent(payload);
+        showToast('Student registered & QR generated successfully', 'success');
+        setIsModalOpen(false);
+        fetchStudents();
+        if (createRes.success && createRes.data) {
+          const newStu = createRes.data;
+          setNewlyCreatedStudent(newStu);
+          setIsCreatedSuccessModalOpen(true);
+          // fetch preview image
+          studentService.getQrCode(newStu.id, 'standard')
+            .then(res => {
+              const blob = res.data || res;
+              setCreatedQrPreviewUrl(URL.createObjectURL(blob));
+            })
+            .catch(console.error);
+        }
       }
-      setIsModalOpen(false);
-      fetchStudents();
     } catch (err) {
       showToast(err.message || 'Operation failed', 'error');
     } finally {
@@ -468,6 +602,13 @@ export default function StudentsPage() {
             <Eye className="h-4 w-4" />
           </button>
           <button
+            onClick={() => setSingleQrModalStudent(item)}
+            className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-emerald-400 hover:text-emerald-300 transition"
+            title="Download Student QR Code (PNG / Sticker)"
+          >
+            <QrCode className="h-4 w-4" />
+          </button>
+          <button
             onClick={() => handleOpenEdit(item)}
             className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition"
             title="Edit Student"
@@ -495,6 +636,15 @@ export default function StudentsPage() {
         </div>
 
         <div className="flex items-center gap-3">
+          <button
+            onClick={() => handleOpenBulkQrModal('batch')}
+            className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 text-sm font-medium transition"
+            title="Bulk download student QR codes as ZIP or printable PDF"
+          >
+            <Download className="h-4 w-4 text-emerald-400" />
+            <span>Download QR Codes</span>
+          </button>
+
           <button
             onClick={() => {
               setCsvFile(null);
@@ -641,6 +791,15 @@ export default function StudentsPage() {
               className="px-3 py-1.5 rounded-xl text-xs font-medium text-slate-400 hover:text-white transition"
             >
               Clear Selection
+            </button>
+            <button
+              type="button"
+              onClick={() => handleOpenBulkQrModal('selected')}
+              className="inline-flex items-center gap-2 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-semibold shadow-lg shadow-emerald-600/20 transition"
+              title="Download QR package for currently selected students"
+            >
+              <Download className="w-3.5 h-3.5" />
+              Download QR ({selectedStudentIds.length})
             </button>
             <button
               type="button"
@@ -1033,6 +1192,348 @@ export default function StudentsPage() {
             >
               {bulkAssigning && <RefreshCw className="w-3.5 h-3.5 animate-spin" />}
               Assign {selectedStudentIds.length} Student(s)
+            </button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Individual Student QR Download Modal */}
+      {singleQrModalStudent && (
+        <Modal
+          isOpen={!!singleQrModalStudent}
+          onClose={() => setSingleQrModalStudent(null)}
+          title="Download Student QR Code"
+          subtitle={`${singleQrModalStudent.fullName} (${singleQrModalStudent.studentId})`}
+        >
+          <div className="space-y-5">
+            <div className="p-4 bg-slate-800/60 border border-slate-700/60 rounded-xl space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-slate-400">Security Verification:</span>
+                <span className="text-xs font-mono font-medium text-emerald-400">HMAC-SHA256 Opaque Token</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-slate-400">Badge Version:</span>
+                <span className="text-xs font-mono font-bold text-slate-200">v{singleQrModalStudent.qrVersion || 1}</span>
+              </div>
+              <p className="text-[11px] text-slate-400 pt-1 border-t border-slate-700/60">
+                Encodes zero personal identifiable data (no plain name, no student ID, no email). Safe against shoulder-surfing and optical scraping.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => handleDownloadSingleQr(singleQrModalStudent, 'standard')}
+                disabled={downloadingSingleQrFormat === 'standard'}
+                className="p-4 rounded-xl bg-slate-800 hover:bg-slate-750 border border-slate-700 text-left transition space-y-2 group"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="p-2 rounded-lg bg-emerald-950/60 border border-emerald-800/50 text-emerald-400">
+                    <Download className="h-5 w-5" />
+                  </div>
+                  {downloadingSingleQrFormat === 'standard' && (
+                    <RefreshCw className="h-4 w-4 text-emerald-400 animate-spin" />
+                  )}
+                </div>
+                <div>
+                  <span className="text-sm font-semibold text-white group-hover:text-emerald-400 transition block">
+                    Standard QR (PNG)
+                  </span>
+                  <span className="text-xs text-slate-400 mt-0.5 block">
+                    Pure high-resolution QR matrix image (no text under QR).
+                  </span>
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleDownloadSingleQr(singleQrModalStudent, 'sticker')}
+                disabled={downloadingSingleQrFormat === 'sticker'}
+                className="p-4 rounded-xl bg-slate-800 hover:bg-slate-750 border border-slate-700 text-left transition space-y-2 group"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="p-2 rounded-lg bg-cyan-950/60 border border-cyan-800/50 text-cyan-400">
+                    <Printer className="h-5 w-5" />
+                  </div>
+                  {downloadingSingleQrFormat === 'sticker' && (
+                    <RefreshCw className="h-4 w-4 text-cyan-400 animate-spin" />
+                  )}
+                </div>
+                <div>
+                  <span className="text-sm font-semibold text-white group-hover:text-cyan-400 transition block">
+                    Print-Ready Sticker
+                  </span>
+                  <span className="text-xs text-slate-400 mt-0.5 block">
+                    Sticker card with QR, student name, ID, cohort and lab group.
+                  </span>
+                </div>
+              </button>
+            </div>
+
+            <div className="flex justify-end pt-2 border-t border-slate-800">
+              <button
+                type="button"
+                onClick={() => setSingleQrModalStudent(null)}
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-sm font-medium transition"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* Student Created & QR Generated Success Modal */}
+      {isCreatedSuccessModalOpen && newlyCreatedStudent && (
+        <Modal
+          isOpen={isCreatedSuccessModalOpen}
+          onClose={() => {
+            setIsCreatedSuccessModalOpen(false);
+            setNewlyCreatedStudent(null);
+            setCreatedQrPreviewUrl(null);
+          }}
+          title="Student Registered & QR Generated"
+          subtitle="Cryptographic badge token provisioned successfully"
+        >
+          <div className="space-y-5">
+            <div className="flex items-center gap-3 p-4 bg-emerald-950/40 border border-emerald-800/60 rounded-xl">
+              <ShieldCheck className="h-6 w-6 text-emerald-400 shrink-0" />
+              <div className="text-xs text-slate-300">
+                <span className="font-semibold text-white block text-sm">
+                  {newlyCreatedStudent.fullName}
+                </span>
+                <span className="font-mono text-emerald-400 font-semibold">
+                  {newlyCreatedStudent.studentId}
+                </span>
+                <span className="text-slate-400 ml-2">
+                  ({newlyCreatedStudent.batchCode}{newlyCreatedStudent.labGroupName ? ` • Group ${newlyCreatedStudent.labGroupName}` : ''})
+                </span>
+              </div>
+            </div>
+
+            {/* QR Preview Card */}
+            <div className="p-4 bg-slate-950/60 border border-slate-800 rounded-2xl flex flex-col items-center justify-center">
+              <div className="p-3 bg-white rounded-xl shadow-md border border-slate-200">
+                {createdQrPreviewUrl ? (
+                  <img
+                    src={createdQrPreviewUrl}
+                    alt="Created QR"
+                    className="w-32 h-32 object-contain"
+                  />
+                ) : (
+                  <div className="w-32 h-32 flex items-center justify-center">
+                    <RefreshCw className="h-6 w-6 text-slate-400 animate-spin" />
+                  </div>
+                )}
+              </div>
+              <span className="text-[11px] text-slate-400 mt-2 font-mono">
+                Token Version: v{newlyCreatedStudent.qrVersion || 1} • Zero PII Encoded
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => handleDownloadSingleQr(newlyCreatedStudent, 'standard')}
+                className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold shadow transition"
+              >
+                <Download className="h-4 w-4" />
+                <span>Download QR PNG</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleDownloadSingleQr(newlyCreatedStudent, 'sticker')}
+                className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-750 border border-slate-700 text-slate-200 text-xs font-medium transition"
+              >
+                <Printer className="h-4 w-4 text-cyan-400" />
+                <span>Download Sticker</span>
+              </button>
+            </div>
+
+            <div className="flex justify-end pt-2 border-t border-slate-800">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsCreatedSuccessModalOpen(false);
+                  setNewlyCreatedStudent(null);
+                  setCreatedQrPreviewUrl(null);
+                }}
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-sm font-medium transition"
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* Bulk QR Code Download Modal */}
+      <Modal
+        isOpen={isBulkQrModalOpen}
+        onClose={() => setIsBulkQrModalOpen(false)}
+        title="Bulk Download Student QR Codes"
+        subtitle="Export archives for physical badge distribution and printing"
+      >
+        <form onSubmit={handleDownloadBulkQr} className="space-y-4">
+          {/* Scope Selector */}
+          <div>
+            <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">
+              Download Scope
+            </label>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setBulkQrScope('batch')}
+                className={`px-3 py-2 rounded-xl text-xs font-medium border text-center transition ${
+                  bulkQrScope === 'batch'
+                    ? 'bg-emerald-950/60 border-emerald-500 text-emerald-400'
+                    : 'bg-slate-800/60 border-slate-700 text-slate-400 hover:text-white'
+                }`}
+              >
+                By Batch / Lab Group
+              </button>
+              <button
+                type="button"
+                onClick={() => setBulkQrScope('selected')}
+                disabled={selectedStudentIds.length === 0}
+                className={`px-3 py-2 rounded-xl text-xs font-medium border text-center transition ${
+                  bulkQrScope === 'selected'
+                    ? 'bg-emerald-950/60 border-emerald-500 text-emerald-400'
+                    : selectedStudentIds.length === 0
+                    ? 'bg-slate-900 border-slate-800 text-slate-600 cursor-not-allowed'
+                    : 'bg-slate-800/60 border-slate-700 text-slate-400 hover:text-white'
+                }`}
+              >
+                Selected Students ({selectedStudentIds.length})
+              </button>
+            </div>
+          </div>
+
+          {bulkQrScope === 'batch' && (
+            <div className="space-y-3 p-3 bg-slate-950/60 border border-slate-800 rounded-xl">
+              <div>
+                <label className="block text-xs font-medium text-slate-300 mb-1">
+                  Batch Cohort <span className="text-rose-400">*</span>
+                </label>
+                <select
+                  value={bulkQrBatchId}
+                  onChange={(e) => handleBulkQrBatchChange(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-sm text-slate-200 focus:outline-none focus:border-emerald-500"
+                >
+                  <option value="">Select Cohort</option>
+                  {batches.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.batchCode} ({b.academicYear})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-slate-300 mb-1">
+                  Lab Group <span className="text-slate-500 font-normal">(Optional — defaults to whole cohort)</span>
+                </label>
+                <select
+                  value={bulkQrGroupId}
+                  onChange={(e) => setBulkQrGroupId(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-sm text-slate-200 focus:outline-none focus:border-indigo-500"
+                >
+                  <option value="">All Groups (Entire Batch)</option>
+                  {bulkQrBatchGroups.map((g) => (
+                    <option key={g.id} value={g.id}>
+                      Group {g.groupName}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          )}
+
+          {/* Export Format Selector */}
+          <div>
+            <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">
+              Package Format
+            </label>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <label
+                className={`p-3 rounded-xl border cursor-pointer transition flex items-start gap-3 ${
+                  bulkQrFormat === 'zip'
+                    ? 'bg-emerald-950/40 border-emerald-500 text-white'
+                    : 'bg-slate-800/40 border-slate-700 text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="bulkQrFormat"
+                  value="zip"
+                  checked={bulkQrFormat === 'zip'}
+                  onChange={() => setBulkQrFormat('zip')}
+                  className="hidden"
+                />
+                <FileArchive className="h-5 w-5 text-emerald-400 shrink-0 mt-0.5" />
+                <div>
+                  <span className="text-xs font-bold block text-slate-200">ZIP of PNGs</span>
+                  <span className="text-[11px] text-slate-400 block mt-0.5">
+                    Individual files named <code className="text-emerald-300 text-[10px]">StudentID_Name.png</code>
+                  </span>
+                </div>
+              </label>
+
+              <label
+                className={`p-3 rounded-xl border cursor-pointer transition flex items-start gap-3 ${
+                  bulkQrFormat === 'pdf'
+                    ? 'bg-cyan-950/40 border-cyan-500 text-white'
+                    : 'bg-slate-800/40 border-slate-700 text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="bulkQrFormat"
+                  value="pdf"
+                  checked={bulkQrFormat === 'pdf'}
+                  onChange={() => setBulkQrFormat('pdf')}
+                  className="hidden"
+                />
+                <Printer className="h-5 w-5 text-cyan-400 shrink-0 mt-0.5" />
+                <div>
+                  <span className="text-xs font-bold block text-slate-200">Printable PDF Sheet</span>
+                  <span className="text-[11px] text-slate-400 block mt-0.5">
+                    3x8 stickers per standard A4 page (24 per sheet)
+                  </span>
+                </div>
+              </label>
+            </div>
+          </div>
+
+          <div className="p-3 bg-slate-800/40 border border-slate-700/50 rounded-xl text-[11px] text-slate-400">
+            Rate limited: capped at 500 students per export request to ensure fast processing.
+          </div>
+
+          <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-800">
+            <button
+              type="button"
+              onClick={() => setIsBulkQrModalOpen(false)}
+              disabled={bulkQrDownloading}
+              className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-sm font-medium transition"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={bulkQrDownloading || (bulkQrScope === 'batch' && !bulkQrBatchId)}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded-xl text-sm font-semibold shadow transition"
+            >
+              {bulkQrDownloading ? (
+                <>
+                  <RefreshCw className="h-4 w-4 animate-spin" />
+                  <span>Generating Package...</span>
+                </>
+              ) : (
+                <>
+                  <Download className="h-4 w-4" />
+                  <span>Download {bulkQrFormat.toUpperCase()}</span>
+                </>
+              )}
             </button>
           </div>
         </form>
