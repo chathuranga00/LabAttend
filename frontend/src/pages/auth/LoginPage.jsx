@@ -82,7 +82,7 @@ export default function LoginPage() {
       <div className="sm:mx-auto sm:w-full sm:max-w-md relative z-10 px-4">
         {/* University / App Brand */}
         <div className="flex flex-col items-center text-center">
-          <div className="h-20 w-48 rounded-2xl bg-white p-2.5 flex items-center justify-center shadow-xl shadow-emerald-500/15 mb-4 ring-1 ring-emerald-500/20">
+          <div className="h-24 w-60 sm:h-28 sm:w-64 rounded-2xl bg-white p-3 flex items-center justify-center shadow-xl shadow-emerald-500/15 mb-5 ring-1 ring-emerald-500/20">
             <img src="/logo.png" alt="NSBM Green University Town" className="h-full w-full object-contain" />
           </div>
           <h1 className="text-3xl font-extrabold tracking-tight text-white">
