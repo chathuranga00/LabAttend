@@ -1,0 +1,84 @@
+name: LabAttend CI Pipeline
+
+on:
+  push:
+    branches:
+      - main
+      - master
+      - 'feature/**'
+  pull_request:
+    branches:
+      - main
+      - master
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ============================================================================
+  # Backend CI: Java 21, Spring Boot, JUnit 5 Test Suite, Maven Package
+  # ============================================================================
+  backend-test-and-build:
+    name: Backend CI (Spring Boot & JUnit 5)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Set up Java 21 (Eclipse Temurin)
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+          cache: 'maven'
+
+      - name: Run Backend Test Suite (105+ Tests)
+        run: mvn clean test -B
+
+      - name: Build Production JAR
+        run: mvn package -DskipTests -B
+
+      - name: Verify Executable JAR Exists
+        run: test -f target/labattend-backend-*.jar
+
+  # ============================================================================
+  # Frontend CI: Node.js 20, Vitest Unit Tests, Vite Production Bundle
+  # ============================================================================
+  frontend-test-and-build:
+    name: Frontend CI (React & Vite)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Clean Install NPM Dependencies
+        run: npm ci
+
+      - name: Run Frontend Unit Test Suite (Vitest)
+        run: npm test
+
+      - name: Build Production Web Bundle (Vite)
+        run: npm run build
+        env:
+          VITE_API_BASE_URL: https://api.labattend.local/api
+
+      - name: Verify Dist Output & SPA Fallback
+        run: |
+          test -f dist/index.html
+          test -f dist/_redirects
