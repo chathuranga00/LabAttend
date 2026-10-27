@@ -1,0 +1,24 @@
+package com.labattend.repository;
+
+import com.labattend.entity.LaboratoryHall;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+import org.springframework.stereotype.Repository;
+
+import java.util.Optional;
+import java.util.UUID;
+
+@Repository
+public interface LaboratoryHallRepository extends JpaRepository<LaboratoryHall, UUID> {
+    Optional<LaboratoryHall> findByHallCode(String hallCode);
+    boolean existsByHallCode(String hallCode);
+    boolean existsByHallCodeAndIdNot(String hallCode, UUID id);
+    java.util.List<LaboratoryHall> findByIsActiveTrue();
+
+    @Query("SELECT lh FROM LaboratoryHall lh WHERE " +
+           "LOWER(lh.name) LIKE :search OR LOWER(lh.hallCode) LIKE :search OR LOWER(lh.location) LIKE :search")
+    Page<LaboratoryHall> searchHalls(@Param("search") String search, Pageable pageable);
+}

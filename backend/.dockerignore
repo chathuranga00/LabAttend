@@ -1,0 +1,10 @@
+target/
+.git/
+.gitignore
+.idea/
+*.iml
+.mvn/
+*.log
+.env
+.env.*
+!backend/.env.example

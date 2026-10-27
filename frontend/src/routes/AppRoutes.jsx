@@ -1,0 +1,112 @@
+import React from 'react';
+import { Routes, Route, Navigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
+import ProtectedRoute from '../components/common/ProtectedRoute';
+import LoginPage from '../pages/auth/LoginPage';
+import HealthCheck from '../pages/HealthCheck';
+import AdminLayout from '../layouts/AdminLayout';
+import LecturerLayout from '../layouts/LecturerLayout';
+import {
+  AdminDashboardPage,
+  DegreeProgrammesPage,
+  BatchesPage,
+  ModulesPage,
+  LaboratoryHallsPage,
+  AssignmentsPage,
+  LecturersPage,
+  StudentsPage,
+  StudentDetailsPage,
+  AdminAllSessionsPage,
+  AdminAuditLogsPage,
+  AdminAttendanceRecordsPage,
+  AdminReportsPage,
+  AdminPlaceholderPage,
+} from '../pages/admin';
+import {
+  LecturerDashboardPage,
+  MyLabSessionsPage,
+  CreateLabSessionPage,
+  LabSessionDetailsPage,
+  QRScannerPage,
+  SessionSummaryPage,
+  LecturerReportsPage,
+  LecturerStudentAttendancePage,
+  LecturerPlaceholderPage,
+} from '../pages/lecturer';
+
+function RootRedirect() {
+  const { isAuthenticated, role, loading } = useAuth();
+
+  if (loading) {
+    return null;
+  }
+
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace />;
+  }
+
+  return <Navigate to={role === 'ADMIN' ? '/admin/dashboard' : '/lecturer/dashboard'} replace />;
+}
+
+export default function AppRoutes() {
+  return (
+    <Routes>
+      {/* Root redirect based on authentication and verified role */}
+      <Route path="/" element={<RootRedirect />} />
+
+      {/* Public Routes */}
+      <Route path="/login" element={<LoginPage />} />
+      <Route path="/health" element={<HealthCheck />} />
+
+      {/* Protected Admin Routes */}
+      <Route
+        path="/admin"
+        element={
+          <ProtectedRoute allowedRoles={['ADMIN']}>
+            <AdminLayout />
+          </ProtectedRoute>
+        }
+      >
+        <Route index element={<AdminDashboardPage />} />
+        <Route path="dashboard" element={<AdminDashboardPage />} />
+        <Route path="programmes" element={<DegreeProgrammesPage />} />
+        <Route path="batches" element={<BatchesPage />} />
+        <Route path="modules" element={<ModulesPage />} />
+        <Route path="lecturers" element={<LecturersPage />} />
+        <Route path="assignments" element={<AssignmentsPage />} />
+        <Route path="students" element={<StudentsPage />} />
+        <Route path="students/:id" element={<StudentDetailsPage />} />
+        <Route path="halls" element={<LaboratoryHallsPage />} />
+        <Route path="sessions" element={<AdminAllSessionsPage />} />
+        <Route path="sessions/:id/summary" element={<SessionSummaryPage />} />
+        <Route path="attendance" element={<AdminAttendanceRecordsPage />} />
+        <Route path="audits" element={<AdminAuditLogsPage />} />
+        <Route path="reports" element={<AdminReportsPage />} />
+      </Route>
+
+      {/* Protected Lecturer Routes */}
+      <Route
+        path="/lecturer"
+        element={
+          <ProtectedRoute allowedRoles={['LECTURER']}>
+            <LecturerLayout />
+          </ProtectedRoute>
+        }
+      >
+        <Route index element={<LecturerDashboardPage />} />
+        <Route path="dashboard" element={<LecturerDashboardPage />} />
+        <Route path="sessions" element={<MyLabSessionsPage />} />
+        <Route path="sessions/new" element={<CreateLabSessionPage />} />
+        <Route path="sessions/:id" element={<LabSessionDetailsPage />} />
+        <Route path="sessions/:id/summary" element={<SessionSummaryPage />} />
+        <Route path="sessions/:id/scanner" element={<QRScannerPage />} />
+        <Route path="scanner" element={<QRScannerPage />} />
+        <Route path="reports" element={<LecturerReportsPage />} />
+        <Route path="students" element={<LecturerStudentAttendancePage />} />
+      </Route>
+
+      {/* Catch-all redirect */}
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
+  );
+}
