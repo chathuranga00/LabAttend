@@ -36,6 +36,10 @@ public class SessionStudent {
     @JoinColumn(name = "home_lab_group_id")
     private LabGroup homeLabGroup;
 
+    @Builder.Default
+    @Column(name = "is_expected", nullable = false)
+    private Boolean isExpected = true;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;
 

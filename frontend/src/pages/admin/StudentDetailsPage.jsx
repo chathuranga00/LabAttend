@@ -429,6 +429,18 @@ export default function StudentDetailsPage() {
                         <span className="text-[11px] text-slate-400 truncate max-w-xs block">
                           {item.moduleName}
                         </span>
+                        {item.isCrossGroup && (
+                          <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                              Cross-Group (Session: Group {item.sessionGroupName || '—'})
+                            </span>
+                            {item.lecturerName && (
+                              <span className="text-[10px] text-slate-400">
+                                Lect: {item.lecturerName}
+                              </span>
+                            )}
+                          </div>
+                        )}
                       </td>
                       <td className="px-4 py-3 font-mono text-xs text-slate-300">
                         {item.hallCode}

@@ -38,8 +38,10 @@ public class SessionSummaryResponse {
     private String status;
     private boolean isFinalized;
 
+    private String sessionGroupName;
     private long expectedStudentCount;
     private long presentCount;
+    private long crossGroupCount;
     private long absentCount;
     private long unmarkedCount;
 

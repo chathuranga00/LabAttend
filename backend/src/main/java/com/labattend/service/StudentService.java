@@ -266,7 +266,8 @@ public class StudentService {
                 attendanceStatus = "ABSENT";
             }
 
-            if (isClosed) {
+            boolean isExpectedSession = !Boolean.FALSE.equals(enrollment.getIsExpected());
+            if (isClosed && isExpectedSession) {
                 totalEligible++;
                 if ("PRESENT".equalsIgnoreCase(attendanceStatus) || "LATE".equalsIgnoreCase(attendanceStatus)) {
                     attended++;
@@ -289,6 +290,10 @@ public class StudentService {
                     .attendanceMethod(attendanceMethod)
                     .markedAt(markedAt)
                     .justificationNotes(justification)
+                    .isCrossGroup(record != null && Boolean.TRUE.equals(record.getIsCrossGroup()))
+                    .sessionGroupName(session.getLabGroup() != null ? session.getLabGroup().getGroupName() : null)
+                    .homeGroupName(record != null && record.getHomeLabGroup() != null ? record.getHomeLabGroup().getGroupName() : (student.getLabGroup() != null ? student.getLabGroup().getGroupName() : null))
+                    .lecturerName(session.getLecturer() != null ? session.getLecturer().getFullName() : null)
                     .build());
         }
 

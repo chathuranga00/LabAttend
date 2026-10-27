@@ -368,6 +368,18 @@ export default function LecturerStudentAttendancePage() {
                             <td className="py-3 px-3">
                               <div className="font-semibold text-white">{item.moduleCode}</div>
                               <div className="text-[11px] text-slate-400">{item.batchCode || 'Cohort'}</div>
+                              {item.isCrossGroup && (
+                                <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                                    Cross-Group ({item.sessionGroupName ? `Group ${item.sessionGroupName}` : 'Session'})
+                                  </span>
+                                  {item.lecturerName && (
+                                    <span className="text-[10px] text-slate-400">
+                                      Lect: {item.lecturerName}
+                                    </span>
+                                  )}
+                                </div>
+                              )}
                             </td>
                             <td className="py-3 px-3 text-slate-400">
                               <div>{item.sessionDate}</div>

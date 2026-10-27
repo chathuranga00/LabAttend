@@ -133,12 +133,13 @@ public class LecturerSessionController {
     public ResponseEntity<ApiResponse<PageResponse<AttendanceRecordResponse>>> getSessionAttendance(
             @PathVariable UUID id,
             @RequestParam(required = false) String search,
+            @RequestParam(required = false) Boolean isCrossGroup,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size,
             @AuthenticationPrincipal CustomUserDetails userDetails
     ) {
         PageResponse<AttendanceRecordResponse> result = attendanceService.getSessionAttendance(
-                userDetails.getId(), id, search, page, size
+                userDetails.getId(), id, search, isCrossGroup, page, size
         );
         return ResponseEntity.ok(ApiResponse.success(result));
     }

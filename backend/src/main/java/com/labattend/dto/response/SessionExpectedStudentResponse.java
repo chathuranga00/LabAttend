@@ -35,4 +35,12 @@ public class SessionExpectedStudentResponse {
     private OffsetDateTime markedAt;
 
     private String method;
+
+    private Boolean isExpected;
+
+    private Boolean isCrossGroup;
+
+    private UUID homeLabGroupId;
+
+    private String homeLabGroupName;
 }

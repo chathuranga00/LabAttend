@@ -55,5 +55,9 @@ public class StudentDetailedAttendanceResponse {
         private OffsetDateTime markedAt;
         private Boolean isCorrected;
         private String justificationNotes;
+        private Boolean isCrossGroup;
+        private String sessionGroupName;
+        private String homeGroupName;
+        private String lecturerName;
     }
 }

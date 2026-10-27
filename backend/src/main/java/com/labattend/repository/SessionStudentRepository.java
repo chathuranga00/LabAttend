@@ -11,10 +11,14 @@ import java.util.UUID;
 @Repository
 public interface SessionStudentRepository extends JpaRepository<SessionStudent, UUID> {
     List<SessionStudent> findBySessionId(UUID sessionId);
+    List<SessionStudent> findBySessionIdAndIsExpectedTrue(UUID sessionId);
     List<SessionStudent> findByStudentId(UUID studentId);
     Optional<SessionStudent> findBySessionIdAndStudentId(UUID sessionId, UUID studentId);
+    Optional<SessionStudent> findBySessionIdAndStudentIdAndIsExpectedTrue(UUID sessionId, UUID studentId);
     boolean existsBySessionIdAndStudentId(UUID sessionId, UUID studentId);
+    boolean existsBySessionIdAndStudentIdAndIsExpectedTrue(UUID sessionId, UUID studentId);
     long countBySessionId(UUID sessionId);
+    long countBySessionIdAndIsExpectedTrue(UUID sessionId);
 
     @org.springframework.data.jpa.repository.Query(
         "SELECT ss FROM SessionStudent ss " +

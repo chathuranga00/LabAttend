@@ -214,7 +214,7 @@ public class AttendanceServiceTest {
         when(labSessionRepository.findById(sessionId)).thenReturn(Optional.of(activeSession));
         when(userRepository.findById(userId)).thenReturn(Optional.of(lecturerUser));
         when(studentRepository.findByQrTokenHash(any())).thenReturn(Optional.of(eligibleStudent));
-        when(sessionStudentRepository.existsBySessionIdAndStudentId(sessionId, eligibleStudent.getId())).thenReturn(true);
+        lenient().when(sessionStudentRepository.existsBySessionIdAndStudentId(sessionId, eligibleStudent.getId())).thenReturn(true);
 
         OffsetDateTime firstScanTime = OffsetDateTime.now().minusMinutes(5);
         AttendanceRecord existing = AttendanceRecord.builder()

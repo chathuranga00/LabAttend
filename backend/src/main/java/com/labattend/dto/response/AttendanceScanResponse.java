@@ -41,4 +41,16 @@ public class AttendanceScanResponse {
     private long attendedCount;
 
     private long remainingCount;
+
+    private Boolean isCrossGroup;
+
+    private UUID homeLabGroupId;
+
+    private String homeLabGroupName;
+
+    private UUID sessionLabGroupId;
+
+    private String sessionLabGroupName;
+
+    private long crossGroupCount;
 }

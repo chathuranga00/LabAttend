@@ -582,7 +582,8 @@ public class AnalyticsService {
                 attendanceStatus = "ABSENT";
             }
 
-            if (isFinalized) {
+            boolean isExpectedSession = !Boolean.FALSE.equals(ss.getIsExpected());
+            if (isFinalized && isExpectedSession) {
                 eligibleFinalized++;
                 if ("PRESENT".equalsIgnoreCase(attendanceStatus) || "LATE".equalsIgnoreCase(attendanceStatus)) {
                     attended++;
@@ -606,6 +607,10 @@ public class AnalyticsService {
                     .markedAt(markedAt)
                     .isCorrected(isCorrected)
                     .justificationNotes(justificationNotes)
+                    .isCrossGroup(ar != null && Boolean.TRUE.equals(ar.getIsCrossGroup()))
+                    .sessionGroupName(s.getLabGroup() != null ? s.getLabGroup().getGroupName() : null)
+                    .homeGroupName(ar != null && ar.getHomeLabGroup() != null ? ar.getHomeLabGroup().getGroupName() : (student.getLabGroup() != null ? student.getLabGroup().getGroupName() : null))
+                    .lecturerName(s.getLecturer() != null ? s.getLecturer().getFullName() : null)
                     .build());
         }
 

@@ -46,5 +46,9 @@ public class StudentAttendanceHistoryResponse {
         private String attendanceMethod;
         private OffsetDateTime markedAt;
         private String justificationNotes;
+        private Boolean isCrossGroup;
+        private String sessionGroupName;
+        private String homeGroupName;
+        private String lecturerName;
     }
 }

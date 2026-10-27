@@ -52,17 +52,19 @@ export default function QRScannerPage() {
   const [counters, setCounters] = useState({
     expected: 0,
     present: 0,
+    visitors: 0,
     remaining: 0,
   });
 
   // Last scan feedback state
-  // type: 'SUCCESS' | 'ALREADY_MARKED' | 'ERROR' | null
+  // type: 'SUCCESS' | 'CROSS_GROUP_MARKED' | 'ALREADY_MARKED' | 'ERROR' | null
   const [lastScanResult, setLastScanResult] = useState(null);
 
   // Attendance live list state
   const [attendanceRecords, setAttendanceRecords] = useState([]);
   const [loadingRecords, setLoadingRecords] = useState(false);
   const [tableSearch, setTableSearch] = useState('');
+  const [crossGroupOnly, setCrossGroupOnly] = useState(false);
 
   // Manual Attendance modal state
   const [isManualModalOpen, setIsManualModalOpen] = useState(false);
@@ -102,15 +104,29 @@ export default function QRScannerPage() {
     if (!id) return;
     try {
       setLoadingSession(true);
-      const res = await sessionService.getLecturerSessionById(id);
-      if (res.success && res.data) {
-        const s = res.data;
+      const [sessRes, sumRes] = await Promise.all([
+        sessionService.getLecturerSessionById(id),
+        sessionService.getSessionSummary(id).catch(() => null),
+      ]);
+      if (sessRes.success && sessRes.data) {
+        const s = sessRes.data;
         setSession(s);
-        setCounters({
-          expected: s.expectedStudentCount || 0,
-          present: s.attendedCount || 0,
-          remaining: Math.max(0, (s.expectedStudentCount || 0) - (s.attendedCount || 0)),
-        });
+        if (sumRes && sumRes.success && sumRes.data) {
+          const sum = sumRes.data;
+          setCounters({
+            expected: sum.expectedStudentCount || 0,
+            present: sum.presentCount || 0,
+            visitors: sum.crossGroupCount || 0,
+            remaining: sum.unmarkedCount || 0,
+          });
+        } else {
+          setCounters({
+            expected: s.expectedStudentCount || 0,
+            present: s.attendedCount || 0,
+            visitors: 0,
+            remaining: Math.max(0, (s.expectedStudentCount || 0) - (s.attendedCount || 0)),
+          });
+        }
       }
     } catch (err) {
       showToast(err.message || 'Failed to load session info', 'error');
@@ -126,15 +142,19 @@ export default function QRScannerPage() {
   }, [selectedSessionId, fetchSessionDetails]);
 
   // 3. Fetch live attendance list for this session
-  const fetchAttendanceRecords = useCallback(async (id, search = '') => {
+  const fetchAttendanceRecords = useCallback(async (id, search = '', crossOnly = false) => {
     if (!id) return;
     try {
       setLoadingRecords(true);
-      const res = await attendanceService.getSessionAttendance(id, {
+      const params = {
         search: search.trim() || undefined,
         page: 0,
         size: 50,
-      });
+      };
+      if (crossOnly) {
+        params.isCrossGroup = true;
+      }
+      const res = await attendanceService.getSessionAttendance(id, params);
       if (res.success && res.data) {
         setAttendanceRecords(res.data.content || []);
       }
@@ -147,9 +167,9 @@ export default function QRScannerPage() {
 
   useEffect(() => {
     if (selectedSessionId) {
-      fetchAttendanceRecords(selectedSessionId, tableSearch);
+      fetchAttendanceRecords(selectedSessionId, tableSearch, crossGroupOnly);
     }
-  }, [selectedSessionId, tableSearch, fetchAttendanceRecords]);
+  }, [selectedSessionId, tableSearch, crossGroupOnly, fetchAttendanceRecords]);
 
   // 4. Process QR Code Scan Payload
   const handleScanPayload = useCallback(async (identifier) => {
@@ -184,10 +204,28 @@ export default function QRScannerPage() {
         setCounters({
           expected: data.totalExpected,
           present: data.attendedCount,
+          visitors: data.crossGroupCount || 0,
           remaining: data.remainingCount,
         });
 
-        if (data.result === 'SUCCESS') {
+        if (data.result === 'CROSS_GROUP_MARKED' || (data.result === 'SUCCESS' && data.isCrossGroup)) {
+          const homeGroup = data.homeLabGroupName || data.labGroupName || 'Unassigned';
+          const sessGroup = data.sessionLabGroupName || (session?.labGroupName) || 'This Group';
+          setLastScanResult({
+            type: 'CROSS_GROUP_MARKED',
+            title: 'Cross-Group Attendance Marked',
+            badge: `Cross-Group: Group ${homeGroup} -> Group ${sessGroup}`,
+            message: data.message || `Student belongs to Group ${homeGroup} (this session is Group ${sessGroup})`,
+            studentId: data.studentId,
+            studentName: data.studentName,
+            homeLabGroupName: homeGroup,
+            sessionLabGroupName: sessGroup,
+            labGroupName: homeGroup,
+            time: data.scannedAt,
+            method: data.method || 'QR_SCAN',
+          });
+          showToast(`Cross-Group Marked: ${data.studentName} (Group ${homeGroup} -> Group ${sessGroup})`, 'warning');
+        } else if (data.result === 'SUCCESS') {
           setLastScanResult({
             type: 'SUCCESS',
             title: 'Attendance Recorded',
@@ -200,13 +238,18 @@ export default function QRScannerPage() {
           });
           showToast(`Present: ${data.studentName} (${data.studentId})`, 'success');
         } else if (data.result === 'ALREADY_MARKED') {
+          const isCross = data.isCrossGroup;
+          const homeGroup = data.homeLabGroupName || data.labGroupName;
+          const sessGroup = data.sessionLabGroupName || (session?.labGroupName);
           setLastScanResult({
             type: 'ALREADY_MARKED',
             title: 'Already Marked Present',
+            badge: isCross ? `Cross-Group: Group ${homeGroup} -> Group ${sessGroup}` : null,
             message: `Previously verified at ${new Date(data.scannedAt).toLocaleTimeString()}`,
             studentId: data.studentId,
             studentName: data.studentName,
-            labGroupName: data.labGroupName,
+            homeLabGroupName: homeGroup,
+            labGroupName: homeGroup,
             time: data.scannedAt,
             method: data.method || 'QR_SCAN',
           });
@@ -214,7 +257,7 @@ export default function QRScannerPage() {
         }
 
         // Refresh attendance table
-        fetchAttendanceRecords(selectedSessionId, tableSearch);
+        fetchAttendanceRecords(selectedSessionId, tableSearch, crossGroupOnly);
       } else {
         // Fallback if success flag not explicitly true
         setLastScanResult({
@@ -366,15 +409,33 @@ export default function QRScannerPage() {
         reason: manualReason.trim(),
       });
 
-      if (res && res.success && res.data) {
+      if (res.success && res.data) {
         const data = res.data;
         setCounters({
           expected: data.totalExpected,
           present: data.attendedCount,
+          visitors: data.crossGroupCount || 0,
           remaining: data.remainingCount,
         });
 
-        if (data.result === 'SUCCESS') {
+        if (data.result === 'CROSS_GROUP_MARKED' || (data.result === 'SUCCESS' && data.isCrossGroup)) {
+          const homeGroup = data.homeLabGroupName || data.labGroupName || 'Unassigned';
+          const sessGroup = data.sessionLabGroupName || (session?.labGroupName) || 'This Group';
+          setLastScanResult({
+            type: 'CROSS_GROUP_MARKED',
+            title: 'Cross-Group Attendance Recorded',
+            badge: `Cross-Group: Group ${homeGroup} -> Group ${sessGroup}`,
+            message: data.message || `Student belongs to Group ${homeGroup} (this session is Group ${sessGroup})`,
+            studentId: data.studentId,
+            studentName: data.studentName,
+            homeLabGroupName: homeGroup,
+            sessionLabGroupName: sessGroup,
+            labGroupName: homeGroup,
+            time: data.scannedAt,
+            method: 'MANUAL',
+          });
+          showToast(`Cross-Group Recorded: ${data.studentName} (Group ${homeGroup} -> Group ${sessGroup})`, 'warning');
+        } else if (data.result === 'SUCCESS') {
           setLastScanResult({
             type: 'SUCCESS',
             title: 'Manual Attendance Recorded',
@@ -401,7 +462,7 @@ export default function QRScannerPage() {
         }
 
         setIsManualModalOpen(false);
-        fetchAttendanceRecords(selectedSessionId, tableSearch);
+        fetchAttendanceRecords(selectedSessionId, tableSearch, crossGroupOnly);
       }
     } catch (err) {
       showToast(err.message || 'Failed to record manual attendance', 'error');
@@ -582,7 +643,7 @@ export default function QRScannerPage() {
       )}
 
       {/* Live Counters Metric Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Expected */}
         <div className="bg-slate-900/60 border border-slate-800/80 rounded-2xl p-5 shadow-lg">
           <div className="flex items-center justify-between text-slate-400 mb-1">
@@ -595,10 +656,10 @@ export default function QRScannerPage() {
           <p className="text-[11px] text-slate-400 mt-1">Snapshot cohort assigned to lab</p>
         </div>
 
-        {/* Present */}
+        {/* Present (Expected) */}
         <div className="bg-slate-900/60 border border-emerald-900/40 rounded-2xl p-5 shadow-lg relative overflow-hidden">
           <div className="flex items-center justify-between text-emerald-400 mb-1">
-            <span className="text-xs font-semibold uppercase tracking-wider">Marked Present</span>
+            <span className="text-xs font-semibold uppercase tracking-wider">Present (Expected)</span>
             <UserCheck className="h-4 w-4 text-emerald-400" />
           </div>
           <div className="text-3xl font-extrabold text-emerald-400">
@@ -616,13 +677,25 @@ export default function QRScannerPage() {
           </div>
         </div>
 
-        {/* Remaining Unmarked */}
-        <div className="bg-slate-900/60 border border-amber-900/30 rounded-2xl p-5 shadow-lg">
+        {/* Cross-Group Visitors */}
+        <div className="bg-slate-900/60 border border-amber-900/40 rounded-2xl p-5 shadow-lg relative overflow-hidden">
           <div className="flex items-center justify-between text-amber-400 mb-1">
-            <span className="text-xs font-semibold uppercase tracking-wider">Remaining Unchecked</span>
-            <UserX className="h-4 w-4 text-amber-400" />
+            <span className="text-xs font-semibold uppercase tracking-wider">Visitors (Cross-Group)</span>
+            <Users className="h-4 w-4 text-amber-400" />
           </div>
           <div className="text-3xl font-extrabold text-amber-400">
+            {counters.visitors}
+          </div>
+          <p className="text-[11px] text-amber-300/70 mt-1">Visiting students from other groups</p>
+        </div>
+
+        {/* Remaining Unmarked */}
+        <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-5 shadow-lg">
+          <div className="flex items-center justify-between text-slate-400 mb-1">
+            <span className="text-xs font-semibold uppercase tracking-wider">Remaining Unchecked</span>
+            <UserX className="h-4 w-4 text-slate-400" />
+          </div>
+          <div className="text-3xl font-extrabold text-slate-200">
             {counters.remaining}
           </div>
           <p className="text-[11px] text-slate-400 mt-1">Pending scan (not yet finalized)</p>
@@ -759,6 +832,42 @@ export default function QRScannerPage() {
               </div>
             )}
 
+            {lastScanResult && lastScanResult.type === 'CROSS_GROUP_MARKED' && (
+              <div className="p-4 bg-amber-950/40 border border-amber-500/60 rounded-xl space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-amber-400 font-bold text-sm">
+                    <CheckCircle2 className="h-5 w-5 shrink-0" />
+                    <span>{lastScanResult.title}</span>
+                  </div>
+                  <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-amber-500/20 text-amber-300">
+                    {lastScanResult.method}
+                  </span>
+                </div>
+                {lastScanResult.badge && (
+                  <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-amber-500/20 border border-amber-500/40 text-amber-300 text-xs font-semibold">
+                    <span>{lastScanResult.badge}</span>
+                  </div>
+                )}
+                <div className="flex items-center justify-between">
+                  <div className="text-lg font-bold text-white">
+                    {lastScanResult.studentName}
+                  </div>
+                  <span className="font-mono text-xs font-bold text-amber-300 bg-amber-950/70 border border-amber-700/60 px-2.5 py-0.5 rounded-full">
+                    Own: Group {lastScanResult.homeLabGroupName || lastScanResult.labGroupName || '—'}
+                  </span>
+                </div>
+                <p className="text-xs text-amber-200/90">
+                  {lastScanResult.message}
+                </p>
+                <div className="flex items-center justify-between text-xs text-amber-200">
+                  <span className="font-mono bg-amber-900/50 px-2 py-0.5 rounded border border-amber-800/50">
+                    {lastScanResult.studentId}
+                  </span>
+                  <span>{new Date(lastScanResult.time).toLocaleTimeString()}</span>
+                </div>
+              </div>
+            )}
+
             {lastScanResult && lastScanResult.type === 'ALREADY_MARKED' && (
               <div className="p-4 bg-amber-950/40 border border-amber-500/50 rounded-xl space-y-2">
                 <div className="flex items-center justify-between">
@@ -770,13 +879,18 @@ export default function QRScannerPage() {
                     DUPLICATE
                   </span>
                 </div>
+                {lastScanResult.badge && (
+                  <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] font-semibold bg-amber-500/20 border border-amber-500/40 text-amber-300">
+                    <span>{lastScanResult.badge}</span>
+                  </div>
+                )}
                 <div className="flex items-center justify-between">
                   <div className="text-lg font-bold text-white">
                     {lastScanResult.studentName}
                   </div>
-                  {lastScanResult.labGroupName ? (
+                  {lastScanResult.homeLabGroupName || lastScanResult.labGroupName ? (
                     <span className="font-mono text-xs font-bold text-indigo-300 bg-indigo-950/70 border border-indigo-700/60 px-2.5 py-0.5 rounded-full">
-                      Group {lastScanResult.labGroupName}
+                      Group {lastScanResult.homeLabGroupName || lastScanResult.labGroupName}
                     </span>
                   ) : (
                     <span className="text-xs text-slate-400">No Group</span>
@@ -819,7 +933,20 @@ export default function QRScannerPage() {
                 <p className="text-xs text-slate-400">Real-time check-in records for this laboratory session</p>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                {/* Cross-Group Only Filter Toggle */}
+                <button
+                  onClick={() => setCrossGroupOnly(!crossGroupOnly)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition ${
+                    crossGroupOnly
+                      ? 'bg-amber-500 text-slate-950 border-amber-400 font-bold shadow-sm'
+                      : 'bg-slate-950 hover:bg-slate-800 text-slate-300 border-slate-800'
+                  }`}
+                  title="Filter to show only cross-group attendees"
+                >
+                  Cross-group only
+                </button>
+
                 {/* Search */}
                 <div className="relative">
                   <Search className="h-3.5 w-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -828,13 +955,13 @@ export default function QRScannerPage() {
                     value={tableSearch}
                     onChange={(e) => setTableSearch(e.target.value)}
                     placeholder="Search attendee..."
-                    className="pl-8 pr-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-teal-500 w-44"
+                    className="pl-8 pr-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-teal-500 w-36 sm:w-44"
                   />
                 </div>
 
                 {/* Refresh */}
                 <button
-                  onClick={() => fetchAttendanceRecords(selectedSessionId, tableSearch)}
+                  onClick={() => fetchAttendanceRecords(selectedSessionId, tableSearch, crossGroupOnly)}
                   className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition"
                   title="Refresh attendance records"
                 >
@@ -850,6 +977,7 @@ export default function QRScannerPage() {
                   <tr>
                     <th className="py-3 px-4">Student ID</th>
                     <th className="py-3 px-4">Student Name</th>
+                    <th className="py-3 px-4">Group</th>
                     <th className="py-3 px-4">Method</th>
                     <th className="py-3 px-4">Checked In At</th>
                     <th className="py-3 px-4">Notes</th>
@@ -858,7 +986,7 @@ export default function QRScannerPage() {
                 <tbody className="divide-y divide-slate-800/60 bg-slate-900/40">
                   {attendanceRecords.length === 0 ? (
                     <tr>
-                      <td colSpan="5" className="py-8 text-center text-slate-500">
+                      <td colSpan="6" className="py-8 text-center text-slate-500">
                         {loadingRecords ? 'Loading attendance stream...' : 'No attendance recorded for this session yet.'}
                       </td>
                     </tr>
@@ -870,6 +998,18 @@ export default function QRScannerPage() {
                         </td>
                         <td className="py-3 px-4 font-medium text-slate-200">
                           {rec.studentName}
+                        </td>
+                        <td className="py-3 px-4">
+                          {rec.isCrossGroup ? (
+                            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-950 text-amber-300 border border-amber-700/60 inline-flex items-center gap-1">
+                              <span>Cross-Group</span>
+                              <span className="text-amber-400 font-normal">({rec.homeLabGroupName ? `Group ${rec.homeLabGroupName}` : 'Other'})</span>
+                            </span>
+                          ) : (
+                            <span className="text-slate-300 font-mono text-[11px]">
+                              {rec.homeLabGroupName || rec.labGroupName || (session?.labGroupName ? `Group ${session.labGroupName}` : 'Whole Batch')}
+                            </span>
+                          )}
                         </td>
                         <td className="py-3 px-4">
                           <span
@@ -886,7 +1026,7 @@ export default function QRScannerPage() {
                           {rec.markedAt ? new Date(rec.markedAt).toLocaleTimeString() : '—'}
                         </td>
                         <td className="py-3 px-4 text-slate-400 truncate max-w-xs text-[11px]">
-                          {rec.justificationNotes || '—'}
+                          {rec.justificationNotes || rec.crossGroupNote || '—'}
                         </td>
                       </tr>
                     ))
@@ -901,6 +1041,7 @@ export default function QRScannerPage() {
           </div>
         </div>
       </div>
+
 
       {/* Manual Attendance Modal */}
       <Modal

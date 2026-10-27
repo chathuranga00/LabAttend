@@ -32,6 +32,7 @@ public class AdminAttendanceController {
             @RequestParam(required = false) AttendanceStatus status,
             @RequestParam(required = false) AttendanceMethod method,
             @RequestParam(required = false) Boolean isCorrected,
+            @RequestParam(required = false) Boolean isCrossGroup,
             @RequestParam(required = false) String search,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size,
@@ -40,7 +41,7 @@ public class AdminAttendanceController {
             @AuthenticationPrincipal CustomUserDetails userDetails
     ) {
         PageResponse<AttendanceRecordResponse> result = attendanceService.searchAttendanceRecords(
-                userDetails.getId(), sessionId, studentId, status, method, isCorrected, search, page, size, sortBy, sortDir, true
+                userDetails.getId(), sessionId, studentId, status, method, isCorrected, isCrossGroup, search, page, size, sortBy, sortDir, true
         );
         return ResponseEntity.ok(ApiResponse.success(result));
     }

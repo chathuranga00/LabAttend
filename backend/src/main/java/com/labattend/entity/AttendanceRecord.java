@@ -60,4 +60,15 @@ public class AttendanceRecord extends BaseEntity {
     @Enumerated(EnumType.STRING)
     @Column(name = "previous_status", length = 20)
     private AttendanceStatus previousStatus;
+
+    @Builder.Default
+    @Column(name = "is_cross_group", nullable = false)
+    private Boolean isCrossGroup = false;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "home_lab_group_id")
+    private LabGroup homeLabGroup;
+
+    @Column(name = "cross_group_note", columnDefinition = "TEXT")
+    private String crossGroupNote;
 }

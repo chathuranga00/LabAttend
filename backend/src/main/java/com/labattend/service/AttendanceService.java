@@ -83,13 +83,7 @@ public class AttendanceService {
         Student student = resolveStudent(rawIdentifier)
                 .orElseThrow(() -> new BadRequestException("Invalid QR Code — Student Not Found"));
 
-        // 4. Check student is in session_students expected list
-        boolean isAssigned = sessionStudentRepository.existsBySessionIdAndStudentId(session.getId(), student.getId());
-        if (!isAssigned) {
-            throw new BadRequestException("Student Is Not Assigned to This Session");
-        }
-
-        // 5. If a PRESENT record already exists -> return "Already Marked Present"
+        // 4. Duplicate check FIRST
         Optional<AttendanceRecord> existingOpt = attendanceRecordRepository.findBySessionIdAndStudentId(session.getId(), student.getId());
         if (existingOpt.isPresent() && (existingOpt.get().getStatus() == AttendanceStatus.PRESENT || existingOpt.get().getStatus() == AttendanceStatus.LATE)) {
             AttendanceRecord existing = existingOpt.get();
@@ -100,12 +94,63 @@ public class AttendanceService {
                     student,
                     existing.getMarkedAt(),
                     existing.getStatus(),
-                    existing.getMethod()
+                    existing.getMethod(),
+                    Boolean.TRUE.equals(existing.getIsCrossGroup())
             );
         }
 
-        // 6. Otherwise insert PRESENT, method QR_SCAN, scanned_at, recorded_by_user_id
+        // 5. Determine if student is in expected list or cross-group
+        Optional<SessionStudent> sessionStudentOpt = sessionStudentRepository.findBySessionIdAndStudentId(session.getId(), student.getId());
+        boolean isExpected = sessionStudentOpt.isPresent()
+                ? Boolean.TRUE.equals(sessionStudentOpt.get().getIsExpected())
+                : sessionStudentRepository.existsBySessionIdAndStudentId(session.getId(), student.getId());
+
+        boolean isCrossGroup = false;
+        LabGroup homeLabGroup = null;
+
+        if (isExpected) {
+            isCrossGroup = false;
+        } else {
+            // Not in expected list
+            // Verify student is in the same batch
+            if (student.getBatch() == null || session.getBatch() == null ||
+                !student.getBatch().getId().equals(session.getBatch().getId())) {
+                throw new BadRequestException("Student Is Not Assigned to This Session");
+            }
+
+            // Cross-group only applies to group sessions
+            if (session.getLabGroup() == null) {
+                throw new BadRequestException("Student Is Not Assigned to This Session");
+            }
+
+            if (student.getLabGroup() != null && student.getLabGroup().getId().equals(session.getLabGroup().getId())) {
+                isCrossGroup = false;
+            } else {
+                isCrossGroup = true;
+                homeLabGroup = student.getLabGroup();
+            }
+
+            // Register visitor in session_students with is_expected = false so visitors are kept as extra rows
+            if (sessionStudentOpt.isEmpty()) {
+                SessionStudent visitor = SessionStudent.builder()
+                        .session(session)
+                        .student(student)
+                        .homeLabGroup(homeLabGroup)
+                        .isExpected(!isCrossGroup)
+                        .build();
+                try {
+                    sessionStudentRepository.save(visitor);
+                } catch (DataIntegrityViolationException ignored) {
+                    // Handled if concurrent insert occurred
+                }
+            }
+        }
+
+        // 6. Insert attendance record
         OffsetDateTime now = OffsetDateTime.now();
+        String homeGroupName = homeLabGroup != null ? homeLabGroup.getGroupName() : (student.getLabGroup() != null ? student.getLabGroup().getGroupName() : "Unknown");
+        String sessionGroupName = session.getLabGroup() != null ? session.getLabGroup().getGroupName() : "Whole Batch";
+
         AttendanceRecord record = AttendanceRecord.builder()
                 .session(session)
                 .student(student)
@@ -113,26 +158,58 @@ public class AttendanceService {
                 .method(AttendanceMethod.QR_SCAN)
                 .markedAt(now)
                 .markedBy(user)
+                .isCrossGroup(isCrossGroup)
+                .homeLabGroup(homeLabGroup)
+                .crossGroupNote(isCrossGroup ? String.format("Cross-group QR scan from %s to %s", homeGroupName, sessionGroupName) : null)
                 .build();
 
         try {
             attendanceRecordRepository.saveAndFlush(record);
+
+            // Audit log for cross-group attendance
+            if (isCrossGroup) {
+                Map<String, Object> auditValues = new HashMap<>();
+                auditValues.put("sessionId", session.getId().toString());
+                auditValues.put("sessionCode", session.getSessionCode());
+                auditValues.put("studentId", student.getStudentId());
+                auditValues.put("studentName", student.getFullName());
+                auditValues.put("homeLabGroup", homeGroupName);
+                auditValues.put("sessionLabGroup", sessionGroupName);
+                auditValues.put("method", "QR_SCAN");
+                auditValues.put("isCrossGroup", true);
+
+                auditLogService.logAction(
+                        "ATTENDANCE_RECORD",
+                        record.getId(),
+                        "CROSS_GROUP_ATTENDANCE",
+                        null,
+                        auditValues
+                );
+            }
+
+            String result = isCrossGroup ? "CROSS_GROUP_MARKED" : "SUCCESS";
+            String message = isCrossGroup
+                    ? String.format("Attendance marked. Student belongs to Group %s (this session is Group %s).", homeGroupName, sessionGroupName)
+                    : "Attendance Recorded Successfully";
+
             return buildScanResponse(
-                    "SUCCESS",
-                    "Attendance Recorded Successfully",
+                    result,
+                    message,
                     session,
                     student,
                     record.getMarkedAt(),
                     record.getStatus(),
-                    record.getMethod()
+                    record.getMethod(),
+                    isCrossGroup
             );
         } catch (DataIntegrityViolationException ex) {
-            // Unique constraint violation due to concurrent scan
+            // Concurrent duplicate scan
             AttendanceRecord existing = attendanceRecordRepository.findBySessionIdAndStudentId(session.getId(), student.getId())
                     .orElse(null);
             OffsetDateTime existingTime = existing != null ? existing.getMarkedAt() : now;
             AttendanceStatus status = existing != null ? existing.getStatus() : AttendanceStatus.PRESENT;
             AttendanceMethod method = existing != null ? existing.getMethod() : AttendanceMethod.QR_SCAN;
+            boolean existingCrossGroup = existing != null && Boolean.TRUE.equals(existing.getIsCrossGroup());
 
             return buildScanResponse(
                     "ALREADY_MARKED",
@@ -141,7 +218,8 @@ public class AttendanceService {
                     student,
                     existingTime,
                     status,
-                    method
+                    method,
+                    existingCrossGroup
             );
         }
     }
@@ -177,13 +255,7 @@ public class AttendanceService {
             throw new BadRequestException("Student ID or identifier must be provided");
         }
 
-        // 4. Check eligibility in session_students
-        boolean isAssigned = sessionStudentRepository.existsBySessionIdAndStudentId(session.getId(), student.getId());
-        if (!isAssigned) {
-            throw new BadRequestException("Student Is Not Assigned to This Session");
-        }
-
-        // 5. Check if already marked present
+        // 4. Duplicate check
         Optional<AttendanceRecord> existingOpt = attendanceRecordRepository.findBySessionIdAndStudentId(session.getId(), student.getId());
         if (existingOpt.isPresent() && (existingOpt.get().getStatus() == AttendanceStatus.PRESENT || existingOpt.get().getStatus() == AttendanceStatus.LATE)) {
             AttendanceRecord existing = existingOpt.get();
@@ -194,12 +266,59 @@ public class AttendanceService {
                     student,
                     existing.getMarkedAt(),
                     existing.getStatus(),
-                    existing.getMethod()
+                    existing.getMethod(),
+                    Boolean.TRUE.equals(existing.getIsCrossGroup())
             );
+        }
+
+        // 5. Eligibility and cross-group check
+        Optional<SessionStudent> sessionStudentOpt = sessionStudentRepository.findBySessionIdAndStudentId(session.getId(), student.getId());
+        boolean isExpected = sessionStudentOpt.isPresent()
+                ? Boolean.TRUE.equals(sessionStudentOpt.get().getIsExpected())
+                : sessionStudentRepository.existsBySessionIdAndStudentId(session.getId(), student.getId());
+
+        boolean isCrossGroup = false;
+        LabGroup homeLabGroup = null;
+
+        if (isExpected) {
+            isCrossGroup = false;
+        } else {
+            // Not in expected list
+            if (student.getBatch() == null || session.getBatch() == null ||
+                !student.getBatch().getId().equals(session.getBatch().getId())) {
+                throw new BadRequestException("Student Is Not Assigned to This Session");
+            }
+
+            if (session.getLabGroup() == null) {
+                throw new BadRequestException("Student Is Not Assigned to This Session");
+            }
+
+            if (student.getLabGroup() != null && student.getLabGroup().getId().equals(session.getLabGroup().getId())) {
+                isCrossGroup = false;
+            } else {
+                isCrossGroup = true;
+                homeLabGroup = student.getLabGroup();
+            }
+
+            if (sessionStudentOpt.isEmpty()) {
+                SessionStudent visitor = SessionStudent.builder()
+                        .session(session)
+                        .student(student)
+                        .homeLabGroup(homeLabGroup)
+                        .isExpected(!isCrossGroup)
+                        .build();
+                try {
+                    sessionStudentRepository.save(visitor);
+                } catch (DataIntegrityViolationException ignored) {
+                }
+            }
         }
 
         // 6. Insert record with method MANUAL
         OffsetDateTime now = OffsetDateTime.now();
+        String homeGroupName = homeLabGroup != null ? homeLabGroup.getGroupName() : (student.getLabGroup() != null ? student.getLabGroup().getGroupName() : "Unknown");
+        String sessionGroupName = session.getLabGroup() != null ? session.getLabGroup().getGroupName() : "Whole Batch";
+
         AttendanceRecord record = AttendanceRecord.builder()
                 .session(session)
                 .student(student)
@@ -208,6 +327,9 @@ public class AttendanceService {
                 .markedAt(now)
                 .markedBy(user)
                 .justificationNotes(request.getReason().trim())
+                .isCrossGroup(isCrossGroup)
+                .homeLabGroup(homeLabGroup)
+                .crossGroupNote(isCrossGroup ? String.format("Manual cross-group mark: %s", request.getReason().trim()) : null)
                 .build();
 
         AttendanceRecord saved = attendanceRecordRepository.saveAndFlush(record);
@@ -221,6 +343,11 @@ public class AttendanceService {
         newValues.put("status", saved.getStatus().name());
         newValues.put("method", saved.getMethod().name());
         newValues.put("reason", request.getReason().trim());
+        newValues.put("isCrossGroup", isCrossGroup);
+        if (isCrossGroup) {
+            newValues.put("homeLabGroup", homeGroupName);
+            newValues.put("sessionLabGroup", sessionGroupName);
+        }
 
         auditLogService.logAction(
                 "ATTENDANCE_RECORD",
@@ -230,14 +357,30 @@ public class AttendanceService {
                 newValues
         );
 
+        if (isCrossGroup) {
+            auditLogService.logAction(
+                    "ATTENDANCE_RECORD",
+                    saved.getId(),
+                    "CROSS_GROUP_ATTENDANCE",
+                    null,
+                    newValues
+            );
+        }
+
+        String result = isCrossGroup ? "CROSS_GROUP_MARKED" : "SUCCESS";
+        String message = isCrossGroup
+                ? String.format("Attendance marked. Student belongs to Group %s (this session is Group %s).", homeGroupName, sessionGroupName)
+                : "Manual Attendance Recorded Successfully";
+
         return buildScanResponse(
-                "SUCCESS",
-                "Manual Attendance Recorded Successfully",
+                result,
+                message,
                 session,
                 student,
                 saved.getMarkedAt(),
                 saved.getStatus(),
-                saved.getMethod()
+                saved.getMethod(),
+                isCrossGroup
         );
     }
 
@@ -246,6 +389,7 @@ public class AttendanceService {
             UUID userId,
             UUID sessionId,
             String search,
+            Boolean isCrossGroup,
             int page,
             int size
     ) {
@@ -256,7 +400,7 @@ public class AttendanceService {
         String searchTerm = (search != null && !search.isBlank()) ? "%" + search.trim().toLowerCase() + "%" : null;
 
         Page<AttendanceRecord> records = attendanceRecordRepository.searchAttendanceRecords(
-                session.getId(), null, null, null, null, searchTerm, pageable
+                session.getId(), null, null, null, null, isCrossGroup, searchTerm, pageable
         );
 
         return PageResponse.of(records.map(this::mapToAttendanceRecordResponse));
@@ -288,6 +432,7 @@ public class AttendanceService {
                     AttendanceRecord ar = attendanceMap.get(s.getId());
                     boolean isAttended = ar != null && (ar.getStatus() == AttendanceStatus.PRESENT || ar.getStatus() == AttendanceStatus.LATE);
                     com.labattend.entity.LabGroup group = ss.getHomeLabGroup() != null ? ss.getHomeLabGroup() : s.getLabGroup();
+                    boolean isCrossGroup = ar != null ? Boolean.TRUE.equals(ar.getIsCrossGroup()) : Boolean.FALSE.equals(ss.getIsExpected());
 
                     return SessionExpectedStudentResponse.builder()
                             .studentUuid(s.getId())
@@ -300,6 +445,10 @@ public class AttendanceService {
                             .attendanceStatus(ar != null ? ar.getStatus().name() : null)
                             .markedAt(ar != null ? ar.getMarkedAt() : null)
                             .method(ar != null ? ar.getMethod().name() : null)
+                            .isExpected(ss.getIsExpected() != null ? ss.getIsExpected() : true)
+                            .isCrossGroup(isCrossGroup)
+                            .homeLabGroupId(group != null ? group.getId() : null)
+                            .homeLabGroupName(group != null ? group.getGroupName() : null)
                             .build();
                 })
                 .collect(Collectors.toList());
@@ -348,14 +497,33 @@ public class AttendanceService {
             Student student,
             OffsetDateTime scannedAt,
             AttendanceStatus status,
-            AttendanceMethod method
+            AttendanceMethod method,
+            boolean isCrossGroup
     ) {
-        long totalExpected = sessionStudentRepository.countBySessionId(session.getId());
-        long attended = attendanceRecordRepository.countBySessionIdAndStatusIn(
+        long totalExpected = sessionStudentRepository.countBySessionIdAndIsExpectedTrue(session.getId());
+        if (totalExpected == 0) {
+            totalExpected = sessionStudentRepository.countBySessionId(session.getId());
+        }
+        long attended = attendanceRecordRepository.countBySessionIdAndIsCrossGroupFalseAndStatusIn(
+                session.getId(),
+                List.of(AttendanceStatus.PRESENT, AttendanceStatus.LATE)
+        );
+        if (attended == 0) {
+            attended = attendanceRecordRepository.countBySessionIdAndStatusIn(
+                    session.getId(),
+                    List.of(AttendanceStatus.PRESENT, AttendanceStatus.LATE)
+            );
+        }
+        long crossGroupCount = attendanceRecordRepository.countBySessionIdAndIsCrossGroupTrueAndStatusIn(
                 session.getId(),
                 List.of(AttendanceStatus.PRESENT, AttendanceStatus.LATE)
         );
         long remaining = Math.max(0, totalExpected - attended);
+
+        UUID homeGroupId = student.getLabGroup() != null ? student.getLabGroup().getId() : null;
+        String homeGroupName = student.getLabGroup() != null ? student.getLabGroup().getGroupName() : null;
+        UUID sessionGroupId = session.getLabGroup() != null ? session.getLabGroup().getId() : null;
+        String sessionGroupName = session.getLabGroup() != null ? session.getLabGroup().getGroupName() : null;
 
         return AttendanceScanResponse.builder()
                 .result(result)
@@ -363,13 +531,19 @@ public class AttendanceService {
                 .studentUuid(student.getId())
                 .studentId(student.getStudentId())
                 .studentName(student.getFullName())
-                .labGroupId(student.getLabGroup() != null ? student.getLabGroup().getId() : null)
-                .labGroupName(student.getLabGroup() != null ? student.getLabGroup().getGroupName() : null)
+                .labGroupId(homeGroupId)
+                .labGroupName(homeGroupName)
+                .isCrossGroup(isCrossGroup)
+                .homeLabGroupId(homeGroupId)
+                .homeLabGroupName(homeGroupName)
+                .sessionLabGroupId(sessionGroupId)
+                .sessionLabGroupName(sessionGroupName)
                 .scannedAt(scannedAt)
                 .attendanceStatus(status != null ? status.name() : "PRESENT")
                 .method(method != null ? method.name() : "QR_SCAN")
                 .totalExpected(totalExpected)
                 .attendedCount(attended)
+                .crossGroupCount(crossGroupCount)
                 .remainingCount(remaining)
                 .build();
     }
@@ -450,6 +624,7 @@ public class AttendanceService {
             AttendanceStatus status,
             AttendanceMethod method,
             Boolean isCorrected,
+            Boolean isCrossGroup,
             String search,
             int page,
             int size,
@@ -473,6 +648,7 @@ public class AttendanceService {
                 status,
                 method,
                 isCorrected,
+                isCrossGroup,
                 searchTerm,
                 pageable
         );
@@ -499,6 +675,11 @@ public class AttendanceService {
                 .sessionId(record.getSession() != null ? record.getSession().getId() : null)
                 .sessionCode(record.getSession() != null ? record.getSession().getSessionCode() : null)
                 .moduleCode(record.getSession() != null && record.getSession().getModule() != null ? record.getSession().getModule().getModuleCode() : null)
+                .isCrossGroup(record.getIsCrossGroup() != null ? record.getIsCrossGroup() : false)
+                .homeLabGroupId(record.getHomeLabGroup() != null ? record.getHomeLabGroup().getId() : null)
+                .homeLabGroupName(record.getHomeLabGroup() != null ? record.getHomeLabGroup().getGroupName() : null)
+                .sessionLabGroupName(record.getSession() != null && record.getSession().getLabGroup() != null ? record.getSession().getLabGroup().getGroupName() : null)
+                .crossGroupNote(record.getCrossGroupNote())
                 .build();
     }
 }

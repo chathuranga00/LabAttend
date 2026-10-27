@@ -352,8 +352,11 @@ public class LabSessionService {
 
         OffsetDateTime now = OffsetDateTime.now(COLOMBO_ZONE);
 
-        // Fetch expected students
-        List<SessionStudent> sessionStudents = sessionStudentRepository.findBySessionId(sessionId);
+        // Fetch only expected students (ignore cross-group visitors whose is_expected = false)
+        List<SessionStudent> expectedStudents = sessionStudentRepository.findBySessionIdAndIsExpectedTrue(sessionId);
+        if (expectedStudents == null || expectedStudents.isEmpty()) {
+            expectedStudents = sessionStudentRepository.findBySessionId(sessionId);
+        }
 
         // Fetch existing attendance records
         List<AttendanceRecord> existingRecords = attendanceRecordRepository.findBySessionId(sessionId);
@@ -361,9 +364,9 @@ public class LabSessionService {
                 .map(r -> r.getStudent().getId())
                 .collect(Collectors.toSet());
 
-        // Create ABSENT records for every expected student without an attendance record
+        // Create ABSENT records ONLY for expected students without an attendance record
         List<AttendanceRecord> absentRecordsToCreate = new ArrayList<>();
-        for (SessionStudent ss : sessionStudents) {
+        for (SessionStudent ss : expectedStudents) {
             if (!studentsWithExistingAttendance.contains(ss.getStudent().getId())) {
                 AttendanceRecord absentRecord = AttendanceRecord.builder()
                         .student(ss.getStudent())
@@ -374,6 +377,7 @@ public class LabSessionService {
                         .markedBy(user)
                         .justificationNotes("System session finalization: student was absent")
                         .isCorrected(false)
+                        .isCrossGroup(false)
                         .build();
                 absentRecordsToCreate.add(absentRecord);
             }
@@ -394,8 +398,12 @@ public class LabSessionService {
         LabSession finalizedSession = labSessionRepository.save(session);
 
         // Compute final statistics
-        long expected = sessionStudents.size();
-        long present = attendanceRecordRepository.countBySessionIdAndStatusIn(
+        long expected = expectedStudents.size();
+        long presentExpected = attendanceRecordRepository.countBySessionIdAndIsCrossGroupFalseAndStatusIn(
+                sessionId,
+                Arrays.asList(AttendanceStatus.PRESENT, AttendanceStatus.LATE)
+        );
+        long crossGroupCount = attendanceRecordRepository.countBySessionIdAndIsCrossGroupTrueAndStatusIn(
                 sessionId,
                 Arrays.asList(AttendanceStatus.PRESENT, AttendanceStatus.LATE)
         );
@@ -409,7 +417,8 @@ public class LabSessionService {
         newState.put("status", SessionStatus.FINALIZED.name());
         newState.put("finalizedAt", now.toString());
         newState.put("expected", expected);
-        newState.put("present", present);
+        newState.put("present", presentExpected);
+        newState.put("crossGroupVisitors", crossGroupCount);
         newState.put("absent", absent);
         if (request != null && request.getNotes() != null) {
             newState.put("notes", request.getNotes());
@@ -439,8 +448,21 @@ public class LabSessionService {
     }
 
     private SessionSummaryResponse buildSessionSummaryResponse(LabSession session) {
-        long expected = sessionStudentRepository.countBySessionId(session.getId());
-        long present = attendanceRecordRepository.countBySessionIdAndStatusIn(
+        long expected = sessionStudentRepository.countBySessionIdAndIsExpectedTrue(session.getId());
+        if (expected == 0) {
+            expected = sessionStudentRepository.countBySessionId(session.getId());
+        }
+        long presentExpected = attendanceRecordRepository.countBySessionIdAndIsCrossGroupFalseAndStatusIn(
+                session.getId(),
+                Arrays.asList(AttendanceStatus.PRESENT, AttendanceStatus.LATE)
+        );
+        if (presentExpected == 0) {
+            presentExpected = attendanceRecordRepository.countBySessionIdAndStatusIn(
+                    session.getId(),
+                    Arrays.asList(AttendanceStatus.PRESENT, AttendanceStatus.LATE)
+            );
+        }
+        long crossGroupCount = attendanceRecordRepository.countBySessionIdAndIsCrossGroupTrueAndStatusIn(
                 session.getId(),
                 Arrays.asList(AttendanceStatus.PRESENT, AttendanceStatus.LATE)
         );
@@ -452,13 +474,13 @@ public class LabSessionService {
             unmarked = 0;
         } else {
             // Provisional preview
-            unmarked = Math.max(0, expected - present);
+            unmarked = Math.max(0, expected - presentExpected);
             absent = unmarked;
         }
 
         String percentageStr = (expected == 0)
                 ? "N/A"
-                : String.format(Locale.US, "%.1f%%", (present * 100.0) / expected);
+                : String.format(Locale.US, "%.1f%%", (presentExpected * 100.0) / expected);
 
         return SessionSummaryResponse.builder()
                 .sessionId(session.getId())
@@ -466,6 +488,7 @@ public class LabSessionService {
                 .moduleCode(session.getModule() != null ? session.getModule().getModuleCode() : null)
                 .moduleName(session.getModule() != null ? session.getModule().getName() : null)
                 .batchName(session.getBatch() != null ? session.getBatch().getBatchCode() : null)
+                .sessionGroupName(session.getLabGroup() != null ? session.getLabGroup().getGroupName() : null)
                 .hallName(session.getHall() != null ? session.getHall().getName() : null)
                 .hallCode(session.getHall() != null ? session.getHall().getHallCode() : null)
                 .lecturerName(session.getLecturer() != null ? session.getLecturer().getFullName() : null)
@@ -478,7 +501,8 @@ public class LabSessionService {
                 .status(session.getStatus().name())
                 .isFinalized(session.getStatus() == SessionStatus.FINALIZED)
                 .expectedStudentCount(expected)
-                .presentCount(present)
+                .presentCount(presentExpected)
+                .crossGroupCount(crossGroupCount)
                 .absentCount(absent)
                 .unmarkedCount(unmarked)
                 .attendancePercentage(percentageStr)
@@ -684,7 +708,7 @@ public class LabSessionService {
     }
 
     private LabSessionResponse enrichSessionResponse(LabSession s) {
-        int expected = (int) sessionStudentRepository.countBySessionId(s.getId());
+        int expected = (int) sessionStudentRepository.countBySessionIdAndIsExpectedTrue(s.getId());
         int attended = (int) attendanceRecordRepository.countBySessionIdAndStatusIn(
                 s.getId(), Arrays.asList(AttendanceStatus.PRESENT, AttendanceStatus.LATE)
         );

@@ -143,26 +143,31 @@ For **LabAttend**, we employ the standard `Authorization: Bearer <jwt_token>` he
 
 ---
 
-## 8. Cross-Group Attendance Semantics & Visual Confirmation [Updated 2026-10]
+## 8. Cross-Group Attendance Semantics & Visual Confirmation [Updated 2026-10 - Step 14]
 
-### Academic Context & Operational Necessity
-- In university environments, students occasionally miss their scheduled lab group due to timetable conflicts, illness, or transport delays and obtain permission to attend an alternate lab group's session within the same academic batch.
+### Architectural Decisions
+1. **Cross-group visit counts for the student's home-group session: NO (recommended)**
+   - Rationale: Session-scoped attendance integrity. A student who attends Group B's lab session is recorded as a cross-group attendee in that specific session. Their attendance record stays permanently tied to that session. Their home-group session only marks students who were expected in that session, preserving accurate session-level audit trails and preventing retro-active artificial alterations of another session's roster.
+2. **Students from a different batch: Strictly Rejected**
+   - Rationale: Batch boundaries represent module cohorts. A student from Batch 2 attending a Batch 1 session cannot be verified against the module's syllabus or batch roster and is immediately rejected with HTTP 400 `"Student Is Not Assigned to This Session"`.
 
-### Architectural Decisions & Enforcement Rules
-1. **Permitted Cross-Group Check-in**:
-   - When a session is scoped to a specific lab group (e.g., Group A), and a student belonging to Group B of the **same batch** scans their QR badge, the system **accepts** the attendance.
-   - The attendance record is stored with `status = 'PRESENT'` (or `'LATE'`) and explicitly marked with `is_cross_group = true`.
-2. **Strict Batch Boundary**:
-   - If a student belonging to a **different batch**, or not enrolled in the batch associated with the session, scans their QR badge, the backend strictly rejects the scan with an error (`403 STUDENT_NOT_IN_BATCH` / "Student does not belong to this academic batch").
-3. **Real-Time Visual Confirmation in Lecturer UI**:
-   - To prevent proxy badge pass-offs and provide transparency during high-throughput lab entries, the scanner interface must immediately display:
-     - Student Full Name
-     - Student Identification Number
-     - Assigned Lab Group (e.g., `Group B`)
-     - An unmistakable **"CROSS-GROUP" alert badge** (e.g. amber/orange badge) if the student belongs to a different group than the session target.
-   - This empowers the lecturer to visually corroborate identity and approve cross-group admission on the spot.
-4. **Holistic Visibility across Reporting & Analytics**:
-   - Cross-group attendance is tracked separately in attendance statistics:
-     - Session Summary: Total scanned, regular attendees count, cross-group attendees count.
-     - Lecturer & Admin Dashboards: Filterable analytics showing cross-group migration trends.
-     - Official Exports (CSV, Excel, PDF): Dedicated column indicating the student's assigned group and a `Cross-Group: Yes/No` status indicator.
+### Database Schema (Migration V8__cross_group_attendance.sql)
+- `attendance_records`:
+  - `is_cross_group` (BOOLEAN NOT NULL DEFAULT false): Flags whether this record is a cross-group visit.
+  - `home_lab_group_id` (UUID NULL, FK to `lab_groups(id)` ON DELETE SET NULL): Captures the student's actual assigned lab group at time of visit.
+  - `cross_group_note` (TEXT NULL): Stores contextual explanation or session note.
+  - Indexed via `idx_attendance_is_cross_group` and `idx_attendance_home_group`.
+- `session_students`:
+  - `is_expected` (BOOLEAN NOT NULL DEFAULT true): Identifies whether the student was on the expected roster (`true`) or is a visiting attendee (`false`).
+  - Indexed via `idx_session_students_is_expected`.
+  - Preserves `UNIQUE(session_id, student_id)`.
+
+### Statistics Isolation & Finalization
+- **Expected Roster Isolation**: Cross-group visitors are NOT counted in the expected roster count (`countBySessionIdAndIsExpectedTrue`).
+- **Session Attendance Rate**: Attendance percentage is calculated strictly as `(Present Expected / Total Expected) * 100.0`. Cross-group visitors are reported as an independent metric (`Visitors / Cross-Group Attendees`).
+- **Finalization Invariant**:
+  - `finalizeSession` queries `sessionStudentRepository.findBySessionIdAndIsExpectedTrue(sessionId)`.
+  - Only expected students without an existing attendance record have `ABSENT` records created.
+  - Visiting students (`is_expected = false`) retain their `PRESENT` attendance record and are never converted to absent.
+- **Audit Logging**:
+  - Every cross-group check-in (via QR scan or manual entry) is written to `audit_logs` with action `"CROSS_GROUP_ATTENDANCE"`.

@@ -49,4 +49,14 @@ public class AttendanceRecordResponse {
     private String sessionCode;
 
     private String moduleCode;
+
+    private Boolean isCrossGroup;
+
+    private UUID homeLabGroupId;
+
+    private String homeLabGroupName;
+
+    private String sessionLabGroupName;
+
+    private String crossGroupNote;
 }

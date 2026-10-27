@@ -19,12 +19,16 @@ public interface AttendanceRecordRepository extends JpaRepository<AttendanceReco
     long countBySessionId(UUID sessionId);
     long countBySessionIdAndStatus(UUID sessionId, AttendanceStatus status);
     long countBySessionIdAndStatusIn(UUID sessionId, java.util.Collection<AttendanceStatus> statuses);
+    long countBySessionIdAndIsCrossGroupFalseAndStatusIn(UUID sessionId, java.util.Collection<AttendanceStatus> statuses);
+    long countBySessionIdAndIsCrossGroupTrueAndStatusIn(UUID sessionId, java.util.Collection<AttendanceStatus> statuses);
+    long countBySessionIdAndIsCrossGroupTrue(UUID sessionId);
 
     @org.springframework.data.jpa.repository.Query(
         value = "SELECT a FROM AttendanceRecord a " +
                 "JOIN FETCH a.student s " +
                 "JOIN FETCH a.session ses " +
                 "LEFT JOIN FETCH ses.module m " +
+                "LEFT JOIN FETCH a.homeLabGroup hlg " +
                 "LEFT JOIN FETCH a.markedBy u " +
                 "LEFT JOIN FETCH a.correctedBy cu " +
                 "WHERE (cast(:sessionId as string) IS NULL OR ses.id = :sessionId) AND " +
@@ -32,6 +36,7 @@ public interface AttendanceRecordRepository extends JpaRepository<AttendanceReco
                 "(cast(:status as string) IS NULL OR a.status = :status) AND " +
                 "(cast(:method as string) IS NULL OR a.method = :method) AND " +
                 "(:isCorrected IS NULL OR a.isCorrected = :isCorrected) AND " +
+                "(:isCrossGroup IS NULL OR a.isCrossGroup = :isCrossGroup) AND " +
                 "(:search IS NULL OR LOWER(s.studentId) LIKE :search OR " +
                 "LOWER(s.fullName) LIKE :search OR " +
                 "LOWER(ses.sessionCode) LIKE :search)",
@@ -41,6 +46,7 @@ public interface AttendanceRecordRepository extends JpaRepository<AttendanceReco
                      "(cast(:status as string) IS NULL OR a.status = :status) AND " +
                      "(cast(:method as string) IS NULL OR a.method = :method) AND " +
                      "(:isCorrected IS NULL OR a.isCorrected = :isCorrected) AND " +
+                     "(:isCrossGroup IS NULL OR a.isCrossGroup = :isCrossGroup) AND " +
                      "(:search IS NULL OR LOWER(a.student.studentId) LIKE :search OR " +
                      "LOWER(a.student.fullName) LIKE :search OR " +
                      "LOWER(a.session.sessionCode) LIKE :search)"
@@ -51,6 +57,7 @@ public interface AttendanceRecordRepository extends JpaRepository<AttendanceReco
             @org.springframework.data.repository.query.Param("status") AttendanceStatus status,
             @org.springframework.data.repository.query.Param("method") com.labattend.entity.enums.AttendanceMethod method,
             @org.springframework.data.repository.query.Param("isCorrected") Boolean isCorrected,
+            @org.springframework.data.repository.query.Param("isCrossGroup") Boolean isCrossGroup,
             @org.springframework.data.repository.query.Param("search") String search,
             org.springframework.data.domain.Pageable pageable
     );

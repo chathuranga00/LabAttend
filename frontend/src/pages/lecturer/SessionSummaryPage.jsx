@@ -95,6 +95,8 @@ export default function SessionSummaryPage() {
       if (statusFilter !== 'ALL') {
         if (statusFilter === 'CORRECTED') {
           params.isCorrected = true;
+        } else if (statusFilter === 'CROSS_GROUP') {
+          params.isCrossGroup = true;
         } else {
           params.status = statusFilter;
         }
@@ -218,7 +220,16 @@ export default function SessionSummaryPage() {
               <div className="flex flex-wrap items-center gap-4 mt-4 text-xs text-slate-300">
                 <span className="flex items-center gap-1.5 bg-slate-950/60 px-3 py-1.5 rounded-xl border border-slate-800">
                   <Users className="h-3.5 w-3.5 text-teal-400" />
-                  <span>Batch: <strong className="text-white">{summary.batchName}</strong></span>
+                  <span>Cohort: <strong className="text-white">{summary.batchName}</strong></span>
+                  {summary.sessionGroupName ? (
+                    <span className="ml-1.5 px-2 py-0.5 rounded text-[11px] font-semibold bg-indigo-950 border border-indigo-700 text-indigo-300">
+                      Group {summary.sessionGroupName}
+                    </span>
+                  ) : (
+                    <span className="ml-1.5 px-2 py-0.5 rounded text-[11px] font-medium bg-slate-700 text-slate-300">
+                      Whole Batch
+                    </span>
+                  )}
                 </span>
                 <span className="flex items-center gap-1.5 bg-slate-950/60 px-3 py-1.5 rounded-xl border border-slate-800">
                   <Building className="h-3.5 w-3.5 text-cyan-400" />
@@ -254,7 +265,7 @@ export default function SessionSummaryPage() {
 
       {/* Summary Metric Cards */}
       {summary && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
           {/* Expected Roster */}
           <div className="bg-slate-900/70 border border-slate-800/80 rounded-2xl p-5 shadow-lg">
             <div className="flex items-center justify-between text-slate-400 mb-1">
@@ -264,7 +275,7 @@ export default function SessionSummaryPage() {
             <div className="text-3xl font-black text-white">
               {summary.expectedStudentCount}
             </div>
-            <p className="text-[11px] text-slate-400 mt-1">Total assigned to session cohort</p>
+            <p className="text-[11px] text-slate-400 mt-1">Cohort assigned to session</p>
           </div>
 
           {/* Marked Present */}
@@ -276,7 +287,19 @@ export default function SessionSummaryPage() {
             <div className="text-3xl font-black text-emerald-400">
               {summary.presentCount}
             </div>
-            <p className="text-[11px] text-slate-400 mt-1">Verified present via badge / manual</p>
+            <p className="text-[11px] text-slate-400 mt-1">Expected students present</p>
+          </div>
+
+          {/* Cross-Group Visitors */}
+          <div className="bg-slate-900/70 border border-amber-900/40 rounded-2xl p-5 shadow-lg relative overflow-hidden">
+            <div className="flex items-center justify-between text-amber-400 mb-1">
+              <span className="text-xs font-semibold uppercase tracking-wider">Visitors</span>
+              <Users className="h-4 w-4 text-amber-400" />
+            </div>
+            <div className="text-3xl font-black text-amber-400">
+              {summary.crossGroupCount || 0}
+            </div>
+            <p className="text-[11px] text-amber-300/70 mt-1">Cross-group attendee visits</p>
           </div>
 
           {/* Absent Count */}
@@ -288,13 +311,13 @@ export default function SessionSummaryPage() {
             <div className="text-3xl font-black text-rose-400">
               {summary.absentCount}
             </div>
-            <p className="text-[11px] text-slate-400 mt-1">Unmarked students at finalization</p>
+            <p className="text-[11px] text-slate-400 mt-1">Unmarked expected students</p>
           </div>
 
           {/* Attendance Percentage */}
           <div className="bg-slate-900/70 border border-teal-900/40 rounded-2xl p-5 shadow-lg relative overflow-hidden">
             <div className="flex items-center justify-between text-teal-400 mb-1">
-              <span className="text-xs font-semibold uppercase tracking-wider">Attendance Percentage</span>
+              <span className="text-xs font-semibold uppercase tracking-wider">Attendance Rate</span>
               <Percent className="h-4 w-4 text-teal-400" />
             </div>
             <div className="text-3xl font-black text-teal-300">
@@ -344,7 +367,7 @@ export default function SessionSummaryPage() {
 
             {/* Status Filter Dropdown / Tabs */}
             <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800">
-              {['ALL', 'PRESENT', 'ABSENT', 'LATE', 'CORRECTED'].map((st) => (
+              {['ALL', 'PRESENT', 'ABSENT', 'LATE', 'CROSS_GROUP', 'CORRECTED'].map((st) => (
                 <button
                   key={st}
                   onClick={() => {
@@ -357,7 +380,7 @@ export default function SessionSummaryPage() {
                       : 'text-slate-400 hover:text-slate-200'
                   }`}
                 >
-                  {st}
+                  {st === 'CROSS_GROUP' ? 'VISITORS' : st}
                 </button>
               ))}
             </div>
@@ -371,6 +394,7 @@ export default function SessionSummaryPage() {
               <tr className="border-b border-slate-800 bg-slate-950/60 text-slate-400 text-[11px] font-semibold uppercase tracking-wider">
                 <th className="py-3.5 px-4">Student ID</th>
                 <th className="py-3.5 px-4">Student Name</th>
+                <th className="py-3.5 px-4">Group</th>
                 <th className="py-3.5 px-4">Status</th>
                 <th className="py-3.5 px-4">Method</th>
                 <th className="py-3.5 px-4">Marked At</th>
@@ -381,14 +405,14 @@ export default function SessionSummaryPage() {
             <tbody className="divide-y divide-slate-800/60 text-xs">
               {loadingRecords ? (
                 <tr>
-                  <td colSpan={7} className="py-12 text-center text-slate-400">
+                  <td colSpan={8} className="py-12 text-center text-slate-400">
                     <RefreshCw className="h-6 w-6 animate-spin mx-auto text-teal-400 mb-2" />
                     <span>Loading attendance records...</span>
                   </td>
                 </tr>
               ) : records.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="py-12 text-center text-slate-500">
+                  <td colSpan={8} className="py-12 text-center text-slate-500">
                     <AlertCircle className="h-6 w-6 mx-auto mb-2 text-slate-600" />
                     <span>No attendance records found matching filters.</span>
                   </td>
@@ -401,6 +425,18 @@ export default function SessionSummaryPage() {
                     </td>
                     <td className="py-3.5 px-4 font-medium text-slate-200">
                       {r.studentName}
+                    </td>
+                    <td className="py-3.5 px-4">
+                      {r.isCrossGroup ? (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded text-[11px] font-bold bg-amber-500/10 text-amber-300 border border-amber-500/30">
+                          <span>Cross-Group</span>
+                          <span className="font-normal text-amber-400/80">({r.homeLabGroupName ? `Group ${r.homeLabGroupName}` : 'Other'})</span>
+                        </span>
+                      ) : (
+                        <span className="text-slate-300 font-mono text-[11px]">
+                          {r.homeLabGroupName || (summary?.sessionGroupName ? `Group ${summary.sessionGroupName}` : 'Batch')}
+                        </span>
+                      )}
                     </td>
                     <td className="py-3.5 px-4">
                       <span
