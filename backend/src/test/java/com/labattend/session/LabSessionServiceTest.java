@@ -37,6 +37,8 @@ public class LabSessionServiceTest {
     @Mock
     private BatchRepository batchRepository;
     @Mock
+    private com.labattend.repository.LabGroupRepository labGroupRepository;
+    @Mock
     private LaboratoryHallRepository laboratoryHallRepository;
     @Mock
     private LecturerModuleAssignmentRepository lecturerModuleAssignmentRepository;
@@ -67,6 +69,7 @@ public class LabSessionServiceTest {
                 lecturerRepository,
                 moduleRepository,
                 batchRepository,
+                labGroupRepository,
                 laboratoryHallRepository,
                 lecturerModuleAssignmentRepository,
                 studentRepository,
@@ -140,7 +143,7 @@ public class LabSessionServiceTest {
         when(batchRepository.findById(batch.getId())).thenReturn(Optional.of(batch));
         when(laboratoryHallRepository.findById(hall.getId())).thenReturn(Optional.of(hall));
 
-        when(lecturerModuleAssignmentRepository.isLecturerAssignedToModuleAndBatch(lecturerId, module.getId(), batch.getId()))
+        when(lecturerModuleAssignmentRepository.isLecturerAssignedToModuleBatchAndGroup(lecturerId, module.getId(), batch.getId(), null))
                 .thenReturn(true);
 
         when(labSessionRepository.findConflictingHallSessions(hall.getId(), date, start, end, null))
@@ -199,7 +202,7 @@ public class LabSessionServiceTest {
         when(batchRepository.findById(batch.getId())).thenReturn(Optional.of(batch));
         when(laboratoryHallRepository.findById(hall.getId())).thenReturn(Optional.of(hall));
 
-        when(lecturerModuleAssignmentRepository.isLecturerAssignedToModuleAndBatch(lecturerId, module.getId(), batch.getId()))
+        when(lecturerModuleAssignmentRepository.isLecturerAssignedToModuleBatchAndGroup(lecturerId, module.getId(), batch.getId(), null))
                 .thenReturn(true);
 
         LabSession conflictingSession = LabSession.builder()

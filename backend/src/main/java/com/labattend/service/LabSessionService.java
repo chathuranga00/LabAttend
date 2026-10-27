@@ -41,6 +41,7 @@ public class LabSessionService {
     private final LecturerRepository lecturerRepository;
     private final ModuleRepository moduleRepository;
     private final BatchRepository batchRepository;
+    private final LabGroupRepository labGroupRepository;
     private final LaboratoryHallRepository laboratoryHallRepository;
     private final LecturerModuleAssignmentRepository lecturerModuleAssignmentRepository;
     private final StudentRepository studentRepository;
@@ -56,6 +57,7 @@ public class LabSessionService {
                              LecturerRepository lecturerRepository,
                              ModuleRepository moduleRepository,
                              BatchRepository batchRepository,
+                             LabGroupRepository labGroupRepository,
                              LaboratoryHallRepository laboratoryHallRepository,
                              LecturerModuleAssignmentRepository lecturerModuleAssignmentRepository,
                              StudentRepository studentRepository,
@@ -67,6 +69,7 @@ public class LabSessionService {
         this.lecturerRepository = lecturerRepository;
         this.moduleRepository = moduleRepository;
         this.batchRepository = batchRepository;
+        this.labGroupRepository = labGroupRepository;
         this.laboratoryHallRepository = laboratoryHallRepository;
         this.lecturerModuleAssignmentRepository = lecturerModuleAssignmentRepository;
         this.studentRepository = studentRepository;
@@ -96,15 +99,37 @@ public class LabSessionService {
             throw new BadRequestException("Selected laboratory hall is inactive: " + hall.getHallCode());
         }
 
-        // 2. Validate module and batch are assigned to THIS lecturer
-        boolean isAssigned = lecturerModuleAssignmentRepository.isLecturerAssignedToModuleAndBatch(
-                lecturer.getId(), module.getId(), batch.getId()
-        );
-        if (!isAssigned) {
-            throw new BadRequestException(String.format(
-                    "Module '%s' and Batch '%s' are not assigned to this lecturer",
-                    module.getModuleCode(), batch.getBatchCode()
-            ));
+        // 2. Validate lab group (if specified) and lecturer assignment
+        LabGroup labGroup = null;
+        if (request.getLabGroupId() != null) {
+            labGroup = labGroupRepository.findById(request.getLabGroupId())
+                    .orElseThrow(() -> new ResourceNotFoundException("LabGroup", "id", request.getLabGroupId()));
+            if (!labGroup.getBatch().getId().equals(batch.getId())) {
+                throw new BadRequestException(String.format(
+                        "Lab group '%s' does not belong to batch '%s'",
+                        labGroup.getGroupName(), batch.getBatchCode()
+                ));
+            }
+            boolean isAssigned = lecturerModuleAssignmentRepository.isLecturerAssignedToModuleBatchAndGroup(
+                    lecturer.getId(), module.getId(), batch.getId(), labGroup.getId()
+            );
+            if (!isAssigned) {
+                throw new BadRequestException(String.format(
+                        "You are not assigned to conduct sessions for Module '%s', Batch '%s', and Lab Group '%s'",
+                        module.getModuleCode(), batch.getBatchCode(), labGroup.getGroupName()
+                ));
+            }
+        } else {
+            // Whole batch session requested
+            boolean isAssigned = lecturerModuleAssignmentRepository.isLecturerAssignedToModuleBatchAndGroup(
+                    lecturer.getId(), module.getId(), batch.getId(), null
+            );
+            if (!isAssigned) {
+                throw new BadRequestException(String.format(
+                        "You are not assigned to conduct whole-batch sessions for Module '%s' and Batch '%s'",
+                        module.getModuleCode(), batch.getBatchCode()
+                ));
+            }
         }
 
         // 3. Time zone and time validation (Asia/Colombo)
@@ -117,7 +142,8 @@ public class LabSessionService {
             throw new BadRequestException("End time must be strictly after start time");
         }
 
-        // 4. Conflicting session checks (same hall overlap OR same lecturer overlap)
+        // 4. Conflicting session checks
+        // Hall conflict
         List<LabSession> hallConflicts = labSessionRepository.findConflictingHallSessions(
                 hall.getId(), request.getSessionDate(), request.getStartTime(), request.getEndTime(), null
         );
@@ -129,6 +155,7 @@ public class LabSessionService {
             ));
         }
 
+        // Lecturer schedule conflict
         List<LabSession> lecturerConflicts = labSessionRepository.findConflictingLecturerSessions(
                 lecturer.getId(), request.getSessionDate(), request.getStartTime(), request.getEndTime(), null
         );
@@ -140,6 +167,20 @@ public class LabSessionService {
             ));
         }
 
+        // Batch or Group schedule conflict
+        List<LabSession> batchConflicts = labSessionRepository.findConflictingBatchOrGroupSessions(
+                batch.getId(), labGroup != null ? labGroup.getId() : null,
+                request.getSessionDate(), request.getStartTime(), request.getEndTime(), null
+        );
+        if (!batchConflicts.isEmpty()) {
+            LabSession conflict = batchConflicts.get(0);
+            String scope = conflict.getLabGroup() != null ? "Group " + conflict.getLabGroup().getGroupName() : "Whole Batch";
+            throw new BadRequestException(String.format(
+                    "Schedule conflict: Batch '%s' (%s) already has session '%s' scheduled from %s to %s",
+                    batch.getBatchCode(), scope, conflict.getSessionCode(), conflict.getStartTime(), conflict.getEndTime()
+            ));
+        }
+
         // 5. Generate unique session_code
         String sessionCode = generateUniqueSessionCode(module.getModuleCode(), request.getSessionDate());
 
@@ -148,6 +189,7 @@ public class LabSessionService {
                 .sessionCode(sessionCode)
                 .module(module)
                 .batch(batch)
+                .labGroup(labGroup)
                 .lecturer(lecturer)
                 .hall(hall)
                 .sessionDate(request.getSessionDate())
@@ -158,13 +200,21 @@ public class LabSessionService {
 
         LabSession savedSession = labSessionRepository.save(session);
 
-        // 7. Build session_students expected list from selected batch's active enrolled students
-        List<Student> enrolledStudents = studentRepository.findByBatchIdAndIsActiveTrue(batch.getId());
+        // 7. Build session_students expected list:
+        // When lab_group_id is set, only active students in that group; otherwise whole batch active students.
+        List<Student> enrolledStudents;
+        if (labGroup != null) {
+            enrolledStudents = studentRepository.findByBatchIdAndLabGroupIdAndIsActiveTrue(batch.getId(), labGroup.getId());
+        } else {
+            enrolledStudents = studentRepository.findByBatchIdAndIsActiveTrue(batch.getId());
+        }
+
         List<SessionStudent> sessionStudentList = new ArrayList<>();
         for (Student student : enrolledStudents) {
             sessionStudentList.add(SessionStudent.builder()
                     .session(savedSession)
                     .student(student)
+                    .homeLabGroup(student.getLabGroup())
                     .build());
         }
         sessionStudentRepository.saveAll(sessionStudentList);
@@ -182,7 +232,7 @@ public class LabSessionService {
     // =========================================================================
     @Transactional(readOnly = true)
     public PageResponse<LabSessionResponse> getLecturerSessions(
-            UUID userId, SessionStatus status, UUID moduleId, UUID batchId,
+            UUID userId, SessionStatus status, UUID moduleId, UUID batchId, UUID labGroupId,
             LocalDate startDate, LocalDate endDate, String search,
             int page, int size, String sortBy, String sortDir
     ) {
@@ -193,7 +243,7 @@ public class LabSessionService {
 
         String searchPattern = search != null && !search.isBlank() ? "%" + search.trim().toLowerCase() + "%" : null;
         Page<LabSession> sessionPage = labSessionRepository.searchSessions(
-                lecturer.getId(), moduleId, batchId, null, status, startDate, endDate,
+                lecturer.getId(), moduleId, batchId, labGroupId, null, status, startDate, endDate,
                 searchPattern,
                 pageable
         );
@@ -455,19 +505,51 @@ public class LabSessionService {
         for (Map.Entry<UUID, List<LecturerModuleAssignment>> entry : byModule.entrySet()) {
             com.labattend.entity.Module module = entry.getValue().get(0).getModule();
 
-            List<LecturerSessionOptionsResponse.AuthorizedBatchOption> batchOptions = new ArrayList<>();
-            Set<UUID> addedBatchIds = new HashSet<>();
+            // Group assignments for this module by batch
+            Map<UUID, List<LecturerModuleAssignment>> byBatch = entry.getValue().stream()
+                    .filter(a -> a.getBatch() != null)
+                    .collect(Collectors.groupingBy(a -> a.getBatch().getId()));
 
-            for (LecturerModuleAssignment lma : entry.getValue()) {
-                if (lma.getBatch() != null && addedBatchIds.add(lma.getBatch().getId())) {
-                    long count = studentRepository.countByBatchIdAndIsActiveTrue(lma.getBatch().getId());
-                    batchOptions.add(LecturerSessionOptionsResponse.AuthorizedBatchOption.builder()
-                            .batchId(lma.getBatch().getId())
-                            .batchCode(lma.getBatch().getBatchCode())
-                            .academicYear(lma.getBatch().getAcademicYear())
-                            .enrolledStudentCount(count)
-                            .build());
+            List<LecturerSessionOptionsResponse.AuthorizedBatchOption> batchOptions = new ArrayList<>();
+
+            for (Map.Entry<UUID, List<LecturerModuleAssignment>> bEntry : byBatch.entrySet()) {
+                Batch b = bEntry.getValue().get(0).getBatch();
+                boolean isWholeBatch = bEntry.getValue().stream().anyMatch(a -> a.getLabGroup() == null);
+
+                List<LecturerSessionOptionsResponse.AuthorizedGroupOption> groupOptions = new ArrayList<>();
+                if (isWholeBatch) {
+                    List<LabGroup> allGroups = labGroupRepository.findByBatchIdAndIsActiveTrueOrderByGroupNameAsc(b.getId());
+                    for (LabGroup g : allGroups) {
+                        long count = studentRepository.countByBatchIdAndLabGroupIdAndIsActiveTrue(b.getId(), g.getId());
+                        groupOptions.add(LecturerSessionOptionsResponse.AuthorizedGroupOption.builder()
+                                .groupId(g.getId())
+                                .groupName(g.getGroupName())
+                                .studentCount(count)
+                                .build());
+                    }
+                } else {
+                    for (LecturerModuleAssignment lma : bEntry.getValue()) {
+                        if (lma.getLabGroup() != null && Boolean.TRUE.equals(lma.getLabGroup().getIsActive())) {
+                            LabGroup g = lma.getLabGroup();
+                            long count = studentRepository.countByBatchIdAndLabGroupIdAndIsActiveTrue(b.getId(), g.getId());
+                            groupOptions.add(LecturerSessionOptionsResponse.AuthorizedGroupOption.builder()
+                                    .groupId(g.getId())
+                                    .groupName(g.getGroupName())
+                                    .studentCount(count)
+                                    .build());
+                        }
+                    }
                 }
+
+                long totalBatchCount = studentRepository.countByBatchIdAndIsActiveTrue(b.getId());
+                batchOptions.add(LecturerSessionOptionsResponse.AuthorizedBatchOption.builder()
+                        .batchId(b.getId())
+                        .batchCode(b.getBatchCode())
+                        .academicYear(b.getAcademicYear())
+                        .enrolledStudentCount(totalBatchCount)
+                        .isWholeBatchAssigned(isWholeBatch)
+                        .groups(groupOptions)
+                        .build());
             }
 
             moduleOptions.add(LecturerSessionOptionsResponse.AuthorizedModuleOption.builder()
@@ -560,14 +642,14 @@ public class LabSessionService {
     // =========================================================================
     @Transactional(readOnly = true)
     public PageResponse<LabSessionResponse> getAllSessionsForAdmin(
-            UUID lecturerId, UUID moduleId, UUID batchId, UUID hallId,
+            UUID lecturerId, UUID moduleId, UUID batchId, UUID labGroupId, UUID hallId,
             SessionStatus status, LocalDate startDate, LocalDate endDate,
             String search, int page, int size, String sortBy, String sortDir
     ) {
         Sort sort = sortDir.equalsIgnoreCase("desc") ? Sort.by(sortBy).descending() : Sort.by(sortBy).ascending();
         Pageable pageable = PageRequest.of(page, size, sort);
 
-        boolean noFilters = lecturerId == null && moduleId == null && batchId == null && hallId == null &&
+        boolean noFilters = lecturerId == null && moduleId == null && batchId == null && labGroupId == null && hallId == null &&
                 status == null && startDate == null && endDate == null &&
                 (search == null || search.isBlank());
 
@@ -577,7 +659,7 @@ public class LabSessionService {
         } else {
             String searchPattern = search != null && !search.isBlank() ? "%" + search.trim().toLowerCase() + "%" : null;
             sessionPage = labSessionRepository.searchSessions(
-                    lecturerId, moduleId, batchId, hallId, status, startDate, endDate,
+                    lecturerId, moduleId, batchId, labGroupId, hallId, status, startDate, endDate,
                     searchPattern,
                     pageable
             );
@@ -619,6 +701,8 @@ public class LabSessionService {
                 .batchId(s.getBatch() != null ? s.getBatch().getId() : null)
                 .batchCode(s.getBatch() != null ? s.getBatch().getBatchCode() : null)
                 .batchAcademicYear(s.getBatch() != null ? s.getBatch().getAcademicYear() : null)
+                .labGroupId(s.getLabGroup() != null ? s.getLabGroup().getId() : null)
+                .labGroupName(s.getLabGroup() != null ? s.getLabGroup().getGroupName() : null)
                 .lecturerId(s.getLecturer() != null ? s.getLecturer().getId() : null)
                 .lecturerName(s.getLecturer() != null ? s.getLecturer().getFullName() : null)
                 .lecturerStaffId(s.getLecturer() != null ? s.getLecturer().getStaffId() : null)

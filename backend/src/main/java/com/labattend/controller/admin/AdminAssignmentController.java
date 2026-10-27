@@ -37,6 +37,7 @@ public class AdminAssignmentController {
             @RequestParam(required = false) UUID lecturerId,
             @RequestParam(required = false) UUID moduleId,
             @RequestParam(required = false) UUID batchId,
+            @RequestParam(required = false) UUID labGroupId,
             @RequestParam(required = false) String academicYear,
             @RequestParam(required = false) String semester,
             @RequestParam(defaultValue = "0") int page,
@@ -45,7 +46,7 @@ public class AdminAssignmentController {
             @RequestParam(defaultValue = "desc") String sortDir
     ) {
         PageResponse<LecturerAssignmentResponse> result = assignmentService.getAssignments(
-                lecturerId, moduleId, batchId, academicYear, semester, page, size, sortBy, sortDir
+                lecturerId, moduleId, batchId, labGroupId, academicYear, semester, page, size, sortBy, sortDir
         );
         return ResponseEntity.ok(ApiResponse.success(result));
     }

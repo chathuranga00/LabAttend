@@ -194,6 +194,7 @@ export default function QRScannerPage() {
             message: data.message || 'Marked Present',
             studentId: data.studentId,
             studentName: data.studentName,
+            labGroupName: data.labGroupName,
             time: data.scannedAt,
             method: data.method || 'QR_SCAN',
           });
@@ -205,6 +206,7 @@ export default function QRScannerPage() {
             message: `Previously verified at ${new Date(data.scannedAt).toLocaleTimeString()}`,
             studentId: data.studentId,
             studentName: data.studentName,
+            labGroupName: data.labGroupName,
             time: data.scannedAt,
             method: data.method || 'QR_SCAN',
           });
@@ -379,6 +381,7 @@ export default function QRScannerPage() {
             message: `Recorded manually: ${manualReason.trim()}`,
             studentId: data.studentId,
             studentName: data.studentName,
+            labGroupName: data.labGroupName,
             time: data.scannedAt,
             method: 'MANUAL',
           });
@@ -390,6 +393,7 @@ export default function QRScannerPage() {
             message: `Previously verified at ${new Date(data.scannedAt).toLocaleTimeString()}`,
             studentId: data.studentId,
             studentName: data.studentName,
+            labGroupName: data.labGroupName,
             time: data.scannedAt,
             method: data.method,
           });
@@ -520,7 +524,16 @@ export default function QRScannerPage() {
               <div className="flex flex-wrap items-center gap-4 mt-3 text-xs text-slate-300">
                 <span className="flex items-center gap-1.5 bg-slate-800/70 px-2.5 py-1 rounded-lg">
                   <Users className="h-3.5 w-3.5 text-teal-400" />
-                  <span>Batch: <strong>{session.batchName}</strong></span>
+                  <span>Cohort: <strong>{session.batchName}</strong></span>
+                  {session.labGroupName ? (
+                    <span className="ml-1.5 px-2 py-0.5 rounded text-[11px] font-semibold bg-indigo-950 border border-indigo-700 text-indigo-300">
+                      Group {session.labGroupName}
+                    </span>
+                  ) : (
+                    <span className="ml-1.5 px-2 py-0.5 rounded text-[11px] font-medium bg-slate-700 text-slate-300">
+                      Whole Batch
+                    </span>
+                  )}
                 </span>
                 <span className="flex items-center gap-1.5 bg-slate-800/70 px-2.5 py-1 rounded-lg">
                   <Building className="h-3.5 w-3.5 text-cyan-400" />
@@ -725,8 +738,17 @@ export default function QRScannerPage() {
                     {lastScanResult.method}
                   </span>
                 </div>
-                <div className="text-lg font-bold text-white">
-                  {lastScanResult.studentName}
+                <div className="flex items-center justify-between">
+                  <div className="text-lg font-bold text-white">
+                    {lastScanResult.studentName}
+                  </div>
+                  {lastScanResult.labGroupName ? (
+                    <span className="font-mono text-xs font-bold text-indigo-300 bg-indigo-950/70 border border-indigo-700/60 px-2.5 py-0.5 rounded-full">
+                      Group {lastScanResult.labGroupName}
+                    </span>
+                  ) : (
+                    <span className="text-xs text-slate-400">No Group</span>
+                  )}
                 </div>
                 <div className="flex items-center justify-between text-xs text-emerald-200">
                   <span className="font-mono bg-emerald-900/50 px-2 py-0.5 rounded border border-emerald-800/50">
@@ -748,8 +770,17 @@ export default function QRScannerPage() {
                     DUPLICATE
                   </span>
                 </div>
-                <div className="text-lg font-bold text-white">
-                  {lastScanResult.studentName}
+                <div className="flex items-center justify-between">
+                  <div className="text-lg font-bold text-white">
+                    {lastScanResult.studentName}
+                  </div>
+                  {lastScanResult.labGroupName ? (
+                    <span className="font-mono text-xs font-bold text-indigo-300 bg-indigo-950/70 border border-indigo-700/60 px-2.5 py-0.5 rounded-full">
+                      Group {lastScanResult.labGroupName}
+                    </span>
+                  ) : (
+                    <span className="text-xs text-slate-400">No Group</span>
+                  )}
                 </div>
                 <div className="flex items-center justify-between text-xs text-amber-200">
                   <span className="font-mono bg-amber-900/50 px-2 py-0.5 rounded border border-amber-800/50">

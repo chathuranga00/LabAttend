@@ -48,6 +48,8 @@ public class StudentLecturerServiceTest {
     @Mock
     private BatchRepository batchRepository;
     @Mock
+    private com.labattend.repository.LabGroupRepository labGroupRepository;
+    @Mock
     private SessionStudentRepository sessionStudentRepository;
     @Mock
     private AttendanceRecordRepository attendanceRecordRepository;
@@ -73,6 +75,7 @@ public class StudentLecturerServiceTest {
                 studentRepository,
                 degreeProgrammeRepository,
                 batchRepository,
+                labGroupRepository,
                 sessionStudentRepository,
                 attendanceRecordRepository,
                 auditLogService

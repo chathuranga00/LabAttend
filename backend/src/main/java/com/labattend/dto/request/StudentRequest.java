@@ -36,6 +36,8 @@ public class StudentRequest {
     @NotNull(message = "Batch ID is required")
     private UUID batchId;
 
+    private UUID labGroupId;
+
     @Size(max = 100, message = "QR Token cannot exceed 100 characters")
     private String qrToken;
 }

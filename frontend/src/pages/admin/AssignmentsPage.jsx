@@ -4,6 +4,7 @@ import {
   lecturerAssignmentService,
   moduleService,
   batchService,
+  labGroupService,
 } from '../../services/academicService';
 import { useToast } from '../../context/ToastContext';
 import { DataTable, Pagination, Modal, StatusBadge } from '../../components/common';
@@ -15,6 +16,7 @@ export default function AssignmentsPage() {
   const [lecturers, setLecturers] = useState([]);
   const [modules, setModules] = useState([]);
   const [batches, setBatches] = useState([]);
+  const [batchGroups, setBatchGroups] = useState([]);
 
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(0);
@@ -31,6 +33,7 @@ export default function AssignmentsPage() {
     lecturerId: '',
     moduleId: '',
     batchId: '',
+    labGroupId: '',
     academicYear: new Date().getFullYear().toString(),
     semester: '1',
   });
@@ -83,11 +86,25 @@ export default function AssignmentsPage() {
     fetchAssignments();
   }, [fetchAssignments]);
 
+  useEffect(() => {
+    if (formData.batchId) {
+      labGroupService.getGroupsByBatch(formData.batchId)
+        .then((res) => {
+          if (res.success && res.data) setBatchGroups(res.data);
+        })
+        .catch(() => setBatchGroups([]));
+    } else {
+      setBatchGroups([]);
+      setFormData((prev) => ({ ...prev, labGroupId: '' }));
+    }
+  }, [formData.batchId]);
+
   const handleOpenCreate = () => {
     setFormData({
       lecturerId: lecturers[0]?.id || '',
       moduleId: modules[0]?.id || '',
       batchId: batches[0]?.id || '',
+      labGroupId: '',
       academicYear: new Date().getFullYear().toString(),
       semester: '1',
     });
@@ -136,6 +153,7 @@ export default function AssignmentsPage() {
       const payload = {
         ...formData,
         batchId: formData.batchId || null,
+        labGroupId: formData.labGroupId || null,
       };
 
       await lecturerAssignmentService.createAssignment(payload);
@@ -174,13 +192,24 @@ export default function AssignmentsPage() {
     },
     {
       key: 'batch',
-      header: 'Assigned Batch',
-      render: (row) => row.batchCode ? (
-        <span className="text-xs font-mono bg-slate-800 text-slate-300 px-2 py-0.5 rounded border border-slate-700/60">
-          {row.batchCode}
-        </span>
-      ) : (
-        <span className="text-xs text-slate-500">All Batches</span>
+      header: 'Assigned Batch & Group',
+      render: (row) => (
+        <div className="flex flex-col gap-1 items-start">
+          {row.batchCode ? (
+            <span className="text-xs font-mono bg-slate-800 text-slate-300 px-2 py-0.5 rounded border border-slate-700/60">
+              {row.batchCode}
+            </span>
+          ) : (
+            <span className="text-xs text-slate-500">All Batches</span>
+          )}
+          {row.labGroupName ? (
+            <span className="font-mono font-bold text-[10px] text-indigo-300 bg-indigo-950/60 border border-indigo-800/50 px-2 py-0.5 rounded-full">
+              Group {row.labGroupName}
+            </span>
+          ) : row.batchCode ? (
+            <span className="text-[10px] text-slate-400">Whole Batch</span>
+          ) : null}
+        </div>
       ),
     },
     {
@@ -404,6 +433,30 @@ export default function AssignmentsPage() {
               ))}
             </select>
           </div>
+
+          {formData.batchId && (
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1.5">
+                Target Lab Group (Optional)
+              </label>
+              <select
+                value={formData.labGroupId || ''}
+                onChange={(e) => setFormData({ ...formData, labGroupId: e.target.value })}
+                disabled={submitting}
+                className="w-full px-3.5 py-2.5 bg-slate-950/70 border border-slate-800 rounded-xl text-sm text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+              >
+                <option value="">Whole Batch (All Groups)</option>
+                {batchGroups.map((g) => (
+                  <option key={g.id} value={g.id}>
+                    Group {g.groupName} ({g.studentCount || 0} students)
+                  </option>
+                ))}
+              </select>
+              <p className="text-[11px] text-slate-500 mt-1">
+                A null group assigns the lecturer to the whole batch, allowing session creation for all groups or the entire cohort.
+              </p>
+            </div>
+          )}
 
           <div className="grid grid-cols-2 gap-3">
             <div>

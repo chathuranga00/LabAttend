@@ -32,6 +32,7 @@ public class AdminStudentController {
     public ResponseEntity<ApiResponse<PageResponse<StudentResponse>>> getStudents(
             @RequestParam(required = false) UUID programmeId,
             @RequestParam(required = false) UUID batchId,
+            @RequestParam(required = false) UUID labGroupId,
             @RequestParam(required = false) Boolean isActive,
             @RequestParam(required = false) String search,
             @RequestParam(defaultValue = "0") int page,
@@ -40,7 +41,7 @@ public class AdminStudentController {
             @RequestParam(defaultValue = "asc") String sortDir
     ) {
         PageResponse<StudentResponse> result = studentService.getStudents(
-                programmeId, batchId, isActive, search, page, size, sortBy, sortDir
+                programmeId, batchId, labGroupId, isActive, search, page, size, sortBy, sortDir
         );
         return ResponseEntity.ok(ApiResponse.success(result));
     }

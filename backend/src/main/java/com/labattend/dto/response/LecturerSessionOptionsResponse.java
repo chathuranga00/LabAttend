@@ -37,6 +37,18 @@ public class LecturerSessionOptionsResponse {
         private String batchCode;
         private String academicYear;
         private long enrolledStudentCount;
+        private boolean isWholeBatchAssigned;
+        private List<AuthorizedGroupOption> groups;
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class AuthorizedGroupOption {
+        private UUID groupId;
+        private String groupName;
+        private long studentCount;
     }
 
     @Data

@@ -38,6 +38,7 @@ public class AdminSessionController {
             @RequestParam(required = false) UUID lecturerId,
             @RequestParam(required = false) UUID moduleId,
             @RequestParam(required = false) UUID batchId,
+            @RequestParam(required = false) UUID labGroupId,
             @RequestParam(required = false) UUID hallId,
             @RequestParam(required = false) SessionStatus status,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
@@ -49,7 +50,7 @@ public class AdminSessionController {
             @RequestParam(defaultValue = "desc") String sortDir
     ) {
         PageResponse<LabSessionResponse> result = labSessionService.getAllSessionsForAdmin(
-                lecturerId, moduleId, batchId, hallId, status, startDate, endDate, search, page, size, sortBy, sortDir
+                lecturerId, moduleId, batchId, labGroupId, hallId, status, startDate, endDate, search, page, size, sortBy, sortDir
         );
         return ResponseEntity.ok(ApiResponse.success(result));
     }

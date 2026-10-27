@@ -23,6 +23,8 @@ public class LecturerAssignmentResponse {
     private UUID batchId;
     private String batchName;
     private String batchCode;
+    private UUID labGroupId;
+    private String labGroupName;
     private String academicYear;
     private String semester;
     private Boolean isActive;

@@ -28,6 +28,10 @@ public class LabSession extends BaseEntity {
     @JoinColumn(name = "batch_id")
     private Batch batch;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "lab_group_id")
+    private LabGroup labGroup;
+
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "lecturer_id", nullable = false)
     private Lecturer lecturer;

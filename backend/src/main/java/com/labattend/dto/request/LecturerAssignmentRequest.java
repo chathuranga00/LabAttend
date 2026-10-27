@@ -24,6 +24,8 @@ public class LecturerAssignmentRequest {
 
     private UUID batchId;
 
+    private UUID labGroupId;
+
     @NotBlank(message = "Academic year is required")
     @Size(max = 50, message = "Academic year cannot exceed 50 characters")
     private String academicYear;

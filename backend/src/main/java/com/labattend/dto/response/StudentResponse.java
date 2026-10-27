@@ -23,6 +23,8 @@ public class StudentResponse {
     private UUID batchId;
     private String batchCode;
     private String batchAcademicYear;
+    private UUID labGroupId;
+    private String labGroupName;
     private String qrTokenHash;
     private Boolean hasQrToken;
     private Boolean isActive;

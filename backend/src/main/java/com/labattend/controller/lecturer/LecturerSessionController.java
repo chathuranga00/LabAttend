@@ -49,6 +49,7 @@ public class LecturerSessionController {
             @RequestParam(required = false) SessionStatus status,
             @RequestParam(required = false) UUID moduleId,
             @RequestParam(required = false) UUID batchId,
+            @RequestParam(required = false) UUID labGroupId,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
             @RequestParam(required = false) String search,
@@ -59,7 +60,7 @@ public class LecturerSessionController {
             @AuthenticationPrincipal CustomUserDetails userDetails
     ) {
         PageResponse<LabSessionResponse> result = labSessionService.getLecturerSessions(
-                userDetails.getId(), status, moduleId, batchId, startDate, endDate, search, page, size, sortBy, sortDir
+                userDetails.getId(), status, moduleId, batchId, labGroupId, startDate, endDate, search, page, size, sortBy, sortDir
         );
         return ResponseEntity.ok(ApiResponse.success(result));
     }

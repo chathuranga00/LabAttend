@@ -32,6 +32,7 @@ public class StudentService {
     private final StudentRepository studentRepository;
     private final DegreeProgrammeRepository degreeProgrammeRepository;
     private final BatchRepository batchRepository;
+    private final com.labattend.repository.LabGroupRepository labGroupRepository;
     private final SessionStudentRepository sessionStudentRepository;
     private final AttendanceRecordRepository attendanceRecordRepository;
     private final AuditLogService auditLogService;
@@ -39,24 +40,26 @@ public class StudentService {
     public StudentService(StudentRepository studentRepository,
                           DegreeProgrammeRepository degreeProgrammeRepository,
                           BatchRepository batchRepository,
+                          com.labattend.repository.LabGroupRepository labGroupRepository,
                           SessionStudentRepository sessionStudentRepository,
                           AttendanceRecordRepository attendanceRecordRepository,
                           AuditLogService auditLogService) {
         this.studentRepository = studentRepository;
         this.degreeProgrammeRepository = degreeProgrammeRepository;
         this.batchRepository = batchRepository;
+        this.labGroupRepository = labGroupRepository;
         this.sessionStudentRepository = sessionStudentRepository;
         this.attendanceRecordRepository = attendanceRecordRepository;
         this.auditLogService = auditLogService;
     }
 
     @Transactional(readOnly = true)
-    public PageResponse<StudentResponse> getStudents(UUID programmeId, UUID batchId, Boolean isActive,
+    public PageResponse<StudentResponse> getStudents(UUID programmeId, UUID batchId, UUID labGroupId, Boolean isActive,
                                                     String search, int page, int size, String sortBy, String sortDir) {
         Sort sort = sortDir.equalsIgnoreCase("desc") ? Sort.by(sortBy).descending() : Sort.by(sortBy).ascending();
         Pageable pageable = PageRequest.of(page, size, sort);
 
-        boolean noFilters = programmeId == null && batchId == null && isActive == null &&
+        boolean noFilters = programmeId == null && batchId == null && labGroupId == null && isActive == null &&
                 (search == null || search.isBlank());
 
         Page<Student> studentPage;
@@ -67,6 +70,7 @@ public class StudentService {
             studentPage = studentRepository.searchStudents(
                     programmeId,
                     batchId,
+                    labGroupId,
                     isActive,
                     searchPattern,
                     pageable
@@ -104,6 +108,15 @@ public class StudentService {
             throw new BadRequestException("Selected batch does not belong to the selected degree programme");
         }
 
+        com.labattend.entity.LabGroup labGroup = null;
+        if (request.getLabGroupId() != null) {
+            labGroup = labGroupRepository.findById(request.getLabGroupId())
+                    .orElseThrow(() -> new ResourceNotFoundException("LabGroup", "id", request.getLabGroupId()));
+            if (!labGroup.getBatch().getId().equals(batch.getId())) {
+                throw new BadRequestException("Selected lab group does not belong to the selected batch");
+            }
+        }
+
         String qrTokenHash = null;
         if (request.getQrToken() != null && !request.getQrToken().isBlank()) {
             qrTokenHash = HashUtils.sha256Hex(request.getQrToken());
@@ -118,6 +131,7 @@ public class StudentService {
                 .email(email)
                 .degreeProgramme(programme)
                 .batch(batch)
+                .labGroup(labGroup)
                 .qrTokenHash(qrTokenHash)
                 .isActive(true)
                 .build();
@@ -154,6 +168,15 @@ public class StudentService {
             throw new BadRequestException("Selected batch does not belong to the selected degree programme");
         }
 
+        com.labattend.entity.LabGroup labGroup = null;
+        if (request.getLabGroupId() != null) {
+            labGroup = labGroupRepository.findById(request.getLabGroupId())
+                    .orElseThrow(() -> new ResourceNotFoundException("LabGroup", "id", request.getLabGroupId()));
+            if (!labGroup.getBatch().getId().equals(batch.getId())) {
+                throw new BadRequestException("Selected lab group does not belong to the selected batch");
+            }
+        }
+
         String qrTokenHash = student.getQrTokenHash();
         if (request.getQrToken() != null && !request.getQrToken().isBlank()) {
             String newHash = HashUtils.sha256Hex(request.getQrToken());
@@ -169,9 +192,10 @@ public class StudentService {
         student.setFullName(request.getFullName().trim());
         student.setEmail(email);
         student.setDegreeProgramme(programme);
-        // NOTE: Changing the student's batch updates only the student record.
+        // NOTE: Changing the student's batch or lab group updates only the student record.
         // It strictly preserves historical session_students and attendance_records!
         student.setBatch(batch);
+        student.setLabGroup(labGroup);
         student.setQrTokenHash(qrTokenHash);
 
         Student updated = studentRepository.save(student);
@@ -321,10 +345,13 @@ public class StudentService {
             Integer progIdx = findColumn(colIndex, "degreeprogrammecode", "programmecode", "programme", "degree");
             Integer batchIdx = findColumn(colIndex, "batchcode", "batch");
             Integer qrIdx = findColumn(colIndex, "qrtoken", "qridentifier", "qr", "token");
+            Integer groupIdx = findColumn(colIndex, "group", "labgroup", "groupname", "labgroupname");
 
             if (studentIdIdx == null || fullNameIdx == null || emailIdx == null || progIdx == null || batchIdx == null) {
                 throw new BadRequestException("CSV must contain columns: student_id, full_name, email, degree_programme_code, batch_code");
             }
+
+            Map<String, LabGroup> groupCache = new HashMap<>();
 
             String line;
             while ((line = reader.readLine()) != null) {
@@ -339,6 +366,7 @@ public class StudentService {
                 String rowProgCode = getVal(values, progIdx);
                 String rowBatchCode = getVal(values, batchIdx);
                 String rowQr = qrIdx != null ? getVal(values, qrIdx) : null;
+                String rowGroupName = groupIdx != null ? getVal(values, groupIdx) : null;
 
                 if (rowStudentId == null || rowStudentId.isBlank()) {
                     errors.add(new StudentCsvImportResponse.CsvRowError(rowNumber, "UNKNOWN", "Missing student ID"));
@@ -401,6 +429,22 @@ public class StudentService {
                     continue;
                 }
 
+                LabGroup assignedGroup = null;
+                if (rowGroupName != null && !rowGroupName.isBlank()) {
+                    String cleanGroupName = rowGroupName.trim();
+                    String cacheKey = batch.getId().toString() + ":" + cleanGroupName.toUpperCase();
+                    assignedGroup = groupCache.computeIfAbsent(cacheKey, k -> {
+                        return labGroupRepository.findByBatchIdAndGroupNameIgnoreCase(batch.getId(), cleanGroupName)
+                                .orElseGet(() -> labGroupRepository.save(
+                                        LabGroup.builder()
+                                                .batch(batch)
+                                                .groupName(cleanGroupName)
+                                                .isActive(true)
+                                                .build()
+                                ));
+                    });
+                }
+
                 String qrTokenHash = null;
                 if (rowQr != null && !rowQr.isBlank()) {
                     qrTokenHash = HashUtils.sha256Hex(rowQr);
@@ -420,6 +464,7 @@ public class StudentService {
                         .email(lowerEmail)
                         .degreeProgramme(programme)
                         .batch(batch)
+                        .labGroup(assignedGroup)
                         .qrTokenHash(qrTokenHash)
                         .isActive(true)
                         .build();
@@ -474,6 +519,8 @@ public class StudentService {
                 .batchId(s.getBatch() != null ? s.getBatch().getId() : null)
                 .batchCode(s.getBatch() != null ? s.getBatch().getBatchCode() : null)
                 .batchAcademicYear(s.getBatch() != null ? s.getBatch().getAcademicYear() : null)
+                .labGroupId(s.getLabGroup() != null ? s.getLabGroup().getId() : null)
+                .labGroupName(s.getLabGroup() != null ? s.getLabGroup().getGroupName() : null)
                 .qrTokenHash(s.getQrTokenHash())
                 .hasQrToken(s.getQrTokenHash() != null && !s.getQrTokenHash().isBlank())
                 .isActive(s.getIsActive())

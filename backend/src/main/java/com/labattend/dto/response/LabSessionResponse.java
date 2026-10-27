@@ -24,10 +24,12 @@ public class LabSessionResponse {
     private String moduleCode;
     private String moduleName;
 
-    // Batch Details
+    // Batch & Group Details
     private UUID batchId;
     private String batchCode;
     private String batchAcademicYear;
+    private UUID labGroupId;
+    private String labGroupName;
 
     // Lecturer Details
     private UUID lecturerId;

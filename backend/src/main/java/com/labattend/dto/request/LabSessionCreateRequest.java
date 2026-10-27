@@ -22,6 +22,8 @@ public class LabSessionCreateRequest {
     @NotNull(message = "Batch cohort is required")
     private UUID batchId;
 
+    private UUID labGroupId;
+
     @NotNull(message = "Laboratory hall is required")
     private UUID hallId;
 

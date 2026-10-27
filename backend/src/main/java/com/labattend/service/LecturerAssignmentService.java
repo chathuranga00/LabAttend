@@ -13,6 +13,8 @@ import com.labattend.repository.BatchRepository;
 import com.labattend.repository.LecturerModuleAssignmentRepository;
 import com.labattend.repository.LecturerRepository;
 import com.labattend.repository.ModuleRepository;
+import com.labattend.entity.LabGroup;
+import com.labattend.repository.LabGroupRepository;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -33,17 +35,20 @@ public class LecturerAssignmentService {
     private final LecturerRepository lecturerRepository;
     private final ModuleRepository moduleRepository;
     private final BatchRepository batchRepository;
+    private final LabGroupRepository labGroupRepository;
     private final AuditLogService auditLogService;
 
     public LecturerAssignmentService(LecturerModuleAssignmentRepository assignmentRepository,
                                      LecturerRepository lecturerRepository,
                                      ModuleRepository moduleRepository,
                                      BatchRepository batchRepository,
+                                     LabGroupRepository labGroupRepository,
                                      AuditLogService auditLogService) {
         this.assignmentRepository = assignmentRepository;
         this.lecturerRepository = lecturerRepository;
         this.moduleRepository = moduleRepository;
         this.batchRepository = batchRepository;
+        this.labGroupRepository = labGroupRepository;
         this.auditLogService = auditLogService;
     }
 
@@ -63,7 +68,7 @@ public class LecturerAssignmentService {
     }
 
     @Transactional(readOnly = true)
-    public PageResponse<LecturerAssignmentResponse> getAssignments(UUID lecturerId, UUID moduleId, UUID batchId,
+    public PageResponse<LecturerAssignmentResponse> getAssignments(UUID lecturerId, UUID moduleId, UUID batchId, UUID labGroupId,
                                                                   String academicYear, String semester,
                                                                   int page, int size, String sortBy, String sortDir) {
         Sort sort = sortDir.equalsIgnoreCase("desc") ? Sort.by(sortBy).descending() : Sort.by(sortBy).ascending();
@@ -73,6 +78,7 @@ public class LecturerAssignmentService {
                 lecturerId,
                 moduleId,
                 batchId,
+                labGroupId,
                 academicYear != null && !academicYear.isBlank() ? academicYear.trim() : null,
                 semester != null && !semester.isBlank() ? semester.trim() : null,
                 pageable
@@ -101,20 +107,33 @@ public class LecturerAssignmentService {
                     .orElseThrow(() -> new ResourceNotFoundException("Batch", "id", request.getBatchId()));
         }
 
+        LabGroup labGroup = null;
+        if (request.getLabGroupId() != null) {
+            if (batch == null) {
+                throw new BadRequestException("A batch must be specified when assigning to a lab group");
+            }
+            labGroup = labGroupRepository.findById(request.getLabGroupId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Lab group not found with id: " + request.getLabGroupId()));
+            if (!labGroup.getBatch().getId().equals(batch.getId())) {
+                throw new BadRequestException("Lab group '" + labGroup.getGroupName() + "' does not belong to batch '" + batch.getBatchCode() + "'");
+            }
+        }
+
         String academicYear = request.getAcademicYear().trim();
         String semester = request.getSemester().trim();
 
         Optional<LecturerModuleAssignment> existing = assignmentRepository.findExistingAssignment(
-                lecturer.getId(), module.getId(), batch != null ? batch.getId() : null, academicYear, semester
+                lecturer.getId(), module.getId(), batch != null ? batch.getId() : null, labGroup != null ? labGroup.getId() : null, academicYear, semester
         );
         if (existing.isPresent()) {
-            throw new BadRequestException("Assignment already exists for lecturer, module, batch, academic year, and semester");
+            throw new BadRequestException("Assignment already exists for lecturer, module, batch, group, academic year, and semester");
         }
 
         LecturerModuleAssignment assignment = LecturerModuleAssignment.builder()
                 .lecturer(lecturer)
                 .module(module)
                 .batch(batch)
+                .labGroup(labGroup)
                 .academicYear(academicYear)
                 .semester(semester)
                 .isActive(true)
@@ -166,6 +185,8 @@ public class LecturerAssignmentService {
                 .batchId(a.getBatch() != null ? a.getBatch().getId() : null)
                 .batchName(a.getBatch() != null ? a.getBatch().getBatchCode() : null)
                 .batchCode(a.getBatch() != null ? a.getBatch().getBatchCode() : null)
+                .labGroupId(a.getLabGroup() != null ? a.getLabGroup().getId() : null)
+                .labGroupName(a.getLabGroup() != null ? a.getLabGroup().getGroupName() : null)
                 .academicYear(a.getAcademicYear())
                 .semester(a.getSemester())
                 .isActive(a.getIsActive())

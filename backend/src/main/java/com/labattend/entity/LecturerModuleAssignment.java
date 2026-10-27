@@ -24,6 +24,10 @@ public class LecturerModuleAssignment extends BaseEntity {
     @JoinColumn(name = "batch_id")
     private Batch batch;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "lab_group_id")
+    private LabGroup labGroup;
+
     @Column(name = "academic_year", nullable = false, length = 50)
     private String academicYear;
 

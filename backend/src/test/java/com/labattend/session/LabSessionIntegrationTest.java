@@ -331,7 +331,7 @@ public class LabSessionIntegrationTest {
                 .totalPages(1)
                 .build();
 
-        when(labSessionService.getAllSessionsForAdmin(any(), any(), any(), any(), any(), any(), any(), any(), eq(0), eq(10), any(), any()))
+        when(labSessionService.getAllSessionsForAdmin(any(), any(), any(), any(), any(), any(), any(), any(), any(), eq(0), eq(10), any(), any()))
                 .thenReturn(pageResponse);
 
         mockMvc.perform(get("/api/admin/sessions")

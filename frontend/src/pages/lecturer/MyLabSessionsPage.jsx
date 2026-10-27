@@ -94,9 +94,20 @@ export default function MyLabSessionsPage() {
           <span className="font-bold text-white block text-xs">
             {item.moduleCode} — {item.moduleName}
           </span>
-          <span className="text-[11px] text-slate-400">
-            Batch: <strong className="text-slate-300">{item.batchCode}</strong>
-          </span>
+          <div className="flex items-center gap-1.5 mt-0.5">
+            <span className="text-[11px] text-slate-400">
+              Batch: <strong className="text-slate-300">{item.batchCode}</strong>
+            </span>
+            {item.labGroupName ? (
+              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-indigo-950/70 border border-indigo-800 text-indigo-300">
+                Group {item.labGroupName}
+              </span>
+            ) : (
+              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-slate-800 text-slate-400">
+                Whole Batch
+              </span>
+            )}
+          </div>
         </div>
       ),
     },
@@ -129,7 +140,9 @@ export default function MyLabSessionsPage() {
           <span className="font-semibold text-slate-200">
             {item.attendedCount} / {item.expectedStudentCount}
           </span>
-          <span className="text-[10px] text-slate-500 block">students checked in</span>
+          <span className="text-[10px] text-slate-400 block">
+            {item.labGroupName ? `Group ${item.labGroupName} roster` : 'Cohort roster'}
+          </span>
         </div>
       ),
     },

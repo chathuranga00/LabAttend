@@ -18,6 +18,7 @@ public interface LecturerModuleAssignmentRepository extends JpaRepository<Lectur
     List<LecturerModuleAssignment> findByLecturerIdAndIsActiveTrue(UUID lecturerId);
     List<LecturerModuleAssignment> findByModuleId(UUID moduleId);
     List<LecturerModuleAssignment> findByBatchId(UUID batchId);
+    List<LecturerModuleAssignment> findByLabGroupId(UUID labGroupId);
 
     @Query("SELECT COUNT(lma) > 0 FROM LecturerModuleAssignment lma WHERE " +
            "lma.lecturer.id = :lecturerId AND lma.module.id = :moduleId AND " +
@@ -28,14 +29,28 @@ public interface LecturerModuleAssignmentRepository extends JpaRepository<Lectur
             @Param("batchId") UUID batchId
     );
 
+    @Query("SELECT COUNT(lma) > 0 FROM LecturerModuleAssignment lma WHERE " +
+           "lma.lecturer.id = :lecturerId AND lma.module.id = :moduleId AND " +
+           "(lma.batch.id = :batchId OR lma.batch IS NULL) AND " +
+           "(:labGroupId IS NULL AND lma.labGroup IS NULL OR :labGroupId IS NOT NULL AND (lma.labGroup.id = :labGroupId OR lma.labGroup IS NULL)) AND " +
+           "lma.isActive = true")
+    boolean isLecturerAssignedToModuleBatchAndGroup(
+            @Param("lecturerId") UUID lecturerId,
+            @Param("moduleId") UUID moduleId,
+            @Param("batchId") UUID batchId,
+            @Param("labGroupId") UUID labGroupId
+    );
+
     @Query("SELECT lma FROM LecturerModuleAssignment lma WHERE " +
            "lma.lecturer.id = :lecturerId AND lma.module.id = :moduleId AND " +
            "((:batchId IS NULL AND lma.batch IS NULL) OR lma.batch.id = :batchId) AND " +
+           "((:labGroupId IS NULL AND lma.labGroup IS NULL) OR lma.labGroup.id = :labGroupId) AND " +
            "lma.academicYear = :academicYear AND lma.semester = :semester")
     Optional<LecturerModuleAssignment> findExistingAssignment(
             @Param("lecturerId") UUID lecturerId,
             @Param("moduleId") UUID moduleId,
             @Param("batchId") UUID batchId,
+            @Param("labGroupId") UUID labGroupId,
             @Param("academicYear") String academicYear,
             @Param("semester") String semester
     );
@@ -44,12 +59,14 @@ public interface LecturerModuleAssignmentRepository extends JpaRepository<Lectur
            "(:lecturerId IS NULL OR lma.lecturer.id = :lecturerId) AND " +
            "(:moduleId IS NULL OR lma.module.id = :moduleId) AND " +
            "(:batchId IS NULL OR lma.batch.id = :batchId) AND " +
+           "(:labGroupId IS NULL OR lma.labGroup.id = :labGroupId) AND " +
            "(:academicYear IS NULL OR lma.academicYear = :academicYear) AND " +
            "(:semester IS NULL OR lma.semester = :semester)")
     Page<LecturerModuleAssignment> searchAssignments(
             @Param("lecturerId") UUID lecturerId,
             @Param("moduleId") UUID moduleId,
             @Param("batchId") UUID batchId,
+            @Param("labGroupId") UUID labGroupId,
             @Param("academicYear") String academicYear,
             @Param("semester") String semester,
             Pageable pageable

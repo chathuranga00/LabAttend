@@ -12,9 +12,10 @@ import {
   AlertCircle, 
   RefreshCw, 
   X,
-  ShieldAlert
+  ShieldAlert,
+  Layers
 } from 'lucide-react';
-import { studentService, degreeProgrammeService, batchService } from '../../services/academicService';
+import { studentService, degreeProgrammeService, batchService, labGroupService } from '../../services/academicService';
 import { useToast } from '../../context/ToastContext';
 import { DataTable, Pagination, SearchBar, Modal, StatusBadge } from '../../components/common';
 
@@ -30,8 +31,18 @@ export default function StudentsPage() {
   // Filter states
   const [selectedProgrammeId, setSelectedProgrammeId] = useState('');
   const [selectedBatchId, setSelectedBatchId] = useState('');
+  const [selectedGroupId, setSelectedGroupId] = useState('');
+  const [filterGroups, setFilterGroups] = useState([]);
   const [selectedStatus, setSelectedStatus] = useState('');
   const [search, setSearch] = useState('');
+
+  // Bulk Selection states
+  const [selectedStudentIds, setSelectedStudentIds] = useState([]);
+  const [isBulkAssignModalOpen, setIsBulkAssignModalOpen] = useState(false);
+  const [bulkBatchId, setBulkBatchId] = useState('');
+  const [bulkGroupId, setBulkGroupId] = useState('');
+  const [bulkBatchGroups, setBulkBatchGroups] = useState([]);
+  const [bulkAssigning, setBulkAssigning] = useState(false);
 
   // Pagination states
   const [page, setPage] = useState(0);
@@ -42,12 +53,14 @@ export default function StudentsPage() {
   // Add / Edit Modal state
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
+  const [formGroups, setFormGroups] = useState([]);
   const [formData, setFormData] = useState({
     studentId: '',
     fullName: '',
     email: '',
     degreeProgrammeId: '',
     batchId: '',
+    labGroupId: '',
     qrToken: '',
   });
   const [formErrors, setFormErrors] = useState({});
@@ -83,6 +96,37 @@ export default function StudentsPage() {
     }
   }, []);
 
+  // Load groups when filter batch changes
+  useEffect(() => {
+    if (selectedBatchId) {
+      labGroupService.getGroupsByBatch(selectedBatchId)
+        .then((res) => {
+          if (res.success && res.data) {
+            setFilterGroups(res.data);
+          }
+        })
+        .catch(() => setFilterGroups([]));
+    } else {
+      setFilterGroups([]);
+      setSelectedGroupId('');
+    }
+  }, [selectedBatchId]);
+
+  // Load groups for Add/Edit form when formData.batchId changes
+  useEffect(() => {
+    if (formData.batchId) {
+      labGroupService.getGroupsByBatch(formData.batchId)
+        .then((res) => {
+          if (res.success && res.data) {
+            setFormGroups(res.data);
+          }
+        })
+        .catch(() => setFormGroups([]));
+    } else {
+      setFormGroups([]);
+    }
+  }, [formData.batchId]);
+
   // Fetch students
   const fetchStudents = useCallback(async () => {
     try {
@@ -90,6 +134,7 @@ export default function StudentsPage() {
       const params = {
         programmeId: selectedProgrammeId || undefined,
         batchId: selectedBatchId || undefined,
+        labGroupId: selectedGroupId || undefined,
         isActive: selectedStatus === 'active' ? true : selectedStatus === 'inactive' ? false : undefined,
         search: search.trim() || undefined,
         page,
@@ -108,7 +153,7 @@ export default function StudentsPage() {
     } finally {
       setLoading(false);
     }
-  }, [selectedProgrammeId, selectedBatchId, selectedStatus, search, page, showToast]);
+  }, [selectedProgrammeId, selectedBatchId, selectedGroupId, selectedStatus, search, page, showToast]);
 
   useEffect(() => {
     loadProgrammes();
@@ -142,6 +187,7 @@ export default function StudentsPage() {
       email: '',
       degreeProgrammeId: firstProg,
       batchId: matchingBatches[0]?.id || '',
+      labGroupId: '',
       qrToken: '',
     });
     setFormErrors({});
@@ -156,6 +202,7 @@ export default function StudentsPage() {
       email: item.email || '',
       degreeProgrammeId: item.degreeProgrammeId || '',
       batchId: item.batchId || '',
+      labGroupId: item.labGroupId || '',
       qrToken: '', // Leave blank unless admin wants to overwrite the QR identifier
     });
     setFormErrors({});
@@ -189,6 +236,7 @@ export default function StudentsPage() {
         email: formData.email.trim(),
         degreeProgrammeId: formData.degreeProgrammeId,
         batchId: formData.batchId,
+        labGroupId: formData.labGroupId || null,
         qrToken: formData.qrToken.trim() || null,
       };
 
@@ -250,7 +298,91 @@ export default function StudentsPage() {
     }
   };
 
+  const handleOpenBulkAssign = () => {
+    const defaultBatch = selectedBatchId || batches[0]?.id || '';
+    setBulkBatchId(defaultBatch);
+    setBulkGroupId('');
+    if (defaultBatch) {
+      labGroupService.getGroupsByBatch(defaultBatch)
+        .then(res => {
+          if (res.success && res.data) setBulkBatchGroups(res.data);
+        })
+        .catch(() => setBulkBatchGroups([]));
+    }
+    setIsBulkAssignModalOpen(true);
+  };
+
+  const handleBulkBatchChange = (batchId) => {
+    setBulkBatchId(batchId);
+    setBulkGroupId('');
+    if (batchId) {
+      labGroupService.getGroupsByBatch(batchId)
+        .then(res => {
+          if (res.success && res.data) setBulkBatchGroups(res.data);
+        })
+        .catch(() => setBulkBatchGroups([]));
+    } else {
+      setBulkBatchGroups([]);
+    }
+  };
+
+  const handleConfirmBulkAssign = async (e) => {
+    e.preventDefault();
+    if (!bulkBatchId) {
+      showToast('Please select a batch cohort', 'error');
+      return;
+    }
+    try {
+      setBulkAssigning(true);
+      const res = await labGroupService.bulkAssign(bulkBatchId, {
+        labGroupId: bulkGroupId || null,
+        studentIds: selectedStudentIds,
+      });
+      showToast(res.message || 'Students successfully assigned to lab group', 'success');
+      setIsBulkAssignModalOpen(false);
+      setSelectedStudentIds([]);
+      fetchStudents();
+    } catch (err) {
+      showToast(err.message || 'Failed to bulk assign students', 'error');
+    } finally {
+      setBulkAssigning(false);
+    }
+  };
+
+  const handleToggleSelectAll = (e) => {
+    if (e.target.checked) {
+      setSelectedStudentIds(students.map(s => s.id));
+    } else {
+      setSelectedStudentIds([]);
+    }
+  };
+
+  const handleToggleSelectStudent = (studentId) => {
+    setSelectedStudentIds(prev => 
+      prev.includes(studentId) ? prev.filter(id => id !== studentId) : [...prev, studentId]
+    );
+  };
+
   const columns = [
+    {
+      header: (
+        <input
+          type="checkbox"
+          checked={students.length > 0 && selectedStudentIds.length === students.length}
+          onChange={handleToggleSelectAll}
+          className="rounded border-slate-700 bg-slate-900 text-indigo-500 focus:ring-indigo-500/20"
+        />
+      ),
+      accessor: 'select',
+      render: (item) => (
+        <input
+          type="checkbox"
+          checked={selectedStudentIds.includes(item.id)}
+          onChange={() => handleToggleSelectStudent(item.id)}
+          className="rounded border-slate-700 bg-slate-900 text-indigo-500 focus:ring-indigo-500/20"
+        />
+      ),
+    },
     {
       header: 'Student ID',
       accessor: 'studentId',
@@ -280,6 +412,21 @@ export default function StudentsPage() {
           </span>
           <span className="text-xs text-slate-500">{item.degreeProgrammeName}</span>
         </div>
+      ),
+    },
+    {
+      header: 'Lab Group',
+      accessor: 'labGroupName',
+      render: (item) => (
+        item.labGroupName ? (
+          <span className="font-mono font-bold text-xs text-indigo-300 bg-indigo-950/60 border border-indigo-800/50 px-2.5 py-0.5 rounded-full">
+            Group {item.labGroupName}
+          </span>
+        ) : (
+          <span className="text-xs text-slate-500 font-normal">
+            Unassigned
+          </span>
+        )
       ),
     },
     {
@@ -422,6 +569,26 @@ export default function StudentsPage() {
           </select>
         </div>
 
+        {selectedBatchId && (
+          <div className="w-full md:w-44">
+            <select
+              value={selectedGroupId}
+              onChange={(e) => {
+                setSelectedGroupId(e.target.value);
+                setPage(0);
+              }}
+              className="w-full px-3 py-2 bg-slate-800/80 border border-slate-700 rounded-xl text-sm text-slate-200 focus:outline-none focus:border-indigo-500 font-medium"
+            >
+              <option value="">All Lab Groups</option>
+              {filterGroups.map((g) => (
+                <option key={g.id} value={g.id}>
+                  Group {g.groupName}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
         <div className="w-full md:w-36">
           <select
             value={selectedStatus}
@@ -437,11 +604,12 @@ export default function StudentsPage() {
           </select>
         </div>
 
-        {(selectedProgrammeId || selectedBatchId || selectedStatus || search) && (
+        {(selectedProgrammeId || selectedBatchId || selectedGroupId || selectedStatus || search) && (
           <button
             onClick={() => {
               setSelectedProgrammeId('');
               setSelectedBatchId('');
+              setSelectedGroupId('');
               setSelectedStatus('');
               setSearch('');
               setPage(0);
@@ -453,6 +621,38 @@ export default function StudentsPage() {
           </button>
         )}
       </div>
+
+      {/* Bulk Action Banner */}
+      {selectedStudentIds.length > 0 && (
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 bg-indigo-950/40 border border-indigo-800/60 rounded-2xl shadow-lg">
+          <div className="flex items-center gap-3">
+            <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-600 text-xs font-bold text-white">
+              {selectedStudentIds.length}
+            </span>
+            <span className="text-sm font-medium text-slate-200">
+              Students selected for batch operations
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setSelectedStudentIds([])}
+              className="px-3 py-1.5 rounded-xl text-xs font-medium text-slate-400 hover:text-white transition"
+            >
+              Clear Selection
+            </button>
+            <button
+              type="button"
+              onClick={handleOpenBulkAssign}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold shadow-lg shadow-indigo-600/20 transition"
+            >
+              <Layers className="w-3.5 h-3.5" />
+              Assign to Lab Group
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Students Data Table */}
       <div className="bg-slate-900/60 border border-slate-800/80 rounded-2xl overflow-hidden shadow-xl">
@@ -568,6 +768,24 @@ export default function StudentsPage() {
                 <span className="text-xs text-rose-400 mt-1 block">{formErrors.batchId}</span>
               )}
             </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-slate-300 mb-1">
+              Lab Group <span className="text-slate-500 font-normal">(Optional)</span>
+            </label>
+            <select
+              value={formData.labGroupId || ''}
+              onChange={(e) => setFormData({ ...formData, labGroupId: e.target.value })}
+              className="w-full px-3 py-2 bg-slate-800/80 border border-slate-700 rounded-xl text-sm text-slate-200 focus:outline-none focus:border-indigo-500"
+            >
+              <option value="">No Group (Unassigned)</option>
+              {formGroups.map((g) => (
+                <option key={g.id} value={g.id}>
+                  Group {g.groupName}
+                </option>
+              ))}
+            </select>
           </div>
 
           {editingItem && (
@@ -749,6 +967,75 @@ export default function StudentsPage() {
             </div>
           )}
         </div>
+      </Modal>
+
+      {/* Bulk Assign to Lab Group Modal */}
+      <Modal
+        isOpen={isBulkAssignModalOpen}
+        onClose={() => setIsBulkAssignModalOpen(false)}
+        title="Bulk Assign Students to Lab Group"
+        subtitle={`Assigning ${selectedStudentIds.length} selected student(s)`}
+      >
+        <form onSubmit={handleConfirmBulkAssign} className="space-y-4">
+          <div className="p-3 bg-indigo-950/30 border border-indigo-900/40 rounded-xl text-xs text-indigo-300">
+            Select the destination cohort and lab group. Moving students between groups preserves all existing historical attendance session records.
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1">
+              Target Batch Cohort <span className="text-rose-400">*</span>
+            </label>
+            <select
+              value={bulkBatchId}
+              onChange={(e) => handleBulkBatchChange(e.target.value)}
+              className="w-full px-3 py-2 bg-slate-950/70 border border-slate-800 rounded-xl text-sm text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+            >
+              <option value="">Select Cohort</option>
+              {batches.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.batchCode} ({b.academicYear})
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1">
+              Target Lab Group
+            </label>
+            <select
+              value={bulkGroupId}
+              onChange={(e) => setBulkGroupId(e.target.value)}
+              className="w-full px-3 py-2 bg-slate-950/70 border border-slate-800 rounded-xl text-sm text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+            >
+              <option value="">Unassign / No Group</option>
+              {bulkBatchGroups.map((g) => (
+                <option key={g.id} value={g.id}>
+                  Group {g.groupName}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-800/80">
+            <button
+              type="button"
+              onClick={() => setIsBulkAssignModalOpen(false)}
+              disabled={bulkAssigning}
+              className="px-4 py-2 rounded-xl text-xs font-medium text-slate-400 hover:text-white transition"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={bulkAssigning || !bulkBatchId}
+              className="inline-flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold shadow disabled:opacity-50 transition"
+            >
+              {bulkAssigning && <RefreshCw className="w-3.5 h-3.5 animate-spin" />}
+              Assign {selectedStudentIds.length} Student(s)
+            </button>
+          </div>
+        </form>
       </Modal>
     </div>
   );

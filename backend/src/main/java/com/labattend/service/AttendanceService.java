@@ -282,12 +282,15 @@ public class AttendanceService {
                     Student s = ss.getStudent();
                     AttendanceRecord ar = attendanceMap.get(s.getId());
                     boolean isAttended = ar != null && (ar.getStatus() == AttendanceStatus.PRESENT || ar.getStatus() == AttendanceStatus.LATE);
+                    com.labattend.entity.LabGroup group = ss.getHomeLabGroup() != null ? ss.getHomeLabGroup() : s.getLabGroup();
 
                     return SessionExpectedStudentResponse.builder()
                             .studentUuid(s.getId())
                             .studentId(s.getStudentId())
                             .studentName(s.getFullName())
                             .email(s.getEmail())
+                            .labGroupId(group != null ? group.getId() : null)
+                            .labGroupName(group != null ? group.getGroupName() : null)
                             .isAttended(isAttended)
                             .attendanceStatus(ar != null ? ar.getStatus().name() : null)
                             .markedAt(ar != null ? ar.getMarkedAt() : null)
@@ -343,6 +346,8 @@ public class AttendanceService {
                 .studentUuid(student.getId())
                 .studentId(student.getStudentId())
                 .studentName(student.getFullName())
+                .labGroupId(student.getLabGroup() != null ? student.getLabGroup().getId() : null)
+                .labGroupName(student.getLabGroup() != null ? student.getLabGroup().getGroupName() : null)
                 .scannedAt(scannedAt)
                 .attendanceStatus(status != null ? status.name() : "PRESENT")
                 .method(method != null ? method.name() : "QR_SCAN")

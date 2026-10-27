@@ -29,6 +29,10 @@ public class Student extends BaseEntity {
     @JoinColumn(name = "batch_id", nullable = false)
     private Batch batch;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "lab_group_id")
+    private LabGroup labGroup;
+
     @Column(name = "qr_token_hash", unique = true, length = 64)
     private String qrTokenHash;
 

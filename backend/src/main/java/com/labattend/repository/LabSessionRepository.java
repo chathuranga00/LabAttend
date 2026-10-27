@@ -48,9 +48,25 @@ public interface LabSessionRepository extends JpaRepository<LabSession, UUID> {
     );
 
     @Query("SELECT s FROM LabSession s WHERE " +
+           "s.batch.id = :batchId AND " +
+           "(:labGroupId IS NULL OR s.labGroup IS NULL OR s.labGroup.id = :labGroupId) AND " +
+           "s.sessionDate = :sessionDate AND s.status != 'CANCELLED' AND " +
+           "(:excludeId IS NULL OR s.id != :excludeId) AND " +
+           "(s.startTime < :endTime AND s.endTime > :startTime)")
+    List<LabSession> findConflictingBatchOrGroupSessions(
+            @Param("batchId") UUID batchId,
+            @Param("labGroupId") UUID labGroupId,
+            @Param("sessionDate") LocalDate sessionDate,
+            @Param("startTime") LocalTime startTime,
+            @Param("endTime") LocalTime endTime,
+            @Param("excludeId") UUID excludeId
+    );
+
+    @Query("SELECT s FROM LabSession s WHERE " +
            "(:lecturerId IS NULL OR s.lecturer.id = :lecturerId) AND " +
            "(:moduleId IS NULL OR s.module.id = :moduleId) AND " +
            "(:batchId IS NULL OR s.batch.id = :batchId) AND " +
+           "(:labGroupId IS NULL OR s.labGroup.id = :labGroupId) AND " +
            "(:hallId IS NULL OR s.hall.id = :hallId) AND " +
            "(:status IS NULL OR s.status = :status) AND " +
            "(:startDate IS NULL OR s.sessionDate >= :startDate) AND " +
@@ -62,6 +78,7 @@ public interface LabSessionRepository extends JpaRepository<LabSession, UUID> {
             @Param("lecturerId") UUID lecturerId,
             @Param("moduleId") UUID moduleId,
             @Param("batchId") UUID batchId,
+            @Param("labGroupId") UUID labGroupId,
             @Param("hallId") UUID hallId,
             @Param("status") SessionStatus status,
             @Param("startDate") LocalDate startDate,

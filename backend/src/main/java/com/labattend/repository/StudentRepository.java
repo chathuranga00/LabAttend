@@ -27,9 +27,17 @@ public interface StudentRepository extends JpaRepository<Student, UUID> {
     java.util.List<Student> findByBatchIdAndIsActiveTrue(UUID batchId);
     long countByBatchIdAndIsActiveTrue(UUID batchId);
 
+    java.util.List<Student> findByBatchIdAndLabGroupIdAndIsActiveTrue(UUID batchId, UUID labGroupId);
+    long countByBatchIdAndLabGroupIdAndIsActiveTrue(UUID batchId, UUID labGroupId);
+    long countByLabGroupId(UUID labGroupId);
+
+    java.util.List<Student> findByBatchIdAndIsActiveTrueOrderByFullNameAsc(UUID batchId);
+    java.util.List<Student> findByBatchIdAndIsActiveTrueOrderByStudentIdAsc(UUID batchId);
+
     @Query("SELECT s FROM Student s WHERE " +
            "(:programmeId IS NULL OR s.degreeProgramme.id = :programmeId) AND " +
            "(:batchId IS NULL OR s.batch.id = :batchId) AND " +
+           "(:labGroupId IS NULL OR s.labGroup.id = :labGroupId) AND " +
            "(:isActive IS NULL OR s.isActive = :isActive) AND " +
            "(:search IS NULL OR LOWER(s.studentId) LIKE :search OR " +
            "LOWER(s.fullName) LIKE :search OR " +
@@ -37,6 +45,7 @@ public interface StudentRepository extends JpaRepository<Student, UUID> {
     Page<Student> searchStudents(
             @Param("programmeId") UUID programmeId,
             @Param("batchId") UUID batchId,
+            @Param("labGroupId") UUID labGroupId,
             @Param("isActive") Boolean isActive,
             @Param("search") String search,
             Pageable pageable

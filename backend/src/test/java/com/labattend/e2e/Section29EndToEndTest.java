@@ -54,6 +54,8 @@ public class Section29EndToEndTest {
     @Mock
     private BatchRepository batchRepository;
     @Mock
+    private com.labattend.repository.LabGroupRepository labGroupRepository;
+    @Mock
     private LaboratoryHallRepository laboratoryHallRepository;
     @Mock
     private LecturerModuleAssignmentRepository lecturerModuleAssignmentRepository;
@@ -87,6 +89,7 @@ public class Section29EndToEndTest {
                 lecturerRepository,
                 moduleRepository,
                 batchRepository,
+                labGroupRepository,
                 laboratoryHallRepository,
                 lecturerModuleAssignmentRepository,
                 studentRepository,

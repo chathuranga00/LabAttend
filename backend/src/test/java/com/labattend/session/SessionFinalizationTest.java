@@ -45,6 +45,8 @@ public class SessionFinalizationTest {
     @Mock
     private BatchRepository batchRepository;
     @Mock
+    private com.labattend.repository.LabGroupRepository labGroupRepository;
+    @Mock
     private LaboratoryHallRepository laboratoryHallRepository;
     @Mock
     private LecturerModuleAssignmentRepository lecturerModuleAssignmentRepository;
@@ -75,6 +77,7 @@ public class SessionFinalizationTest {
                 lecturerRepository,
                 moduleRepository,
                 batchRepository,
+                labGroupRepository,
                 laboratoryHallRepository,
                 lecturerModuleAssignmentRepository,
                 studentRepository,

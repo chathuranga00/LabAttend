@@ -63,9 +63,21 @@ export const lecturerService = {
   resetAccess: (id) => api.post(`/admin/lecturers/${id}/reset-access`),
 };
 
+export const labGroupService = {
+  getGroupsByBatch: (batchId) => api.get(`/admin/batches/${batchId}/groups`),
+  createGroup: (batchId, data) => api.post(`/admin/batches/${batchId}/groups`, data),
+  getGroupById: (id) => api.get(`/admin/groups/${id}`),
+  updateGroup: (id, data) => api.put(`/admin/groups/${id}`, data),
+  toggleStatus: (id) => api.patch(`/admin/groups/${id}/toggle-status`),
+  bulkAssign: (batchId, data) => api.post(`/admin/batches/${batchId}/groups/bulk-assign`, data),
+  previewAutoSplit: (batchId, data) => api.post(`/admin/batches/${batchId}/groups/auto-split-preview`, data),
+  confirmAutoSplit: (batchId, data) => api.post(`/admin/batches/${batchId}/groups/auto-split-confirm`, data),
+};
+
 export const academicService = {
   degreeProgramme: degreeProgrammeService,
   batch: batchService,
+  labGroup: labGroupService,
   module: moduleService,
   laboratoryHall: laboratoryHallService,
   lecturerAssignment: lecturerAssignmentService,

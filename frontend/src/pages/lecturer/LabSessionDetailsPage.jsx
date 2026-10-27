@@ -158,7 +158,16 @@ export default function LabSessionDetailsPage() {
             <div className="flex flex-wrap items-center gap-4 mt-3 text-xs text-slate-300">
               <span className="flex items-center gap-1.5 bg-slate-800/70 px-2.5 py-1 rounded-lg">
                 <Users className="h-3.5 w-3.5 text-teal-400" />
-                Cohort: <strong className="text-white">{session.batchCode}</strong> ({session.batchAcademicYear || 'Current'})
+                Cohort: <strong className="text-white">{session.batchCode}</strong>
+                {session.labGroupName ? (
+                  <span className="ml-1.5 px-2 py-0.5 rounded text-[11px] font-semibold bg-indigo-950 border border-indigo-700 text-indigo-300">
+                    Group {session.labGroupName}
+                  </span>
+                ) : (
+                  <span className="ml-1.5 px-2 py-0.5 rounded text-[11px] font-medium bg-slate-700 text-slate-300">
+                    Whole Batch
+                  </span>
+                )}
               </span>
               <span className="flex items-center gap-1.5 bg-slate-800/70 px-2.5 py-1 rounded-lg">
                 <Building className="h-3.5 w-3.5 text-cyan-400" />

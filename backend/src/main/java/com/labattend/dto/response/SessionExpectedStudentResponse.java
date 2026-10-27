@@ -24,6 +24,10 @@ public class SessionExpectedStudentResponse {
 
     private String email;
 
+    private UUID labGroupId;
+
+    private String labGroupName;
+
     private boolean isAttended;
 
     private String attendanceStatus;

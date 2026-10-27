@@ -26,6 +26,10 @@ public class AttendanceScanResponse {
 
     private String studentName;
 
+    private UUID labGroupId;
+
+    private String labGroupName;
+
     private OffsetDateTime scannedAt;
 
     private String attendanceStatus; // "PRESENT", "LATE"
