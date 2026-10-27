@@ -51,9 +51,9 @@ export default function LecturerLayout() {
       }`}>
         <div className="overflow-y-auto">
           {/* Logo Header */}
-          <div className="h-16 px-4 flex items-center justify-between border-b border-slate-800/80 bg-slate-900/50">
-            <div className="flex items-center gap-2.5">
-              <div className="h-10 w-10 rounded-xl bg-white p-1 flex items-center justify-center shadow-md shadow-emerald-500/10 border border-slate-200/40 shrink-0">
+          <div className="h-20 px-4 flex items-center justify-between border-b border-slate-800/80 bg-slate-900/50">
+            <div className="flex items-center gap-3">
+              <div className="h-12 w-24 rounded-xl bg-white p-1.5 flex items-center justify-center shadow-md shadow-emerald-500/10 border border-slate-200/40 shrink-0">
                 <img src="/logo.png" alt="NSBM Green University" className="h-full w-full object-contain" />
               </div>
               <div className="overflow-hidden">
@@ -147,6 +147,11 @@ export default function LecturerLayout() {
             >
               <Menu className="h-5 w-5" />
             </button>
+            <div className="md:hidden flex items-center">
+              <div className="h-9 w-20 rounded-lg bg-white p-1 flex items-center justify-center shrink-0 border border-slate-200/40 shadow-sm">
+                <img src="/logo.png" alt="NSBM Green University" className="h-full w-full object-contain" />
+              </div>
+            </div>
             <span className="text-xs px-2.5 py-1 rounded-full bg-teal-500/10 text-teal-400 border border-teal-500/20 font-semibold">
               ROLE: LECTURER
             </span>
