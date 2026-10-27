@@ -87,8 +87,10 @@ export default function LecturerReportsPage() {
   const [myFinalizedSessions, setMyFinalizedSessions] = useState([]);
   const [moduleOptions, setModuleOptions] = useState([]);
   const [batchOptions, setBatchOptions] = useState([]);
+  const [allGroups, setAllGroups] = useState([]);
   const [exportLabGroups, setExportLabGroups] = useState([]);
   const [hallOptions, setHallOptions] = useState([]);
+  const [studentSuggestions, setStudentSuggestions] = useState([]);
 
   // =========================================================================
   // ANALYTICS TAB STATE (From Phase 7)
@@ -113,28 +115,95 @@ export default function LecturerReportsPage() {
   const [groupAnalytics, setGroupAnalytics] = useState([]);
   const [students, setStudents] = useState([]);
 
-  // Load lecturer form options and finalized sessions
+  // Load lecturer form options, students, and finalized sessions
   useEffect(() => {
     async function loadFormOptions() {
       try {
-        const [optRes, sessRes, hallRes] = await Promise.allSettled([
+        const [optRes, sessRes, stuRes] = await Promise.allSettled([
           sessionService.getFormOptions(),
-          sessionService.getMySessions({ status: 'FINALIZED', size: 100 }),
-          academicService.getLaboratoryHalls({ size: 100 }),
+          sessionService.getLecturerSessions({ status: 'FINALIZED', size: 100 }),
+          analyticsService.getLecturerStudents().catch(() => ({ data: [] })),
         ]);
 
         if (optRes.status === 'fulfilled' && optRes.value?.data) {
-          setModuleOptions(optRes.value.data.modules || []);
-          setBatchOptions(optRes.value.data.batches || []);
+          const rawModules = optRes.value.data.modules || [];
+          const rawHalls = optRes.value.data.halls || [];
+
+          // Normalize module options
+          const normalizedModules = rawModules.map((m) => ({
+            id: m.moduleId,
+            moduleId: m.moduleId,
+            moduleCode: m.moduleCode,
+            moduleName: m.moduleName,
+            name: m.moduleName,
+            batches: (m.batches || []).map((b) => ({
+              id: b.batchId,
+              batchId: b.batchId,
+              batchCode: b.batchCode,
+              academicYear: b.academicYear,
+              groups: (b.groups || []).map((g) => ({
+                id: g.groupId,
+                groupId: g.groupId,
+                groupName: g.groupName,
+                studentCount: g.studentCount,
+                batchId: b.batchId,
+                batchCode: b.batchCode,
+              })),
+            })),
+          }));
+          setModuleOptions(normalizedModules);
+
+          // Unique batches across assigned modules
+          const batchMap = new Map();
+          normalizedModules.forEach((m) => {
+            m.batches.forEach((b) => {
+              if (!batchMap.has(b.batchId)) {
+                batchMap.set(b.batchId, b);
+              }
+            });
+          });
+          const uniqueBatches = Array.from(batchMap.values());
+          setBatchOptions(uniqueBatches);
+
+          // Unique groups across all batches
+          const groupMap = new Map();
+          uniqueBatches.forEach((b) => {
+            b.groups.forEach((g) => {
+              if (!groupMap.has(g.groupId)) {
+                groupMap.set(g.groupId, g);
+              }
+            });
+          });
+          const uniqueGroups = Array.from(groupMap.values());
+          setAllGroups(uniqueGroups);
+          setExportLabGroups(uniqueGroups);
+          setAnalyticsLabGroups(uniqueGroups);
+
+          // Normalize hall options
+          const normalizedHalls = rawHalls.map((h) => ({
+            id: h.hallId,
+            hallId: h.hallId,
+            hallCode: h.hallCode,
+            hallName: h.hallName,
+            name: h.hallName,
+            capacity: h.capacity,
+          }));
+          setHallOptions(normalizedHalls);
         }
+
         if (sessRes.status === 'fulfilled' && sessRes.value?.data?.content) {
-          setMyFinalizedSessions(sessRes.value.data.content);
-          if (sessRes.value.data.content.length > 0 && !exportSessionId) {
-            setExportSessionId(sessRes.value.data.content[0].id);
+          const list = sessRes.value.data.content;
+          setMyFinalizedSessions(list);
+          if (list.length > 0 && !exportSessionId) {
+            setExportSessionId(list[0].id);
           }
         }
-        if (hallRes.status === 'fulfilled' && hallRes.value?.data?.content) {
-          setHallOptions(hallRes.value.data.content);
+
+        if (stuRes.status === 'fulfilled' && stuRes.value?.data) {
+          const list = Array.isArray(stuRes.value.data)
+            ? stuRes.value.data
+            : (stuRes.value.data.content || []);
+          setStudentSuggestions(list);
         }
       } catch (err) {
         console.error('Failed to load lecturer options', err);
@@ -143,41 +212,52 @@ export default function LecturerReportsPage() {
     loadFormOptions();
   }, []);
 
-  // Load lab groups for export batch
+  // Update export lab groups when exportBatchId changes
   useEffect(() => {
+    setExportLabGroupId('');
     if (!exportBatchId) {
-      setExportLabGroups([]);
-      setExportLabGroupId('');
+      setExportLabGroups(allGroups);
       return;
     }
-    academicService.labGroup.getGroupsByBatch(exportBatchId)
-      .then((res) => {
-        if (res.data) {
-          setExportLabGroups(Array.isArray(res.data) ? res.data : (res.data.content || []));
-        } else {
-          setExportLabGroups([]);
-        }
-      })
-      .catch(() => setExportLabGroups([]));
-  }, [exportBatchId]);
+    const matchedBatch = batchOptions.find((b) => b.batchId === exportBatchId);
+    if (matchedBatch && matchedBatch.groups?.length > 0) {
+      setExportLabGroups(matchedBatch.groups);
+    } else {
+      setExportLabGroups(allGroups.filter((g) => g.batchId === exportBatchId));
+    }
+  }, [exportBatchId, batchOptions, allGroups]);
 
-  // Load lab groups for analytics batch
+  // Update analytics lab groups when analyticsBatchId changes
   useEffect(() => {
+    setAnalyticsLabGroupId('');
     if (!analyticsBatchId) {
-      setAnalyticsLabGroups([]);
-      setAnalyticsLabGroupId('');
+      setAnalyticsLabGroups(allGroups);
       return;
     }
-    academicService.labGroup.getGroupsByBatch(analyticsBatchId)
-      .then((res) => {
-        if (res.data) {
-          setAnalyticsLabGroups(Array.isArray(res.data) ? res.data : (res.data.content || []));
-        } else {
-          setAnalyticsLabGroups([]);
-        }
-      })
-      .catch(() => setAnalyticsLabGroups([]));
-  }, [analyticsBatchId]);
+    const matchedBatch = batchOptions.find((b) => b.batchId === analyticsBatchId);
+    if (matchedBatch && matchedBatch.groups?.length > 0) {
+      setAnalyticsLabGroups(matchedBatch.groups);
+    } else {
+      setAnalyticsLabGroups(allGroups.filter((g) => g.batchId === analyticsBatchId));
+    }
+  }, [analyticsBatchId, batchOptions, allGroups]);
+
+  // Reset export filters
+  const handleResetExportFilters = () => {
+    setExportSessionId(myFinalizedSessions[0]?.id || '');
+    setExportSessionDate(new Date().toISOString().split('T')[0]);
+    setExportStudentId('');
+    setExportModuleId('');
+    setExportBatchId('');
+    setExportLabGroupId('');
+    setExportSemester('Year 2 Semester 1');
+    setExportThreshold(80.0);
+    setExportHallId('');
+    setExportStartDate('');
+    setExportEndDate('');
+    setPreviewData(null);
+    setTableFilter('');
+  };
 
   // Fetch Analytics Data (Phase 7 tab)
   const fetchAnalytics = useCallback(async () => {
@@ -197,7 +277,7 @@ export default function LecturerReportsPage() {
         search: studentSearch,
       };
 
-      const [overviewRes, trendsRes, sessionsRes, modRes, batchRes, studentsRes, groupsRes] = await Promise.all([
+      const results = await Promise.allSettled([
         analyticsService.getLecturerOverview(params),
         analyticsService.getLecturerAttendanceTrends(params),
         analyticsService.getLecturerSessions(params),
@@ -207,13 +287,19 @@ export default function LecturerReportsPage() {
         analyticsService.getLecturerGroupAnalytics(params),
       ]);
 
-      if (overviewRes.success) setOverview(overviewRes.data);
-      if (trendsRes.success) setTrends(trendsRes.data || []);
-      if (sessionsRes.success) setSessions(sessionsRes.data || []);
-      if (modRes.success) setModules(modRes.data || []);
-      if (batchRes.success) setBatches(batchRes.data || []);
-      if (studentsRes.success) setStudents(studentsRes.data || []);
-      if (groupsRes.success) setGroupAnalytics(groupsRes.data || []);
+      const [overviewRes, trendsRes, sessionsRes, modRes, batchRes, studentsRes, groupsRes] = results;
+
+      if (overviewRes.status === 'fulfilled' && overviewRes.value?.success) setOverview(overviewRes.value.data);
+      if (trendsRes.status === 'fulfilled' && trendsRes.value?.success) setTrends(trendsRes.value.data || []);
+      if (sessionsRes.status === 'fulfilled' && sessionsRes.value?.success) setSessions(sessionsRes.value.data || []);
+      if (modRes.status === 'fulfilled' && modRes.value?.success) setModules(modRes.value.data || []);
+      if (batchRes.status === 'fulfilled' && batchRes.value?.success) setBatches(batchRes.value.data || []);
+      if (studentsRes.status === 'fulfilled' && studentsRes.value?.success) setStudents(studentsRes.value.data || []);
+      if (groupsRes.status === 'fulfilled' && groupsRes.value?.success) setGroupAnalytics(groupsRes.value.data || []);
+
+      if (results.every((r) => r.status === 'rejected')) {
+        showToast('Failed to fetch analytics from server', 'error');
+      }
     } catch (err) {
       showToast(err.message || 'Failed to fetch analytics', 'error');
     } finally {
@@ -405,6 +491,7 @@ export default function LecturerReportsPage() {
                   onClick={() => {
                     setReportType(t.id);
                     setPreviewData(null);
+                    setTableFilter('');
                   }}
                   className={`p-3.5 rounded-xl border text-left transition-all relative overflow-hidden group ${
                     isSelected
@@ -433,9 +520,18 @@ export default function LecturerReportsPage() {
                 <Filter className="h-4 w-4 text-teal-400" />
                 Authorized Parameters for {reportType}
               </div>
-              <span className="text-[11px] text-teal-400 font-mono">
-                Only your assigned data is accessible
-              </span>
+              <div className="flex items-center gap-4">
+                <button
+                  onClick={handleResetExportFilters}
+                  className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-teal-400 transition cursor-pointer"
+                >
+                  <RotateCcw className="h-3.5 w-3.5" />
+                  Reset Filters
+                </button>
+                <span className="text-[11px] text-teal-400 font-mono hidden sm:inline">
+                  Only your assigned data is accessible
+                </span>
+              </div>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -453,7 +549,7 @@ export default function LecturerReportsPage() {
                     <option value="">-- Select Finalized Lab Session --</option>
                     {myFinalizedSessions.map((s) => (
                       <option key={s.id} value={s.id}>
-                        {s.sessionCode} — {s.module?.moduleCode} ({s.sessionDate})
+                        {s.sessionCode} — {s.moduleCode || s.module?.moduleCode || 'Module'} ({s.sessionDate})
                       </option>
                     ))}
                   </select>
@@ -483,11 +579,22 @@ export default function LecturerReportsPage() {
                   </label>
                   <input
                     type="text"
+                    list="lecturerStudentsList"
                     placeholder="e.g. IT21001234 or Student UUID"
                     value={exportStudentId}
                     onChange={(e) => setExportStudentId(e.target.value)}
                     className="w-full bg-slate-800/90 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-teal-500 font-mono"
                   />
+                  <datalist id="lecturerStudentsList">
+                    {studentSuggestions.map((st) => (
+                      <option
+                        key={st.studentId || st.id}
+                        value={st.studentRegistrationNumber || st.registrationNumber || st.officialStudentId || st.id}
+                      >
+                        {st.fullName || st.name} ({st.batchCode || 'Batch'})
+                      </option>
+                    ))}
+                  </datalist>
                 </div>
               )}
 
@@ -504,8 +611,8 @@ export default function LecturerReportsPage() {
                   >
                     <option value="">{reportType === 'MODULE' ? '-- Select Assigned Module --' : 'All My Modules'}</option>
                     {moduleOptions.map((m) => (
-                      <option key={m.id} value={m.id}>
-                        {m.moduleCode} - {m.name}
+                      <option key={m.moduleId || m.id} value={m.moduleId || m.id}>
+                        {m.moduleCode} - {m.moduleName || m.name}
                       </option>
                     ))}
                   </select>
@@ -525,7 +632,7 @@ export default function LecturerReportsPage() {
                   >
                     <option value="">{reportType === 'BATCH' ? '-- Select Batch --' : 'All Batches'}</option>
                     {batchOptions.map((b) => (
-                      <option key={b.id} value={b.id}>
+                      <option key={b.batchId || b.id} value={b.batchId || b.id}>
                         {b.batchCode} ({b.academicYear})
                       </option>
                     ))}
@@ -534,7 +641,7 @@ export default function LecturerReportsPage() {
               )}
 
               {/* LAB GROUP: Lab Group Dropdown */}
-              {(exportBatchId || reportType === 'CROSS_GROUP' || reportType === 'BATCH') && (
+              {(reportType === 'BATCH' || reportType === 'MODULE' || reportType === 'SEMESTER' || reportType === 'LOW_ATTENDANCE' || reportType === 'CROSS_GROUP' || reportType === 'DAILY' || exportBatchId) && (
                 <div>
                   <label className="block text-[11px] font-medium text-slate-400 mb-1.5">
                     Lab Group (Optional)
@@ -542,13 +649,12 @@ export default function LecturerReportsPage() {
                   <select
                     value={exportLabGroupId}
                     onChange={(e) => setExportLabGroupId(e.target.value)}
-                    disabled={!exportBatchId && exportLabGroups.length === 0}
-                    className="w-full bg-slate-800/90 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-teal-500 disabled:opacity-50"
+                    className="w-full bg-slate-800/90 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-teal-500"
                   >
-                    <option value="">{exportBatchId ? 'All Groups / Whole Batch' : 'Select Batch First'}</option>
+                    <option value="">{exportBatchId ? 'All Groups in Batch' : 'All Lab Groups'}</option>
                     {exportLabGroups.map((g) => (
-                      <option key={g.id} value={g.id}>
-                        {g.groupName}
+                      <option key={g.groupId || g.id} value={g.groupId || g.id}>
+                        {g.groupName} {g.batchCode ? `(${g.batchCode})` : ''}
                       </option>
                     ))}
                   </select>
@@ -568,8 +674,8 @@ export default function LecturerReportsPage() {
                   >
                     <option value="">-- Select Laboratory Hall --</option>
                     {hallOptions.map((h) => (
-                      <option key={h.id} value={h.id}>
-                        {h.name} (Cap: {h.capacity})
+                      <option key={h.hallId || h.id} value={h.hallId || h.id}>
+                        {h.hallName || h.name || h.hallCode} (Cap: {h.capacity})
                       </option>
                     ))}
                   </select>
@@ -909,7 +1015,9 @@ export default function LecturerReportsPage() {
                 >
                   <option value="">All Assigned Modules</option>
                   {moduleOptions.map((m) => (
-                    <option key={m.id} value={m.id}>{m.moduleCode} - {m.name}</option>
+                    <option key={m.moduleId || m.id} value={m.moduleId || m.id}>
+                      {m.moduleCode} - {m.moduleName || m.name}
+                    </option>
                   ))}
                 </select>
               </div>
@@ -923,7 +1031,9 @@ export default function LecturerReportsPage() {
                 >
                   <option value="">All Batches</option>
                   {batchOptions.map((b) => (
-                    <option key={b.id} value={b.id}>{b.batchCode}</option>
+                    <option key={b.batchId || b.id} value={b.batchId || b.id}>
+                      {b.batchCode} ({b.academicYear})
+                    </option>
                   ))}
                 </select>
               </div>
@@ -933,12 +1043,13 @@ export default function LecturerReportsPage() {
                 <select
                   value={analyticsLabGroupId}
                   onChange={(e) => setAnalyticsLabGroupId(e.target.value)}
-                  disabled={!analyticsBatchId && analyticsLabGroups.length === 0}
-                  className="w-full bg-slate-800/90 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-teal-500 disabled:opacity-50"
+                  className="w-full bg-slate-800/90 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-teal-500"
                 >
-                  <option value="">{analyticsBatchId ? 'All Groups in Batch' : 'Select Batch First'}</option>
+                  <option value="">{analyticsBatchId ? 'All Groups in Batch' : 'All Lab Groups'}</option>
                   {analyticsLabGroups.map((g) => (
-                    <option key={g.id} value={g.id}>{g.groupName}</option>
+                    <option key={g.groupId || g.id} value={g.groupId || g.id}>
+                      {g.groupName} {g.batchCode ? `(${g.batchCode})` : ''}
+                    </option>
                   ))}
                 </select>
               </div>
@@ -1092,8 +1203,25 @@ export default function LecturerReportsPage() {
                     <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
                     <XAxis dataKey="sessionDate" stroke="#64748b" textAnchor="end" height={45} tick={{ fontSize: 10 }} />
                     <YAxis domain={[0, 100]} stroke="#64748b" tick={{ fontSize: 10 }} />
-                    <Tooltip contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '0.75rem', fontSize: '11px' }} />
-                    <Area type="monotone" dataKey="attendanceRate" stroke="#14b8a6" strokeWidth={2} fill="url(#rateGrad)" />
+                    <Tooltip
+                      contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '0.75rem', fontSize: '11px' }}
+                      formatter={(val, name, item) => [
+                        `${val}% (${item.payload?.presentCount ?? 0}/${item.payload?.expectedCount ?? 0} students)`,
+                        'Attendance Rate'
+                      ]}
+                      labelFormatter={(label, items) => {
+                        const point = items?.[0]?.payload;
+                        return point ? `${point.sessionCode || 'Session'} • ${label}` : label;
+                      }}
+                    />
+                    <Area
+                      type="monotone"
+                      name="Attendance Rate"
+                      dataKey="percentageNumeric"
+                      stroke="#14b8a6"
+                      strokeWidth={2}
+                      fill="url(#rateGrad)"
+                    />
                   </AreaChart>
                 </ResponsiveContainer>
               </div>

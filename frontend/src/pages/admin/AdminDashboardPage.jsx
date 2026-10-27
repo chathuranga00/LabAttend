@@ -35,8 +35,29 @@ import {
 } from 'recharts';
 import { analyticsService } from '../../services/analyticsService';
 import { attendanceService } from '../../services/attendanceService';
-import { degreeProgrammeService, batchService, moduleService, lecturerService } from '../../services/academicService';
+import { 
+  degreeProgrammeService, 
+  batchService, 
+  moduleService, 
+  lecturerService, 
+  labGroupService,
+  academicService 
+} from '../../services/academicService';
 import { useToast } from '../../context/ToastContext';
+
+export const STANDARD_GROUPS = ['Group A', 'Group B', 'Group C', 'Group D', 'Group E', 'Group F'];
+
+export const formatGroupName = (name) => {
+  if (!name) return '';
+  const trimmed = name.trim();
+  if (trimmed.toLowerCase().startsWith('group ')) {
+    return `Group ${trimmed.substring(6).trim().toUpperCase()}`;
+  }
+  if (trimmed.length === 1 && /[a-zA-Z]/.test(trimmed)) {
+    return `Group ${trimmed.toUpperCase()}`;
+  }
+  return trimmed;
+};
 
 export default function AdminDashboardPage() {
   const { user } = useAuth();
@@ -46,6 +67,7 @@ export default function AdminDashboardPage() {
   const [programmeId, setProgrammeId] = useState('');
   const [batchId, setBatchId] = useState('');
   const [labGroupId, setLabGroupId] = useState('');
+  const [groupName, setGroupName] = useState('');
   const [moduleId, setModuleId] = useState('');
   const [lecturerId, setLecturerId] = useState('');
   const [startDate, setStartDate] = useState('');
@@ -54,6 +76,7 @@ export default function AdminDashboardPage() {
   // Dropdown Options
   const [programmes, setProgrammes] = useState([]);
   const [batches, setBatches] = useState([]);
+  const [allLabGroups, setAllLabGroups] = useState([]);
   const [labGroups, setLabGroups] = useState([]);
   const [modules, setModules] = useState([]);
   const [lecturers, setLecturers] = useState([]);
@@ -72,16 +95,22 @@ export default function AdminDashboardPage() {
   useEffect(() => {
     async function loadOptions() {
       try {
-        const [progRes, batchRes, modRes, lecRes] = await Promise.all([
+        const [progRes, batchRes, modRes, lecRes, grpRes] = await Promise.all([
           degreeProgrammeService.getProgrammes({ size: 100 }),
           batchService.getBatches({ size: 100 }),
           moduleService.getModules({ size: 100 }),
           lecturerService.getLecturers({ size: 100 }),
+          labGroupService.getAllGroups().catch(() => ({ data: [] })),
         ]);
         if (progRes.data?.content) setProgrammes(progRes.data.content);
         if (batchRes.data?.content) setBatches(batchRes.data.content);
         if (modRes.data?.content) setModules(modRes.data.content);
         if (lecRes.data?.content) setLecturers(lecRes.data.content);
+        if (grpRes.data) {
+          const list = Array.isArray(grpRes.data) ? grpRes.data : (grpRes.data.content || []);
+          setAllLabGroups(list);
+          setLabGroups(list);
+        }
       } catch (err) {
         console.error('Failed to load filter options', err);
       }
@@ -91,21 +120,52 @@ export default function AdminDashboardPage() {
 
   // Fetch Lab Groups when batchId changes
   useEffect(() => {
+    setLabGroupId('');
+    setGroupName('');
     if (!batchId) {
-      setLabGroups([]);
-      setLabGroupId('');
+      setLabGroups(allLabGroups);
       return;
     }
-    academicService.labGroup.getGroupsByBatch(batchId)
+    labGroupService.getGroupsByBatch(batchId)
       .then((res) => {
-        if (res.data) {
-          setLabGroups(Array.isArray(res.data) ? res.data : (res.data.content || []));
-        } else {
-          setLabGroups([]);
-        }
+        const list = Array.isArray(res?.data)
+          ? res.data
+          : (res?.data?.content || res?.data?.data || (Array.isArray(res) ? res : []));
+        setLabGroups(list);
       })
-      .catch(() => setLabGroups([]));
-  }, [batchId]);
+      .catch((err) => {
+        console.error('Failed to load lab groups for batch', err);
+        setLabGroups([]);
+      });
+  }, [batchId, allLabGroups]);
+
+  // Handle Lab Group selection
+  const handleGroupSelect = (val) => {
+    if (!val) {
+      setLabGroupId('');
+      setGroupName('');
+      return;
+    }
+
+    // Check if val is a UUID of an existing group in labGroups
+    const matchedById = labGroups.find(g => g.id === val);
+    if (matchedById) {
+      setLabGroupId(matchedById.id);
+      setGroupName(matchedById.groupName);
+      return;
+    }
+
+    // Check if val matches a standard or formatted group name
+    const formatted = formatGroupName(val);
+    const matchedByName = labGroups.find(g => formatGroupName(g.groupName) === formatted);
+    if (matchedByName) {
+      setLabGroupId(matchedByName.id);
+      setGroupName(matchedByName.groupName);
+    } else {
+      setLabGroupId('');
+      setGroupName(formatted);
+    }
+  };
 
   // Fetch Dashboard Analytics
   const fetchDashboardData = useCallback(async () => {
@@ -114,13 +174,17 @@ export default function AdminDashboardPage() {
       const params = {};
       if (programmeId) params.programmeId = programmeId;
       if (batchId) params.batchId = batchId;
-      if (labGroupId) params.labGroupId = labGroupId;
+      if (labGroupId) {
+        params.labGroupId = labGroupId;
+      } else if (groupName) {
+        params.groupName = groupName;
+      }
       if (moduleId) params.moduleId = moduleId;
       if (lecturerId) params.lecturerId = lecturerId;
       if (startDate) params.startDate = startDate;
       if (endDate) params.endDate = endDate;
 
-      const [overviewRes, trendsRes, modRes, batchRes, sessionsRes, auditsRes, groupsRes] = await Promise.all([
+      const results = await Promise.allSettled([
         analyticsService.getAdminOverview(params),
         analyticsService.getAdminAttendanceTrends(params),
         analyticsService.getAdminModules(params),
@@ -130,21 +194,40 @@ export default function AdminDashboardPage() {
         analyticsService.getAdminGroupAnalytics(params),
       ]);
 
-      if (overviewRes.success) setOverview(overviewRes.data);
-      if (trendsRes.success) setTrends(trendsRes.data || []);
-      if (modRes.success) setModuleStats(modRes.data || []);
-      if (batchRes.success) setBatchStats(batchRes.data || []);
-      if (sessionsRes.success) setRecentSessions(sessionsRes.data || []);
-      if (groupsRes.success) setGroupStats(groupsRes.data || []);
-      if (auditsRes.success && auditsRes.data?.content) {
-        setRecentActivities(auditsRes.data.content);
+      const [overviewRes, trendsRes, modRes, batchRes, sessionsRes, auditsRes, groupsRes] = results;
+
+      if (overviewRes.status === 'fulfilled' && overviewRes.value?.success) {
+        setOverview(overviewRes.value.data);
+      }
+      if (trendsRes.status === 'fulfilled' && trendsRes.value?.success) {
+        setTrends(trendsRes.value.data || []);
+      }
+      if (modRes.status === 'fulfilled' && modRes.value?.success) {
+        setModuleStats(modRes.value.data || []);
+      }
+      if (batchRes.status === 'fulfilled' && batchRes.value?.success) {
+        setBatchStats(batchRes.value.data || []);
+      }
+      if (sessionsRes.status === 'fulfilled' && sessionsRes.value?.success) {
+        setRecentSessions(sessionsRes.value.data || []);
+      }
+      if (groupsRes.status === 'fulfilled' && groupsRes.value?.success) {
+        setGroupStats(groupsRes.value.data || []);
+      }
+      if (auditsRes.status === 'fulfilled' && auditsRes.value?.success && auditsRes.value.data?.content) {
+        setRecentActivities(auditsRes.value.data.content);
+      }
+
+      const allFailed = results.every((r) => r.status === 'rejected');
+      if (allFailed) {
+        showToast('Failed to fetch analytics data from server', 'error');
       }
     } catch (err) {
       showToast(err.message || 'Failed to fetch analytics data', 'error');
     } finally {
       setLoading(false);
     }
-  }, [programmeId, batchId, labGroupId, moduleId, lecturerId, startDate, endDate, showToast]);
+  }, [programmeId, batchId, labGroupId, groupName, moduleId, lecturerId, startDate, endDate, showToast]);
 
   useEffect(() => {
     fetchDashboardData();
@@ -154,6 +237,7 @@ export default function AdminDashboardPage() {
     setProgrammeId('');
     setBatchId('');
     setLabGroupId('');
+    setGroupName('');
     setModuleId('');
     setLecturerId('');
     setStartDate('');
@@ -240,17 +324,27 @@ export default function AdminDashboardPage() {
           <div>
             <label className="block text-[11px] text-slate-400 mb-1">Lab Group</label>
             <select
-              value={labGroupId}
-              onChange={(e) => setLabGroupId(e.target.value)}
-              disabled={!batchId && labGroups.length === 0}
-              className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-emerald-500 disabled:opacity-50"
+              value={labGroupId || groupName || ''}
+              onChange={(e) => handleGroupSelect(e.target.value)}
+              className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-emerald-500"
             >
-              <option value="">{batchId ? 'All Groups in Batch' : 'Select Batch First'}</option>
-              {labGroups.map((g) => (
-                <option key={g.id} value={g.id}>
-                  {g.groupName}
-                </option>
-              ))}
+              <option value="">{batchId ? 'All Groups in Selected Batch' : 'All Lab Groups'}</option>
+              {labGroups.length > 0 && (
+                <optgroup label={batchId ? "Groups in this Batch" : "Available Lab Groups"}>
+                  {labGroups.map((g) => (
+                    <option key={g.id} value={g.id}>
+                      {g.groupName} {g.batchCode ? `(${g.batchCode})` : ''}
+                    </option>
+                  ))}
+                </optgroup>
+              )}
+              <optgroup label="Standard Groups (Cohort-Wide)">
+                {STANDARD_GROUPS.map((grp) => (
+                  <option key={`std-${grp}`} value={grp}>
+                    {grp}
+                  </option>
+                ))}
+              </optgroup>
             </select>
           </div>
 
@@ -318,6 +412,43 @@ export default function AdminDashboardPage() {
               <RotateCcw className="h-4 w-4" />
             </button>
           </div>
+        </div>
+
+        {/* Quick Standard Group Selector Pills */}
+        <div className="mt-3 pt-3 border-t border-slate-800/80 flex flex-wrap items-center gap-1.5">
+          <span className="text-[11px] font-semibold text-slate-400 mr-1 flex items-center gap-1">
+            <Users className="h-3 w-3 text-emerald-400" />
+            Standard Groups:
+          </span>
+          <button
+            type="button"
+            onClick={() => handleGroupSelect('')}
+            className={`px-2.5 py-1 rounded-lg text-xs font-medium transition ${
+              !groupName && !labGroupId
+                ? 'bg-emerald-600 text-white font-semibold shadow-md shadow-emerald-600/30 ring-1 ring-emerald-400'
+                : 'bg-slate-800/80 text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+            }`}
+          >
+            All Groups
+          </button>
+          {STANDARD_GROUPS.map((grp) => {
+            const isSelected = groupName === grp ||
+              (labGroupId && labGroups.some(g => g.id === labGroupId && formatGroupName(g.groupName) === grp));
+            return (
+              <button
+                key={grp}
+                type="button"
+                onClick={() => handleGroupSelect(grp)}
+                className={`px-2.5 py-1 rounded-lg text-xs font-medium transition ${
+                  isSelected
+                    ? 'bg-emerald-600 text-white font-semibold shadow-md shadow-emerald-600/30 ring-1 ring-emerald-400'
+                    : 'bg-slate-800/80 text-slate-300 hover:text-white hover:bg-slate-700/80'
+                }`}
+              >
+                {grp}
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -465,8 +596,8 @@ export default function AdminDashboardPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800 text-slate-200">
-                {groupStats.map((g) => (
-                  <tr key={g.groupId} className="hover:bg-slate-850/50">
+                {groupStats.map((g, idx) => (
+                  <tr key={g.groupId || g.groupName || idx} className="hover:bg-slate-850/50">
                     <td className="py-2.5 px-3 font-semibold text-white">{g.groupName}</td>
                     <td className="py-2.5 px-3 text-slate-400 font-mono">{g.batchCode}</td>
                     <td className="py-2.5 px-3">{g.finalizedSessions}</td>
@@ -794,14 +925,14 @@ export default function AdminDashboardPage() {
                       {act.action}
                     </span>
                     <span className="text-slate-500 text-[10px]">
-                      {act.createdAt ? new Date(act.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
+                      {act.timestamp ? new Date(act.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : (act.createdAt ? new Date(act.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '')}
                     </span>
                   </div>
                   <p className="text-xs text-slate-300 truncate">
-                    {act.entityType}: {act.entityId || 'Global Action'}
+                    {act.entityName || act.entityType}: {act.details || act.entityId || 'Global Action'}
                   </p>
                   <p className="text-[10px] text-slate-400 mt-0.5 truncate">
-                    Actor: {act.actorEmail || 'System'}
+                    Actor: {act.performedByName || act.performedByEmail || act.actorEmail || 'System'}
                   </p>
                 </div>
               ))}

@@ -38,6 +38,9 @@ public class StudentRequest {
 
     private UUID labGroupId;
 
+    @Size(max = 50, message = "Group name cannot exceed 50 characters")
+    private String groupName;
+
     @Size(max = 100, message = "QR Token cannot exceed 100 characters")
     private String qrToken;
 }

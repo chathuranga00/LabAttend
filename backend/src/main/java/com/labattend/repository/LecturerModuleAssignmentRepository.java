@@ -32,7 +32,7 @@ public interface LecturerModuleAssignmentRepository extends JpaRepository<Lectur
     @Query("SELECT COUNT(lma) > 0 FROM LecturerModuleAssignment lma WHERE " +
            "lma.lecturer.id = :lecturerId AND lma.module.id = :moduleId AND " +
            "(lma.batch.id = :batchId OR lma.batch IS NULL) AND " +
-           "(:labGroupId IS NULL AND lma.labGroup IS NULL OR :labGroupId IS NOT NULL AND (lma.labGroup.id = :labGroupId OR lma.labGroup IS NULL)) AND " +
+           "(:labGroupId IS NULL OR lma.labGroup IS NULL OR lma.labGroup.id = :labGroupId) AND " +
            "lma.isActive = true")
     boolean isLecturerAssignedToModuleBatchAndGroup(
             @Param("lecturerId") UUID lecturerId,

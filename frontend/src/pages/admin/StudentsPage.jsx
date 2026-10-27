@@ -29,6 +29,13 @@ import {
 import { useToast } from '../../context/ToastContext';
 import { DataTable, Pagination, SearchBar, Modal, StatusBadge } from '../../components/common';
 
+export const STANDARD_GROUPS = ['Group A', 'Group B', 'Group C', 'Group D', 'Group E', 'Group F'];
+
+export const formatGroupName = (name) => {
+  if (!name) return '';
+  return name.toLowerCase().startsWith('group ') ? name : `Group ${name}`;
+};
+
 export default function StudentsPage() {
   const navigate = useNavigate();
   const { showToast } = useToast();
@@ -51,6 +58,7 @@ export default function StudentsPage() {
   const [isBulkAssignModalOpen, setIsBulkAssignModalOpen] = useState(false);
   const [bulkBatchId, setBulkBatchId] = useState('');
   const [bulkGroupId, setBulkGroupId] = useState('');
+  const [bulkGroupName, setBulkGroupName] = useState('');
   const [bulkBatchGroups, setBulkBatchGroups] = useState([]);
   const [bulkAssigning, setBulkAssigning] = useState(false);
 
@@ -216,6 +224,7 @@ export default function StudentsPage() {
       degreeProgrammeId: firstProg,
       batchId: matchingBatches[0]?.id || '',
       labGroupId: '',
+      groupName: '',
       qrToken: '',
     });
     setFormErrors({});
@@ -231,6 +240,7 @@ export default function StudentsPage() {
       degreeProgrammeId: item.degreeProgrammeId || '',
       batchId: item.batchId || '',
       labGroupId: item.labGroupId || '',
+      groupName: item.labGroupName ? formatGroupName(item.labGroupName) : '',
       qrToken: '', // Leave blank unless admin wants to overwrite the QR identifier
     });
     setFormErrors({});
@@ -357,6 +367,7 @@ export default function StudentsPage() {
         degreeProgrammeId: formData.degreeProgrammeId,
         batchId: formData.batchId,
         labGroupId: formData.labGroupId || null,
+        groupName: formData.groupName || null,
         qrToken: formData.qrToken.trim() || null,
       };
 
@@ -436,6 +447,7 @@ export default function StudentsPage() {
     const defaultBatch = selectedBatchId || batches[0]?.id || '';
     setBulkBatchId(defaultBatch);
     setBulkGroupId('');
+    setBulkGroupName('');
     if (defaultBatch) {
       labGroupService.getGroupsByBatch(defaultBatch)
         .then(res => {
@@ -449,6 +461,7 @@ export default function StudentsPage() {
   const handleBulkBatchChange = (batchId) => {
     setBulkBatchId(batchId);
     setBulkGroupId('');
+    setBulkGroupName('');
     if (batchId) {
       labGroupService.getGroupsByBatch(batchId)
         .then(res => {
@@ -469,7 +482,8 @@ export default function StudentsPage() {
     try {
       setBulkAssigning(true);
       const res = await labGroupService.bulkAssign(bulkBatchId, {
-        labGroupId: bulkGroupId || null,
+        targetGroupId: bulkGroupId || null,
+        targetGroupName: bulkGroupName || null,
         studentIds: selectedStudentIds,
       });
       showToast(res.message || 'Students successfully assigned to lab group', 'success');
@@ -554,7 +568,7 @@ export default function StudentsPage() {
       render: (item) => (
         item.labGroupName ? (
           <span className="font-mono font-bold text-xs text-indigo-300 bg-indigo-950/60 border border-indigo-800/50 px-2.5 py-0.5 rounded-full">
-            Group {item.labGroupName}
+            {formatGroupName(item.labGroupName)}
           </span>
         ) : (
           <span className="text-xs text-slate-500 font-normal">
@@ -732,7 +746,7 @@ export default function StudentsPage() {
               <option value="">All Lab Groups</option>
               {filterGroups.map((g) => (
                 <option key={g.id} value={g.id}>
-                  Group {g.groupName}
+                  {formatGroupName(g.groupName)}
                 </option>
               ))}
             </select>
@@ -930,20 +944,86 @@ export default function StudentsPage() {
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-slate-300 mb-1">
-              Lab Group <span className="text-slate-500 font-normal">(Optional)</span>
-            </label>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="block text-xs font-semibold text-slate-300">
+                Lab Group <span className="text-slate-500 font-normal">(Group A, B, C, D, E, F or Unassigned)</span>
+              </label>
+              <span className="text-[11px] text-indigo-400 font-medium">
+                {formData.groupName ? formData.groupName : (formData.labGroupId ? formatGroupName(formGroups.find(g => g.id === formData.labGroupId)?.groupName) : 'No Group')}
+              </span>
+            </div>
+
+            {/* Quick-select pills for standard groups (Group A, B, C, D, E, F) */}
+            <div className="flex flex-wrap gap-1.5 mb-2.5">
+              <button
+                type="button"
+                onClick={() => setFormData(prev => ({ ...prev, labGroupId: '', groupName: '' }))}
+                className={`px-2.5 py-1 rounded-lg text-xs font-medium transition ${
+                  !formData.labGroupId && !formData.groupName
+                    ? 'bg-slate-700 text-white font-semibold ring-1 ring-slate-400'
+                    : 'bg-slate-800/80 text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+                }`}
+              >
+                No Group
+              </button>
+              {STANDARD_GROUPS.map((grp) => {
+                const isSelected = (formData.groupName && formatGroupName(formData.groupName) === grp) ||
+                  (formData.labGroupId && formGroups.some(g => g.id === formData.labGroupId && formatGroupName(g.groupName) === grp));
+                return (
+                  <button
+                    key={grp}
+                    type="button"
+                    onClick={() => {
+                      const matched = formGroups.find(g => formatGroupName(g.groupName) === grp);
+                      setFormData(prev => ({
+                        ...prev,
+                        labGroupId: matched ? matched.id : '',
+                        groupName: grp,
+                      }));
+                    }}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-medium transition ${
+                      isSelected
+                        ? 'bg-indigo-600 text-white font-semibold shadow-md shadow-indigo-600/30 ring-2 ring-indigo-400'
+                        : 'bg-slate-800/80 text-slate-300 hover:text-white hover:bg-slate-700/80'
+                    }`}
+                  >
+                    {grp}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Select Dropdown */}
             <select
-              value={formData.labGroupId || ''}
-              onChange={(e) => setFormData({ ...formData, labGroupId: e.target.value })}
+              value={formData.groupName ? formatGroupName(formData.groupName) : (formData.labGroupId ? formatGroupName(formGroups.find(g => g.id === formData.labGroupId)?.groupName) : '')}
+              onChange={(e) => {
+                const val = e.target.value;
+                if (!val) {
+                  setFormData(prev => ({ ...prev, labGroupId: '', groupName: '' }));
+                } else {
+                  const matched = formGroups.find(g => formatGroupName(g.groupName) === val);
+                  setFormData(prev => ({
+                    ...prev,
+                    labGroupId: matched ? matched.id : '',
+                    groupName: val,
+                  }));
+                }
+              }}
               className="w-full px-3 py-2 bg-slate-800/80 border border-slate-700 rounded-xl text-sm text-slate-200 focus:outline-none focus:border-indigo-500"
             >
               <option value="">No Group (Unassigned)</option>
-              {formGroups.map((g) => (
-                <option key={g.id} value={g.id}>
-                  Group {g.groupName}
+              {STANDARD_GROUPS.map((grp) => (
+                <option key={grp} value={grp}>
+                  {grp}
                 </option>
               ))}
+              {formGroups
+                .filter(g => !STANDARD_GROUPS.includes(formatGroupName(g.groupName)))
+                .map(g => (
+                  <option key={g.id} value={formatGroupName(g.groupName)}>
+                    {formatGroupName(g.groupName)}
+                  </option>
+                ))}
             </select>
           </div>
 
@@ -1159,20 +1239,80 @@ export default function StudentsPage() {
           </div>
 
           <div>
-            <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1">
-              Target Lab Group
-            </label>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400">
+                Target Lab Group
+              </label>
+              <span className="text-xs font-semibold text-indigo-400">
+                {bulkGroupName ? bulkGroupName : (bulkGroupId ? formatGroupName(bulkBatchGroups.find(g => g.id === bulkGroupId)?.groupName) : 'Unassigned')}
+              </span>
+            </div>
+
+            {/* Quick group pills */}
+            <div className="flex flex-wrap gap-1.5 mb-2.5">
+              <button
+                type="button"
+                onClick={() => { setBulkGroupId(''); setBulkGroupName(''); }}
+                className={`px-2.5 py-1 rounded-lg text-xs font-medium transition ${
+                  !bulkGroupId && !bulkGroupName
+                    ? 'bg-slate-700 text-white font-semibold ring-1 ring-slate-400'
+                    : 'bg-slate-900 border border-slate-800 text-slate-400 hover:text-white'
+                }`}
+              >
+                No Group (Unassigned)
+              </button>
+              {STANDARD_GROUPS.map((grp) => {
+                const isSelected = bulkGroupName === grp ||
+                  (bulkGroupId && bulkBatchGroups.some(g => g.id === bulkGroupId && formatGroupName(g.groupName) === grp));
+                return (
+                  <button
+                    key={grp}
+                    type="button"
+                    onClick={() => {
+                      const matched = bulkBatchGroups.find(g => formatGroupName(g.groupName) === grp);
+                      setBulkGroupId(matched ? matched.id : '');
+                      setBulkGroupName(grp);
+                    }}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-medium transition ${
+                      isSelected
+                        ? 'bg-indigo-600 text-white font-semibold shadow-md shadow-indigo-600/30 ring-2 ring-indigo-400'
+                        : 'bg-slate-900 border border-slate-800 text-slate-300 hover:text-white'
+                    }`}
+                  >
+                    {grp}
+                  </button>
+                );
+              })}
+            </div>
+
             <select
-              value={bulkGroupId}
-              onChange={(e) => setBulkGroupId(e.target.value)}
+              value={bulkGroupName ? bulkGroupName : (bulkGroupId ? formatGroupName(bulkBatchGroups.find(g => g.id === bulkGroupId)?.groupName) : '')}
+              onChange={(e) => {
+                const val = e.target.value;
+                if (!val) {
+                  setBulkGroupId('');
+                  setBulkGroupName('');
+                } else {
+                  const matched = bulkBatchGroups.find(g => formatGroupName(g.groupName) === val);
+                  setBulkGroupId(matched ? matched.id : '');
+                  setBulkGroupName(val);
+                }
+              }}
               className="w-full px-3 py-2 bg-slate-950/70 border border-slate-800 rounded-xl text-sm text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
             >
               <option value="">Unassign / No Group</option>
-              {bulkBatchGroups.map((g) => (
-                <option key={g.id} value={g.id}>
-                  Group {g.groupName}
+              {STANDARD_GROUPS.map((grp) => (
+                <option key={grp} value={grp}>
+                  {grp}
                 </option>
               ))}
+              {bulkBatchGroups
+                .filter(g => !STANDARD_GROUPS.includes(formatGroupName(g.groupName)))
+                .map((g) => (
+                  <option key={g.id} value={formatGroupName(g.groupName)}>
+                    {formatGroupName(g.groupName)}
+                  </option>
+                ))}
             </select>
           </div>
 
@@ -1441,7 +1581,7 @@ export default function StudentsPage() {
                   <option value="">All Groups (Entire Batch)</option>
                   {bulkQrBatchGroups.map((g) => (
                     <option key={g.id} value={g.id}>
-                      Group {g.groupName}
+                      {formatGroupName(g.groupName)}
                     </option>
                   ))}
                 </select>

@@ -21,5 +21,9 @@ public interface LabGroupRepository extends JpaRepository<LabGroup, UUID> {
 
     Optional<LabGroup> findByBatchIdAndGroupNameIgnoreCase(UUID batchId, String groupName);
 
+    List<LabGroup> findByGroupNameIgnoreCase(String groupName);
+
+    Optional<LabGroup> findFirstByGroupNameIgnoreCase(String groupName);
+
     Optional<LabGroup> findByIdAndBatchId(UUID id, UUID batchId);
 }

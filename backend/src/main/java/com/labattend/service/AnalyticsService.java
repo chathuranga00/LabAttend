@@ -54,6 +54,34 @@ public class AnalyticsService {
         this.labGroupRepository = labGroupRepository;
     }
 
+    public UUID resolveLabGroupId(UUID labGroupId, String groupName, UUID batchId) {
+        if (labGroupId != null) {
+            return labGroupId;
+        }
+        if (groupName != null && !groupName.isBlank()) {
+            String cleanName = groupName.trim();
+            String normalizedName = cleanName.toLowerCase().startsWith("group ")
+                    ? "Group " + cleanName.substring(6).trim().toUpperCase()
+                    : (cleanName.length() == 1 ? "Group " + cleanName.toUpperCase() : cleanName);
+            String shortName = normalizedName.startsWith("Group ") ? normalizedName.substring(6).trim() : normalizedName;
+
+            if (batchId != null) {
+                return labGroupRepository.findByBatchIdAndGroupNameIgnoreCase(batchId, normalizedName)
+                        .or(() -> labGroupRepository.findByBatchIdAndGroupNameIgnoreCase(batchId, shortName))
+                        .or(() -> labGroupRepository.findByBatchIdAndGroupNameIgnoreCase(batchId, cleanName))
+                        .map(LabGroup::getId)
+                        .orElse(null);
+            } else {
+                return labGroupRepository.findFirstByGroupNameIgnoreCase(normalizedName)
+                        .or(() -> labGroupRepository.findFirstByGroupNameIgnoreCase(shortName))
+                        .or(() -> labGroupRepository.findFirstByGroupNameIgnoreCase(cleanName))
+                        .map(LabGroup::getId)
+                        .orElse(null);
+            }
+        }
+        return null;
+    }
+
     // =========================================================================
     // 1. LECTURER OVERVIEW
     // =========================================================================

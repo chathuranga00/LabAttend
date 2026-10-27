@@ -31,14 +31,16 @@ public class AdminAnalyticsController {
             @RequestParam(required = false) UUID programmeId,
             @RequestParam(required = false) UUID batchId,
             @RequestParam(required = false) UUID labGroupId,
+            @RequestParam(required = false) String groupName,
             @RequestParam(required = false) UUID moduleId,
             @RequestParam(required = false) UUID lecturerId,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
             @RequestParam(required = false) String semester
     ) {
+        UUID effectiveGroupId = analyticsService.resolveLabGroupId(labGroupId, groupName, batchId);
         AnalyticsOverviewResponse result = analyticsService.getAdminOverview(
-                programmeId, batchId, labGroupId, moduleId, lecturerId, startDate, endDate, semester
+                programmeId, batchId, effectiveGroupId, moduleId, lecturerId, startDate, endDate, semester
         );
         return ResponseEntity.ok(ApiResponse.success(result));
     }
@@ -48,14 +50,16 @@ public class AdminAnalyticsController {
             @RequestParam(required = false) UUID programmeId,
             @RequestParam(required = false) UUID batchId,
             @RequestParam(required = false) UUID labGroupId,
+            @RequestParam(required = false) String groupName,
             @RequestParam(required = false) UUID moduleId,
             @RequestParam(required = false) UUID lecturerId,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
             @RequestParam(required = false) String semester
     ) {
+        UUID effectiveGroupId = analyticsService.resolveLabGroupId(labGroupId, groupName, batchId);
         List<AttendanceTrendPoint> result = analyticsService.getAttendanceTrends(
-                lecturerId, programmeId, moduleId, batchId, labGroupId, startDate, endDate, semester
+                lecturerId, programmeId, moduleId, batchId, effectiveGroupId, startDate, endDate, semester
         );
         return ResponseEntity.ok(ApiResponse.success(result));
     }
@@ -65,6 +69,7 @@ public class AdminAnalyticsController {
             @RequestParam(required = false) UUID programmeId,
             @RequestParam(required = false) UUID batchId,
             @RequestParam(required = false) UUID labGroupId,
+            @RequestParam(required = false) String groupName,
             @RequestParam(required = false) UUID moduleId,
             @RequestParam(required = false) UUID lecturerId,
             @RequestParam(required = false) SessionStatus status,
@@ -72,8 +77,9 @@ public class AdminAnalyticsController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
             @RequestParam(required = false) String semester
     ) {
+        UUID effectiveGroupId = analyticsService.resolveLabGroupId(labGroupId, groupName, batchId);
         List<SessionAnalyticsResponse> result = analyticsService.getSessionAnalytics(
-                lecturerId, programmeId, moduleId, batchId, labGroupId, status, startDate, endDate, semester
+                lecturerId, programmeId, moduleId, batchId, effectiveGroupId, status, startDate, endDate, semester
         );
         return ResponseEntity.ok(ApiResponse.success(result));
     }
@@ -83,6 +89,7 @@ public class AdminAnalyticsController {
             @RequestParam(required = false) UUID programmeId,
             @RequestParam(required = false) UUID batchId,
             @RequestParam(required = false) UUID labGroupId,
+            @RequestParam(required = false) String groupName,
             @RequestParam(required = false) UUID moduleId,
             @RequestParam(required = false) UUID lecturerId,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
@@ -91,8 +98,9 @@ public class AdminAnalyticsController {
             @RequestParam(required = false) Double threshold,
             @RequestParam(required = false) String search
     ) {
+        UUID effectiveGroupId = analyticsService.resolveLabGroupId(labGroupId, groupName, batchId);
         List<StudentAttendanceSummaryResponse> result = analyticsService.getStudentAttendanceSummaries(
-                lecturerId, programmeId, moduleId, batchId, labGroupId, startDate, endDate, semester, threshold, search
+                lecturerId, programmeId, moduleId, batchId, effectiveGroupId, startDate, endDate, semester, threshold, search
         );
         return ResponseEntity.ok(ApiResponse.success(result));
     }
@@ -116,12 +124,14 @@ public class AdminAnalyticsController {
             @RequestParam(required = false) UUID programmeId,
             @RequestParam(required = false) UUID batchId,
             @RequestParam(required = false) UUID labGroupId,
+            @RequestParam(required = false) String groupName,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
             @RequestParam(required = false) String semester
     ) {
+        UUID effectiveGroupId = analyticsService.resolveLabGroupId(labGroupId, groupName, batchId);
         List<ModuleAnalyticsResponse> result = analyticsService.getModuleAnalytics(
-                null, programmeId, batchId, labGroupId, startDate, endDate, semester
+                null, programmeId, batchId, effectiveGroupId, startDate, endDate, semester
         );
         return ResponseEntity.ok(ApiResponse.success(result));
     }
@@ -131,12 +141,14 @@ public class AdminAnalyticsController {
             @RequestParam(required = false) UUID programmeId,
             @RequestParam(required = false) UUID moduleId,
             @RequestParam(required = false) UUID labGroupId,
+            @RequestParam(required = false) String groupName,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
             @RequestParam(required = false) String semester
     ) {
+        UUID effectiveGroupId = analyticsService.resolveLabGroupId(labGroupId, groupName, null);
         List<BatchAnalyticsResponse> result = analyticsService.getBatchAnalytics(
-                null, programmeId, moduleId, labGroupId, startDate, endDate, semester
+                null, programmeId, moduleId, effectiveGroupId, startDate, endDate, semester
         );
         return ResponseEntity.ok(ApiResponse.success(result));
     }
@@ -146,14 +158,16 @@ public class AdminAnalyticsController {
             @RequestParam(required = false) UUID programmeId,
             @RequestParam(required = false) UUID batchId,
             @RequestParam(required = false) UUID labGroupId,
+            @RequestParam(required = false) String groupName,
             @RequestParam(required = false) UUID moduleId,
             @RequestParam(required = false) UUID lecturerId,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
             @RequestParam(required = false) String semester
     ) {
+        UUID effectiveGroupId = analyticsService.resolveLabGroupId(labGroupId, groupName, batchId);
         List<GroupAnalyticsResponse> result = analyticsService.getGroupAttendanceAnalytics(
-                lecturerId, programmeId, batchId, labGroupId, moduleId, startDate, endDate, semester
+                lecturerId, programmeId, batchId, effectiveGroupId, moduleId, startDate, endDate, semester
         );
         return ResponseEntity.ok(ApiResponse.success(result));
     }

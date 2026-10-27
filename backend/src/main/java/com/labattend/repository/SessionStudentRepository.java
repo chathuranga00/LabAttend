@@ -34,11 +34,15 @@ public interface SessionStudentRepository extends JpaRepository<SessionStudent, 
     );
 
     @org.springframework.data.jpa.repository.Query(
-        "SELECT ss.student.id, ss.student.studentId, ss.student.fullName, ss.student.batch.batchCode, " +
-        "ss.student.labGroup.id, ss.student.labGroup.groupName, " +
+        "SELECT st.id, st.studentId, st.fullName, sb.batchCode, " +
+        "lg.id, lg.groupName, " +
         "COUNT(CASE WHEN s.status IN (com.labattend.entity.enums.SessionStatus.FINALIZED, com.labattend.entity.enums.SessionStatus.CLOSED) AND ss.isExpected = true THEN 1 ELSE NULL END) " +
         "FROM SessionStudent ss " +
         "JOIN ss.session s " +
+        "JOIN ss.student st " +
+        "LEFT JOIN st.batch sb " +
+        "LEFT JOIN st.labGroup lg " +
+        "LEFT JOIN s.labGroup slg " +
         "LEFT JOIN s.batch b " +
         "JOIN s.module m " +
         "WHERE s.status != com.labattend.entity.enums.SessionStatus.CANCELLED AND " +
@@ -46,12 +50,12 @@ public interface SessionStudentRepository extends JpaRepository<SessionStudent, 
         "(cast(:lecturerId as string) IS NULL OR s.lecturer.id = :lecturerId) AND " +
         "(cast(:moduleId as string) IS NULL OR m.id = :moduleId) AND " +
         "(cast(:batchId as string) IS NULL OR b.id = :batchId) AND " +
-        "(cast(:labGroupId as string) IS NULL OR s.labGroup.id = :labGroupId OR ss.student.labGroup.id = :labGroupId) AND " +
+        "(cast(:labGroupId as string) IS NULL OR slg.id = :labGroupId OR lg.id = :labGroupId) AND " +
         "(cast(:programmeId as string) IS NULL OR m.degreeProgramme.id = :programmeId OR (b IS NOT NULL AND b.degreeProgramme.id = :programmeId)) AND " +
         "(cast(:startDate as string) IS NULL OR s.sessionDate >= :startDate) AND " +
         "(cast(:endDate as string) IS NULL OR s.sessionDate <= :endDate) AND " +
         "(cast(:semester as string) IS NULL OR m.semester = :semester) " +
-        "GROUP BY ss.student.id, ss.student.studentId, ss.student.fullName, ss.student.batch.batchCode, ss.student.labGroup.id, ss.student.labGroup.groupName"
+        "GROUP BY st.id, st.studentId, st.fullName, sb.batchCode, lg.id, lg.groupName"
     )
     List<Object[]> countEligibleFinalizedSessionsPerStudent(
             @org.springframework.data.repository.query.Param("lecturerId") UUID lecturerId,
@@ -67,6 +71,7 @@ public interface SessionStudentRepository extends JpaRepository<SessionStudent, 
     @org.springframework.data.jpa.repository.Query(
         "SELECT COUNT(ss.id) FROM SessionStudent ss " +
         "JOIN ss.session s " +
+        "LEFT JOIN s.labGroup slg " +
         "LEFT JOIN s.batch b " +
         "JOIN s.module m " +
         "WHERE s.status IN (com.labattend.entity.enums.SessionStatus.FINALIZED, com.labattend.entity.enums.SessionStatus.CLOSED) AND " +
@@ -74,7 +79,7 @@ public interface SessionStudentRepository extends JpaRepository<SessionStudent, 
         "(cast(:lecturerId as string) IS NULL OR s.lecturer.id = :lecturerId) AND " +
         "(cast(:moduleId as string) IS NULL OR m.id = :moduleId) AND " +
         "(cast(:batchId as string) IS NULL OR b.id = :batchId) AND " +
-        "(cast(:labGroupId as string) IS NULL OR s.labGroup.id = :labGroupId) AND " +
+        "(cast(:labGroupId as string) IS NULL OR slg.id = :labGroupId) AND " +
         "(cast(:programmeId as string) IS NULL OR m.degreeProgramme.id = :programmeId OR (b IS NOT NULL AND b.degreeProgramme.id = :programmeId)) AND " +
         "(cast(:startDate as string) IS NULL OR s.sessionDate >= :startDate) AND " +
         "(cast(:endDate as string) IS NULL OR s.sessionDate <= :endDate) AND " +
@@ -96,6 +101,7 @@ public interface SessionStudentRepository extends JpaRepository<SessionStudent, 
         "JOIN FETCH ss.session s " +
         "JOIN FETCH s.module m " +
         "LEFT JOIN FETCH s.batch b " +
+        "LEFT JOIN FETCH s.labGroup lg " +
         "JOIN FETCH s.hall h " +
         "JOIN FETCH s.lecturer l " +
         "WHERE ss.student.id = :studentId AND " +

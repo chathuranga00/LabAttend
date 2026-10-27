@@ -8,35 +8,50 @@ const BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080/api
  */
 const downloadFileBlob = async (endpoint, params, defaultFilename) => {
   const token = localStorage.getItem('labattend_token');
-  const response = await axios.get(`${BASE_URL}${endpoint}`, {
-    params,
-    responseType: 'blob',
-    headers: {
-      Authorization: token ? `Bearer ${token}` : undefined,
-    },
-  });
+  try {
+    const response = await axios.get(`${BASE_URL}${endpoint}`, {
+      params,
+      responseType: 'blob',
+      headers: {
+        Authorization: token ? `Bearer ${token}` : undefined,
+      },
+    });
 
-  // Extract filename from Content-Disposition header if available
-  let filename = defaultFilename;
-  const disposition = response.headers['content-disposition'];
-  if (disposition && disposition.indexOf('filename=') !== -1) {
-    const filenameRegex = /filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/;
-    const matches = filenameRegex.exec(disposition);
-    if (matches != null && matches[1]) {
-      filename = matches[1].replace(/['"]/g, '');
+    // Extract filename from Content-Disposition header if available
+    let filename = defaultFilename;
+    const disposition = response.headers['content-disposition'];
+    if (disposition && disposition.indexOf('filename=') !== -1) {
+      const filenameRegex = /filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/;
+      const matches = filenameRegex.exec(disposition);
+      if (matches != null && matches[1]) {
+        filename = matches[1].replace(/['"]/g, '');
+      }
     }
-  }
 
-  // Create browser download link
-  const blob = new Blob([response.data], { type: response.headers['content-type'] });
-  const url = window.URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.setAttribute('download', filename);
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  window.URL.revokeObjectURL(url);
+    // Create browser download link
+    const blob = new Blob([response.data], { type: response.headers['content-type'] });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', filename);
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(url);
+  } catch (error) {
+    if (error.response?.data instanceof Blob) {
+      try {
+        const text = await error.response.data.text();
+        const json = JSON.parse(text);
+        if (json.message) {
+          throw new Error(json.message);
+        }
+      } catch (jsonErr) {
+        if (jsonErr.message && jsonErr !== error) throw jsonErr;
+      }
+    }
+    throw error;
+  }
 };
 
 export const reportService = {

@@ -63,8 +63,11 @@ public interface AttendanceRecordRepository extends JpaRepository<AttendanceReco
     );
 
     @org.springframework.data.jpa.repository.Query(
-        "SELECT a.student.id, COUNT(a.id) FROM AttendanceRecord a " +
+        "SELECT st.id, COUNT(a.id) FROM AttendanceRecord a " +
         "JOIN a.session s " +
+        "JOIN a.student st " +
+        "LEFT JOIN s.labGroup slg " +
+        "LEFT JOIN st.labGroup stlg " +
         "LEFT JOIN s.batch b " +
         "JOIN s.module m " +
         "WHERE s.status IN (com.labattend.entity.enums.SessionStatus.FINALIZED, com.labattend.entity.enums.SessionStatus.CLOSED) AND " +
@@ -73,12 +76,12 @@ public interface AttendanceRecordRepository extends JpaRepository<AttendanceReco
         "(cast(:lecturerId as string) IS NULL OR s.lecturer.id = :lecturerId) AND " +
         "(cast(:moduleId as string) IS NULL OR m.id = :moduleId) AND " +
         "(cast(:batchId as string) IS NULL OR b.id = :batchId) AND " +
-        "(cast(:labGroupId as string) IS NULL OR s.labGroup.id = :labGroupId OR a.student.labGroup.id = :labGroupId) AND " +
+        "(cast(:labGroupId as string) IS NULL OR slg.id = :labGroupId OR stlg.id = :labGroupId) AND " +
         "(cast(:programmeId as string) IS NULL OR m.degreeProgramme.id = :programmeId OR (b IS NOT NULL AND b.degreeProgramme.id = :programmeId)) AND " +
         "(cast(:startDate as string) IS NULL OR s.sessionDate >= :startDate) AND " +
         "(cast(:endDate as string) IS NULL OR s.sessionDate <= :endDate) AND " +
         "(cast(:semester as string) IS NULL OR m.semester = :semester) " +
-        "GROUP BY a.student.id"
+        "GROUP BY st.id"
     )
     List<Object[]> countAttendedSessionsPerStudent(
             @org.springframework.data.repository.query.Param("lecturerId") UUID lecturerId,
@@ -92,8 +95,11 @@ public interface AttendanceRecordRepository extends JpaRepository<AttendanceReco
     );
 
     @org.springframework.data.jpa.repository.Query(
-        "SELECT a.student.id, COUNT(a.id) FROM AttendanceRecord a " +
+        "SELECT st.id, COUNT(a.id) FROM AttendanceRecord a " +
         "JOIN a.session s " +
+        "JOIN a.student st " +
+        "LEFT JOIN s.labGroup slg " +
+        "LEFT JOIN st.labGroup stlg " +
         "LEFT JOIN s.batch b " +
         "JOIN s.module m " +
         "WHERE s.status IN (com.labattend.entity.enums.SessionStatus.FINALIZED, com.labattend.entity.enums.SessionStatus.CLOSED) AND " +
@@ -102,12 +108,12 @@ public interface AttendanceRecordRepository extends JpaRepository<AttendanceReco
         "(cast(:lecturerId as string) IS NULL OR s.lecturer.id = :lecturerId) AND " +
         "(cast(:moduleId as string) IS NULL OR m.id = :moduleId) AND " +
         "(cast(:batchId as string) IS NULL OR b.id = :batchId) AND " +
-        "(cast(:labGroupId as string) IS NULL OR s.labGroup.id = :labGroupId OR a.student.labGroup.id = :labGroupId) AND " +
+        "(cast(:labGroupId as string) IS NULL OR slg.id = :labGroupId OR stlg.id = :labGroupId) AND " +
         "(cast(:programmeId as string) IS NULL OR m.degreeProgramme.id = :programmeId OR (b IS NOT NULL AND b.degreeProgramme.id = :programmeId)) AND " +
         "(cast(:startDate as string) IS NULL OR s.sessionDate >= :startDate) AND " +
         "(cast(:endDate as string) IS NULL OR s.sessionDate <= :endDate) AND " +
         "(cast(:semester as string) IS NULL OR m.semester = :semester) " +
-        "GROUP BY a.student.id"
+        "GROUP BY st.id"
     )
     List<Object[]> countOutgoingCrossGroupVisitsPerStudent(
             @org.springframework.data.repository.query.Param("lecturerId") UUID lecturerId,
@@ -123,18 +129,19 @@ public interface AttendanceRecordRepository extends JpaRepository<AttendanceReco
     @org.springframework.data.jpa.repository.Query(
         "SELECT a.status, COUNT(a.id) FROM AttendanceRecord a " +
         "JOIN a.session s " +
+        "LEFT JOIN s.labGroup slg " +
         "LEFT JOIN s.batch b " +
         "JOIN s.module m " +
         "WHERE s.status IN (com.labattend.entity.enums.SessionStatus.FINALIZED, com.labattend.entity.enums.SessionStatus.CLOSED) AND " +
         "a.isCrossGroup = false AND " +
-        "(:lecturerId IS NULL OR s.lecturer.id = :lecturerId) AND " +
-        "(:moduleId IS NULL OR m.id = :moduleId) AND " +
-        "(:batchId IS NULL OR b.id = :batchId) AND " +
-        "(:labGroupId IS NULL OR s.labGroup.id = :labGroupId) AND " +
-        "(:programmeId IS NULL OR m.degreeProgramme.id = :programmeId OR (b IS NOT NULL AND b.degreeProgramme.id = :programmeId)) AND " +
-        "(:startDate IS NULL OR s.sessionDate >= :startDate) AND " +
-        "(:endDate IS NULL OR s.sessionDate <= :endDate) AND " +
-        "(:semester IS NULL OR m.semester = :semester) " +
+        "(cast(:lecturerId as string) IS NULL OR s.lecturer.id = :lecturerId) AND " +
+        "(cast(:moduleId as string) IS NULL OR m.id = :moduleId) AND " +
+        "(cast(:batchId as string) IS NULL OR b.id = :batchId) AND " +
+        "(cast(:labGroupId as string) IS NULL OR slg.id = :labGroupId) AND " +
+        "(cast(:programmeId as string) IS NULL OR m.degreeProgramme.id = :programmeId OR (b IS NOT NULL AND b.degreeProgramme.id = :programmeId)) AND " +
+        "(cast(:startDate as string) IS NULL OR s.sessionDate >= :startDate) AND " +
+        "(cast(:endDate as string) IS NULL OR s.sessionDate <= :endDate) AND " +
+        "(cast(:semester as string) IS NULL OR m.semester = :semester) " +
         "GROUP BY a.status"
     )
     List<Object[]> countFinalizedAttendanceSlotsByStatus(
@@ -151,6 +158,7 @@ public interface AttendanceRecordRepository extends JpaRepository<AttendanceReco
     @org.springframework.data.jpa.repository.Query(
         "SELECT COUNT(a.id) FROM AttendanceRecord a " +
         "JOIN a.session s " +
+        "LEFT JOIN s.labGroup slg " +
         "LEFT JOIN s.batch b " +
         "JOIN s.module m " +
         "WHERE s.status IN (com.labattend.entity.enums.SessionStatus.FINALIZED, com.labattend.entity.enums.SessionStatus.CLOSED) AND " +
@@ -159,7 +167,7 @@ public interface AttendanceRecordRepository extends JpaRepository<AttendanceReco
         "(cast(:lecturerId as string) IS NULL OR s.lecturer.id = :lecturerId) AND " +
         "(cast(:moduleId as string) IS NULL OR m.id = :moduleId) AND " +
         "(cast(:batchId as string) IS NULL OR b.id = :batchId) AND " +
-        "(cast(:labGroupId as string) IS NULL OR s.labGroup.id = :labGroupId) AND " +
+        "(cast(:labGroupId as string) IS NULL OR slg.id = :labGroupId) AND " +
         "(cast(:programmeId as string) IS NULL OR m.degreeProgramme.id = :programmeId OR (b IS NOT NULL AND b.degreeProgramme.id = :programmeId)) AND " +
         "(cast(:startDate as string) IS NULL OR s.sessionDate >= :startDate) AND " +
         "(cast(:endDate as string) IS NULL OR s.sessionDate <= :endDate) AND " +

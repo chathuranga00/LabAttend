@@ -18,4 +18,6 @@ public class BulkAssignGroupRequest {
 
     // Optional: if null, unassigns students from their current group
     private UUID targetGroupId;
+
+    private String targetGroupName;
 }

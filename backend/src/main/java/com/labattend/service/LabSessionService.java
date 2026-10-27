@@ -114,6 +114,11 @@ public class LabSessionService {
                     lecturer.getId(), module.getId(), batch.getId(), labGroup.getId()
             );
             if (!isAssigned) {
+                isAssigned = lecturerModuleAssignmentRepository.isLecturerAssignedToModuleAndBatch(
+                        lecturer.getId(), module.getId(), batch.getId()
+                );
+            }
+            if (!isAssigned) {
                 throw new BadRequestException(String.format(
                         "You are not assigned to conduct sessions for Module '%s', Batch '%s', and Lab Group '%s'",
                         module.getModuleCode(), batch.getBatchCode(), labGroup.getGroupName()
@@ -124,6 +129,11 @@ public class LabSessionService {
             boolean isAssigned = lecturerModuleAssignmentRepository.isLecturerAssignedToModuleBatchAndGroup(
                     lecturer.getId(), module.getId(), batch.getId(), null
             );
+            if (!isAssigned) {
+                isAssigned = lecturerModuleAssignmentRepository.isLecturerAssignedToModuleAndBatch(
+                        lecturer.getId(), module.getId(), batch.getId()
+                );
+            }
             if (!isAssigned) {
                 throw new BadRequestException(String.format(
                         "You are not assigned to conduct whole-batch sessions for Module '%s' and Batch '%s'",
@@ -529,40 +539,36 @@ public class LabSessionService {
         for (Map.Entry<UUID, List<LecturerModuleAssignment>> entry : byModule.entrySet()) {
             com.labattend.entity.Module module = entry.getValue().get(0).getModule();
 
-            // Group assignments for this module by batch
+            boolean hasAllBatchesAssignment = entry.getValue().stream().anyMatch(a -> a.getBatch() == null);
             Map<UUID, List<LecturerModuleAssignment>> byBatch = entry.getValue().stream()
                     .filter(a -> a.getBatch() != null)
                     .collect(Collectors.groupingBy(a -> a.getBatch().getId()));
+
+            if (hasAllBatchesAssignment) {
+                List<Batch> activeBatches = batchRepository.findByIsActiveTrueOrderByBatchCodeAsc();
+                for (Batch ab : activeBatches) {
+                    byBatch.putIfAbsent(ab.getId(), Collections.singletonList(
+                            LecturerModuleAssignment.builder().module(module).batch(ab).build()
+                    ));
+                }
+            }
 
             List<LecturerSessionOptionsResponse.AuthorizedBatchOption> batchOptions = new ArrayList<>();
 
             for (Map.Entry<UUID, List<LecturerModuleAssignment>> bEntry : byBatch.entrySet()) {
                 Batch b = bEntry.getValue().get(0).getBatch();
-                boolean isWholeBatch = bEntry.getValue().stream().anyMatch(a -> a.getLabGroup() == null);
+                // Whole batch is always allowed: lecturers can teach all or choose a specific group
+                boolean isWholeBatch = true;
 
                 List<LecturerSessionOptionsResponse.AuthorizedGroupOption> groupOptions = new ArrayList<>();
-                if (isWholeBatch) {
-                    List<LabGroup> allGroups = labGroupRepository.findByBatchIdAndIsActiveTrueOrderByGroupNameAsc(b.getId());
-                    for (LabGroup g : allGroups) {
-                        long count = studentRepository.countByBatchIdAndLabGroupIdAndIsActiveTrue(b.getId(), g.getId());
-                        groupOptions.add(LecturerSessionOptionsResponse.AuthorizedGroupOption.builder()
-                                .groupId(g.getId())
-                                .groupName(g.getGroupName())
-                                .studentCount(count)
-                                .build());
-                    }
-                } else {
-                    for (LecturerModuleAssignment lma : bEntry.getValue()) {
-                        if (lma.getLabGroup() != null && Boolean.TRUE.equals(lma.getLabGroup().getIsActive())) {
-                            LabGroup g = lma.getLabGroup();
-                            long count = studentRepository.countByBatchIdAndLabGroupIdAndIsActiveTrue(b.getId(), g.getId());
-                            groupOptions.add(LecturerSessionOptionsResponse.AuthorizedGroupOption.builder()
-                                    .groupId(g.getId())
-                                    .groupName(g.getGroupName())
-                                    .studentCount(count)
-                                    .build());
-                        }
-                    }
+                List<LabGroup> allGroups = labGroupRepository.findByBatchIdAndIsActiveTrueOrderByGroupNameAsc(b.getId());
+                for (LabGroup g : allGroups) {
+                    long count = studentRepository.countByBatchIdAndLabGroupIdAndIsActiveTrue(b.getId(), g.getId());
+                    groupOptions.add(LecturerSessionOptionsResponse.AuthorizedGroupOption.builder()
+                            .groupId(g.getId())
+                            .groupName(g.getGroupName())
+                            .studentCount(count)
+                            .build());
                 }
 
                 long totalBatchCount = studentRepository.countByBatchIdAndIsActiveTrue(b.getId());

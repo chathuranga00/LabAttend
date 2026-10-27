@@ -28,6 +28,12 @@ public class AdminLabGroupController {
         this.labGroupService = labGroupService;
     }
 
+    @GetMapping("/groups")
+    public ResponseEntity<ApiResponse<List<LabGroupResponse>>> getAllGroups() {
+        List<LabGroupResponse> groups = labGroupService.getAllGroups();
+        return ResponseEntity.ok(ApiResponse.success(groups));
+    }
+
     @GetMapping("/batches/{batchId}/groups")
     public ResponseEntity<ApiResponse<List<LabGroupResponse>>> getGroupsByBatch(@PathVariable UUID batchId) {
         List<LabGroupResponse> groups = labGroupService.getGroupsByBatch(batchId);

@@ -132,14 +132,19 @@ public class LecturerSessionController {
     @GetMapping("/{id}/attendance")
     public ResponseEntity<ApiResponse<PageResponse<AttendanceRecordResponse>>> getSessionAttendance(
             @PathVariable UUID id,
-            @RequestParam(required = false) String search,
+            @RequestParam(required = false) com.labattend.entity.enums.AttendanceStatus status,
+            @RequestParam(required = false) com.labattend.entity.enums.AttendanceMethod method,
+            @RequestParam(required = false) Boolean isCorrected,
             @RequestParam(required = false) Boolean isCrossGroup,
+            @RequestParam(required = false) String search,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size,
+            @RequestParam(defaultValue = "markedAt") String sortBy,
+            @RequestParam(defaultValue = "desc") String sortDir,
             @AuthenticationPrincipal CustomUserDetails userDetails
     ) {
-        PageResponse<AttendanceRecordResponse> result = attendanceService.getSessionAttendance(
-                userDetails.getId(), id, search, isCrossGroup, page, size
+        PageResponse<AttendanceRecordResponse> result = attendanceService.searchAttendanceRecords(
+                userDetails.getId(), id, null, status, method, isCorrected, isCrossGroup, search, page, size, sortBy, sortDir, false
         );
         return ResponseEntity.ok(ApiResponse.success(result));
     }

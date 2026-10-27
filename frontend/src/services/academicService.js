@@ -84,6 +84,7 @@ export const lecturerService = {
 };
 
 export const labGroupService = {
+  getAllGroups: () => api.get('/admin/groups'),
   getGroupsByBatch: (batchId) => api.get(`/admin/batches/${batchId}/groups`),
   createGroup: (batchId, data) => api.post(`/admin/batches/${batchId}/groups`, data),
   getGroupById: (id) => api.get(`/admin/groups/${id}`),

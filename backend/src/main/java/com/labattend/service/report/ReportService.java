@@ -274,12 +274,41 @@ public class ReportService {
             UUID requestingUserId,
             boolean isAdmin
     ) {
-        if (studentId == null) {
-            throw new BadRequestException("Student ID is required for Student History Report.");
+        return generateStudentHistoryReport(
+                studentId != null ? studentId.toString() : null,
+                moduleId,
+                startDate,
+                endDate,
+                requestingUserId,
+                isAdmin
+        );
+    }
+
+    public ReportData generateStudentHistoryReport(
+            String studentIdentifier,
+            UUID moduleId,
+            LocalDate startDate,
+            LocalDate endDate,
+            UUID requestingUserId,
+            boolean isAdmin
+    ) {
+        if (studentIdentifier == null || studentIdentifier.trim().isEmpty()) {
+            throw new BadRequestException("Student ID or Matriculation Number is required for Student History Report.");
         }
 
-        Student student = studentRepository.findById(studentId)
-                .orElseThrow(() -> new ResourceNotFoundException("Student not found: " + studentId));
+        String trimmed = studentIdentifier.trim();
+        Student student = null;
+        try {
+            UUID sUuid = UUID.fromString(trimmed);
+            student = studentRepository.findById(sUuid).orElse(null);
+        } catch (IllegalArgumentException ignored) {
+            // Not a UUID, fallback to matriculation studentId
+        }
+
+        if (student == null) {
+            student = studentRepository.findByStudentId(trimmed)
+                    .orElseThrow(() -> new ResourceNotFoundException("Student not found for identifier: " + trimmed));
+        }
 
         UUID lecturerId = null;
         if (!isAdmin) {

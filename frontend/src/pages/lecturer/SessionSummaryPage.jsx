@@ -104,7 +104,7 @@ export default function SessionSummaryPage() {
 
       const res = isAdmin
         ? await attendanceService.getAdminAttendance(params)
-        : await attendanceService.getAdminAttendance(params); // both use searchAttendanceRecords
+        : await attendanceService.getSessionAttendance(id, params);
 
       if (res.success && res.data) {
         setRecords(res.data.content || []);

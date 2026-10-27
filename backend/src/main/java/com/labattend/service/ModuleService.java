@@ -74,7 +74,7 @@ public class ModuleService {
         Module module = Module.builder()
                 .moduleCode(moduleCode)
                 .name(request.getName().trim())
-                .credits(request.getCredits())
+                .credits(request.getCredits() != null ? request.getCredits() : 0)
                 .degreeProgramme(programme)
                 .academicYear(request.getAcademicYear() != null ? request.getAcademicYear().trim() : null)
                 .semester(request.getSemester() != null ? request.getSemester().trim() : null)
@@ -108,7 +108,9 @@ public class ModuleService {
 
         module.setModuleCode(moduleCode);
         module.setName(request.getName().trim());
-        module.setCredits(request.getCredits());
+        if (request.getCredits() != null) {
+            module.setCredits(request.getCredits());
+        }
         module.setDegreeProgramme(programme);
         module.setAcademicYear(request.getAcademicYear() != null ? request.getAcademicYear().trim() : null);
         module.setSemester(request.getSemester() != null ? request.getSemester().trim() : null);

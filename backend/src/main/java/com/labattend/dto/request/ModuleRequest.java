@@ -25,9 +25,8 @@ public class ModuleRequest {
     @Size(max = 255, message = "Module name cannot exceed 255 characters")
     private String name;
 
-    @NotNull(message = "Credits are required")
-    @Min(value = 1, message = "Credits must be at least 1")
-    private Integer credits;
+    @Builder.Default
+    private Integer credits = 0;
 
     private UUID degreeProgrammeId;
 

@@ -18,6 +18,7 @@ public interface BatchRepository extends JpaRepository<Batch, UUID> {
     boolean existsByBatchCode(String batchCode);
     boolean existsByBatchCodeAndIdNot(String batchCode, UUID id);
     List<Batch> findByDegreeProgrammeId(UUID degreeProgrammeId);
+    List<Batch> findByIsActiveTrueOrderByBatchCodeAsc();
 
     @Query("SELECT b FROM Batch b WHERE " +
            "(:programmeId IS NULL OR b.degreeProgramme.id = :programmeId) AND " +

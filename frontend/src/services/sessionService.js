@@ -4,6 +4,7 @@ export const sessionService = {
   // Lecturer endpoints
   createSession: (data) => api.post('/lecturer/sessions', data),
   getLecturerSessions: (params = {}) => api.get('/lecturer/sessions', { params }),
+  getMySessions: (params = {}) => api.get('/lecturer/sessions', { params }),
   getLecturerSessionById: (id) => api.get(`/lecturer/sessions/${id}`),
   startSession: (id) => api.post(`/lecturer/sessions/${id}/start`),
   cancelSession: (id, data) => api.post(`/lecturer/sessions/${id}/cancel`, data),

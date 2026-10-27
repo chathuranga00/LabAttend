@@ -4,6 +4,7 @@ import { ThemeProvider } from './context/ThemeContext';
 import { AuthProvider } from './context/AuthContext';
 import { ToastProvider } from './context/ToastContext';
 import { AppRoutes } from './routes';
+import ErrorBoundary from './components/common/ErrorBoundary';
 
 export default function App() {
   return (
@@ -11,7 +12,9 @@ export default function App() {
       <ThemeProvider>
         <ToastProvider>
           <AuthProvider>
-            <AppRoutes />
+            <ErrorBoundary>
+              <AppRoutes />
+            </ErrorBoundary>
           </AuthProvider>
         </ToastProvider>
       </ThemeProvider>

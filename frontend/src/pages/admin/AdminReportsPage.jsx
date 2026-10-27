@@ -15,13 +15,14 @@ import {
   Search, 
   Loader2,
   RefreshCw,
+  RotateCcw,
   Clock,
   Layers,
   ShieldCheck,
   ChevronRight
 } from 'lucide-react';
 import { reportService } from '../../services/reportService';
-import { academicService } from '../../services/academicService';
+import { academicService, studentService } from '../../services/academicService';
 import { sessionService } from '../../services/sessionService';
 import { useToast } from '../../context/ToastContext';
 
@@ -60,10 +61,12 @@ export default function AdminReportsPage() {
   // Dropdown Reference Data
   const [modules, setModules] = useState([]);
   const [batches, setBatches] = useState([]);
+  const [allLabGroups, setAllLabGroups] = useState([]);
   const [labGroups, setLabGroups] = useState([]);
   const [programmes, setProgrammes] = useState([]);
   const [halls, setHalls] = useState([]);
   const [finalizedSessions, setFinalizedSessions] = useState([]);
+  const [students, setStudents] = useState([]);
 
   // Preview State
   const [previewData, setPreviewData] = useState(null);
@@ -75,12 +78,14 @@ export default function AdminReportsPage() {
   useEffect(() => {
     async function loadOptions() {
       try {
-        const [modRes, batchRes, progRes, hallRes, sessRes] = await Promise.allSettled([
+        const [modRes, batchRes, progRes, hallRes, sessRes, grpRes, stuRes] = await Promise.allSettled([
           academicService.getModules({ size: 100 }),
           academicService.getBatches({ size: 100 }),
           academicService.getDegreeProgrammes({ size: 100 }),
           academicService.getLaboratoryHalls({ size: 100 }),
           sessionService.getAllSessions ? sessionService.getAllSessions({ status: 'FINALIZED', size: 100 }) : Promise.resolve({ data: [] }),
+          academicService.labGroup.getAllGroups().catch(() => ({ data: [] })),
+          studentService.getStudents({ size: 300 }).catch(() => ({ data: { content: [] } })),
         ]);
 
         if (modRes.status === 'fulfilled' && modRes.value?.data?.content) {
@@ -101,6 +106,17 @@ export default function AdminReportsPage() {
             setSessionId(sessRes.value.data.content[0].id);
           }
         }
+        if (grpRes.status === 'fulfilled' && grpRes.value?.data) {
+          const list = Array.isArray(grpRes.value.data)
+            ? grpRes.value.data
+            : (grpRes.value.data.content || grpRes.value.data.data || []);
+          setAllLabGroups(list);
+          setLabGroups(list);
+        }
+        if (stuRes.status === 'fulfilled' && stuRes.value?.data) {
+          const list = stuRes.value.data.content || (Array.isArray(stuRes.value.data) ? stuRes.value.data : []);
+          setStudents(list);
+        }
       } catch (err) {
         console.error('Failed to load filter reference data', err);
       }
@@ -110,24 +126,41 @@ export default function AdminReportsPage() {
 
   // Fetch Lab Groups when batchId changes
   useEffect(() => {
+    setLabGroupId('');
     if (!batchId) {
-      setLabGroups([]);
-      setLabGroupId('');
+      setLabGroups(allLabGroups);
       return;
     }
     academicService.labGroup.getGroupsByBatch(batchId)
       .then((res) => {
-        if (res.data) {
-          setLabGroups(Array.isArray(res.data) ? res.data : (res.data.content || []));
-        } else {
-          setLabGroups([]);
-        }
+        const list = Array.isArray(res.data)
+          ? res.data
+          : (res.data?.content || res.data?.data || []);
+        setLabGroups(list);
       })
       .catch((err) => {
         console.error('Failed to load lab groups for batch', err);
         setLabGroups([]);
       });
-  }, [batchId]);
+  }, [batchId, allLabGroups]);
+
+  // Reset Filters to initial default states
+  const handleResetFilters = () => {
+    setSessionId(finalizedSessions[0]?.id || '');
+    setSessionDate(new Date().toISOString().split('T')[0]);
+    setStudentId('');
+    setModuleId('');
+    setBatchId('');
+    setLabGroupId('');
+    setProgrammeId('');
+    setSemester('Year 2 Semester 1');
+    setThreshold(80.0);
+    setHallId('');
+    setStartDate('');
+    setEndDate('');
+    setPreviewData(null);
+    setTableFilter('');
+  };
 
   // Build filter query params
   const getQueryParams = () => {
@@ -280,6 +313,7 @@ export default function AdminReportsPage() {
               onClick={() => {
                 setReportType(t.id);
                 setPreviewData(null);
+                setTableFilter('');
               }}
               className={`p-3.5 rounded-xl border text-left transition-all relative overflow-hidden group ${
                 isSelected
@@ -308,9 +342,19 @@ export default function AdminReportsPage() {
             <Filter className="h-4 w-4 text-emerald-400" />
             Report Parameters & Audit Filters
           </div>
-          <span className="text-[11px] text-slate-400">
-            Active Scope: <strong className="text-emerald-400 font-mono">{reportType}</strong>
-          </span>
+          <div className="flex items-center gap-3">
+            <span className="text-[11px] text-slate-400">
+              Active Scope: <strong className="text-emerald-400 font-mono">{reportType}</strong>
+            </span>
+            <button
+              onClick={handleResetFilters}
+              className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-slate-300 hover:text-white bg-slate-800/80 hover:bg-slate-800 border border-slate-700 rounded-lg transition-colors cursor-pointer"
+              title="Reset all filter parameters to default"
+            >
+              <RotateCcw className="h-3 w-3 text-emerald-400" />
+              Reset Filters
+            </button>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -328,7 +372,7 @@ export default function AdminReportsPage() {
                 <option value="">-- Select Finalized Lab Session --</option>
                 {finalizedSessions.map((s) => (
                   <option key={s.id} value={s.id}>
-                    {s.sessionCode} — {s.module?.moduleCode} ({s.sessionDate})
+                    {s.sessionCode} — {s.moduleCode || s.module?.moduleCode || 'Module'} ({s.sessionDate})
                   </option>
                 ))}
               </select>
@@ -354,15 +398,26 @@ export default function AdminReportsPage() {
           {reportType === 'STUDENT_HISTORY' && (
             <div>
               <label className="block text-[11px] font-medium text-slate-400 mb-1.5">
-                Student UUID / Matriculation ID *
+                Student ID or Matriculation Number *
               </label>
               <input
                 type="text"
+                list="studentsList"
                 placeholder="e.g. IT21001234 or Student UUID"
                 value={studentId}
                 onChange={(e) => setStudentId(e.target.value)}
                 className="w-full bg-slate-800/90 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-emerald-500 font-mono"
               />
+              <datalist id="studentsList">
+                {students.map((s) => (
+                  <option key={s.id} value={s.studentId}>
+                    {s.studentId} — {s.fullName} ({s.labGroup?.groupName || 'No Group'})
+                  </option>
+                ))}
+              </datalist>
+              <span className="text-[10px] text-slate-500 mt-1 block">
+                Type or select matriculation ID or UUID
+              </span>
             </div>
           )}
 
@@ -408,8 +463,8 @@ export default function AdminReportsPage() {
             </div>
           )}
 
-          {/* LAB GROUP: Lab Group Dropdown (when batch is chosen or for CROSS_GROUP / BATCH) */}
-          {(batchId || reportType === 'CROSS_GROUP' || reportType === 'BATCH') && (
+          {/* LAB GROUP: Lab Group Dropdown (Available for all cohort, module, daily, and cross-group reports) */}
+          {(reportType === 'DAILY' || reportType === 'CROSS_GROUP' || reportType === 'BATCH' || reportType === 'MODULE' || reportType === 'SEMESTER' || reportType === 'LOW_ATTENDANCE') && (
             <div>
               <label className="block text-[11px] font-medium text-slate-400 mb-1.5">
                 Lab Group (Optional)
@@ -417,13 +472,12 @@ export default function AdminReportsPage() {
               <select
                 value={labGroupId}
                 onChange={(e) => setLabGroupId(e.target.value)}
-                disabled={!batchId && labGroups.length === 0}
-                className="w-full bg-slate-800/90 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-emerald-500 disabled:opacity-50"
+                className="w-full bg-slate-800/90 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-emerald-500"
               >
-                <option value="">{batchId ? 'All Groups / Whole Batch' : 'Select Batch First'}</option>
+                <option value="">{batchId ? 'All Groups in Selected Batch' : 'All Lab Groups / Whole Cohort'}</option>
                 {labGroups.map((g) => (
                   <option key={g.id} value={g.id}>
-                    {g.groupName}
+                    {g.groupName} {g.batchCode ? `(${g.batchCode})` : ''}
                   </option>
                 ))}
               </select>

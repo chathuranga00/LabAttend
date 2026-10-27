@@ -100,9 +100,10 @@ public class QrCodeService {
                     s.setQrGeneratedAt(now);
                     needsUpdate = true;
                 }
-                if (s.getQrTokenHash() == null || s.getQrTokenHash().isBlank()) {
-                    String token = generateToken(s.getId(), s.getQrVersion());
-                    s.setQrTokenHash(generateTokenHash(token));
+                String token = generateToken(s.getId(), s.getQrVersion());
+                String expectedHash = generateTokenHash(token);
+                if (!expectedHash.equals(s.getQrTokenHash())) {
+                    s.setQrTokenHash(expectedHash);
                     needsUpdate = true;
                 }
                 if (needsUpdate) {
@@ -111,10 +112,10 @@ public class QrCodeService {
             }
             if (!toSave.isEmpty()) {
                 studentRepository.saveAll(toSave);
-                log.info("Step 13: Backfilled QR tokens and versions for {} existing student records", toSave.size());
+                log.info("Synchronized QR token hashes for {} existing student records", toSave.size());
             }
         } catch (Exception ex) {
-            log.warn("Could not execute startup backfill (database table may still be migrating): {}", ex.getMessage());
+            log.warn("Could not execute startup backfill: {}", ex.getMessage());
         }
     }
 
@@ -160,7 +161,7 @@ public class QrCodeService {
     }
 
     /**
-     * Ensures student has a valid token and hash initialized.
+     * Ensures student has a valid token and hash initialized matching their persistent ID.
      */
     @Transactional
     public Student ensureStudentToken(Student student) {
@@ -173,9 +174,10 @@ public class QrCodeService {
             student.setQrGeneratedAt(OffsetDateTime.now());
             changed = true;
         }
-        if (student.getQrTokenHash() == null || student.getQrTokenHash().isBlank()) {
-            String token = generateToken(student.getId(), student.getQrVersion());
-            student.setQrTokenHash(generateTokenHash(token));
+        String token = generateToken(student.getId(), student.getQrVersion());
+        String expectedHash = generateTokenHash(token);
+        if (!expectedHash.equals(student.getQrTokenHash())) {
+            student.setQrTokenHash(expectedHash);
             changed = true;
         }
         if (changed) {

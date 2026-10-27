@@ -22,7 +22,6 @@ export default function ModulesPage() {
   const [formData, setFormData] = useState({
     moduleCode: '',
     name: '',
-    credits: 3,
     degreeProgrammeId: '',
     academicYear: '',
     semester: '1',
@@ -78,7 +77,6 @@ export default function ModulesPage() {
     setFormData({
       moduleCode: '',
       name: '',
-      credits: 3,
       degreeProgrammeId: programmes[0]?.id || '',
       academicYear: new Date().getFullYear().toString(),
       semester: '1',
@@ -92,7 +90,6 @@ export default function ModulesPage() {
     setFormData({
       moduleCode: item.moduleCode || '',
       name: item.name || '',
-      credits: item.credits || 3,
       degreeProgrammeId: item.degreeProgrammeId || '',
       academicYear: item.academicYear || '',
       semester: item.semester || '1',
@@ -116,7 +113,6 @@ export default function ModulesPage() {
     const errors = {};
     if (!formData.moduleCode.trim()) errors.moduleCode = 'Module code is required';
     if (!formData.name.trim()) errors.name = 'Module name is required';
-    if (!formData.credits || formData.credits < 1) errors.credits = 'Credits must be at least 1';
 
     if (Object.keys(errors).length > 0) {
       setFormErrors(errors);
@@ -126,9 +122,11 @@ export default function ModulesPage() {
     try {
       setSubmitting(true);
       const payload = {
-        ...formData,
-        credits: parseInt(formData.credits, 10),
+        moduleCode: formData.moduleCode.trim(),
+        name: formData.name.trim(),
         degreeProgrammeId: formData.degreeProgrammeId || null,
+        academicYear: formData.academicYear ? formData.academicYear.trim() : null,
+        semester: formData.semester ? formData.semester.trim() : null,
       };
 
       if (editingItem) {
@@ -161,10 +159,7 @@ export default function ModulesPage() {
       key: 'name',
       header: 'Module Name',
       render: (row) => (
-        <div>
-          <span className="font-medium text-slate-100">{row.name}</span>
-          <p className="text-xs text-slate-400">{row.credits} Academic Credits</p>
-        </div>
+        <span className="font-medium text-slate-100">{row.name}</span>
       ),
     },
     {
@@ -229,7 +224,7 @@ export default function ModulesPage() {
             Modules & Courses
           </h1>
           <p className="text-sm text-slate-400 mt-1">
-            Manage academic course units, credit values, and semester configurations
+            Manage academic course units and semester configurations
           </p>
         </div>
 
@@ -327,49 +322,25 @@ export default function ModulesPage() {
         subtitle={editingItem ? `Updating ${editingItem.moduleCode}` : 'Configure course unit details and curriculum placement'}
       >
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div className="sm:col-span-2">
-              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1.5">
-                Module Code <span className="text-rose-400">*</span>
-              </label>
-              <input
-                type="text"
-                value={formData.moduleCode}
-                onChange={(e) => setFormData({ ...formData, moduleCode: e.target.value.toUpperCase() })}
-                placeholder="e.g. CS202"
-                disabled={submitting}
-                className={`w-full px-3.5 py-2.5 bg-slate-950/70 border rounded-xl text-sm font-mono text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 transition-all ${
-                  formErrors.moduleCode
-                    ? 'border-rose-500/50 focus:ring-rose-500/20'
-                    : 'border-slate-800 focus:ring-indigo-500/20 focus:border-indigo-500'
-                }`}
-              />
-              {formErrors.moduleCode && (
-                <p className="text-xs text-rose-400 mt-1">{formErrors.moduleCode}</p>
-              )}
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1.5">
-                Credits <span className="text-rose-400">*</span>
-              </label>
-              <input
-                type="number"
-                min="1"
-                max="30"
-                value={formData.credits}
-                onChange={(e) => setFormData({ ...formData, credits: e.target.value })}
-                disabled={submitting}
-                className={`w-full px-3.5 py-2.5 bg-slate-950/70 border rounded-xl text-sm text-slate-100 focus:outline-none focus:ring-2 transition-all ${
-                  formErrors.credits
-                    ? 'border-rose-500/50 focus:ring-rose-500/20'
-                    : 'border-slate-800 focus:ring-indigo-500/20 focus:border-indigo-500'
-                }`}
-              />
-              {formErrors.credits && (
-                <p className="text-xs text-rose-400 mt-1">{formErrors.credits}</p>
-              )}
-            </div>
+          <div>
+            <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1.5">
+              Module Code <span className="text-rose-400">*</span>
+            </label>
+            <input
+              type="text"
+              value={formData.moduleCode}
+              onChange={(e) => setFormData({ ...formData, moduleCode: e.target.value.toUpperCase() })}
+              placeholder="e.g. CS202"
+              disabled={submitting}
+              className={`w-full px-3.5 py-2.5 bg-slate-950/70 border rounded-xl text-sm font-mono text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 transition-all ${
+                formErrors.moduleCode
+                  ? 'border-rose-500/50 focus:ring-rose-500/20'
+                  : 'border-slate-800 focus:ring-indigo-500/20 focus:border-indigo-500'
+              }`}
+            />
+            {formErrors.moduleCode && (
+              <p className="text-xs text-rose-400 mt-1">{formErrors.moduleCode}</p>
+            )}
           </div>
 
           <div>

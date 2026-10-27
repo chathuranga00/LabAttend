@@ -5,12 +5,23 @@ import com.labattend.dto.response.PageResponse;
 import com.labattend.dto.response.StudentAttendanceHistoryResponse;
 import com.labattend.dto.response.StudentCsvImportResponse;
 import com.labattend.dto.response.StudentResponse;
-import com.labattend.entity.*;
+import com.labattend.entity.AttendanceRecord;
+import com.labattend.entity.Batch;
+import com.labattend.entity.DegreeProgramme;
+import com.labattend.entity.LabGroup;
+import com.labattend.entity.LabSession;
+import com.labattend.entity.SessionStudent;
+import com.labattend.entity.Student;
 import com.labattend.entity.enums.AttendanceStatus;
 import com.labattend.entity.enums.SessionStatus;
 import com.labattend.exception.BadRequestException;
 import com.labattend.exception.ResourceNotFoundException;
-import com.labattend.repository.*;
+import com.labattend.repository.AttendanceRecordRepository;
+import com.labattend.repository.BatchRepository;
+import com.labattend.repository.DegreeProgrammeRepository;
+import com.labattend.repository.LabGroupRepository;
+import com.labattend.repository.SessionStudentRepository;
+import com.labattend.repository.StudentRepository;
 import com.labattend.util.HashUtils;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -33,7 +44,7 @@ public class StudentService {
     private final StudentRepository studentRepository;
     private final DegreeProgrammeRepository degreeProgrammeRepository;
     private final BatchRepository batchRepository;
-    private final com.labattend.repository.LabGroupRepository labGroupRepository;
+    private final LabGroupRepository labGroupRepository;
     private final SessionStudentRepository sessionStudentRepository;
     private final AttendanceRecordRepository attendanceRecordRepository;
     private final AuditLogService auditLogService;
@@ -42,7 +53,7 @@ public class StudentService {
     public StudentService(StudentRepository studentRepository,
                           DegreeProgrammeRepository degreeProgrammeRepository,
                           BatchRepository batchRepository,
-                          com.labattend.repository.LabGroupRepository labGroupRepository,
+                          LabGroupRepository labGroupRepository,
                           SessionStudentRepository sessionStudentRepository,
                           AttendanceRecordRepository attendanceRecordRepository,
                           AuditLogService auditLogService,
@@ -112,20 +123,7 @@ public class StudentService {
             throw new BadRequestException("Selected batch does not belong to the selected degree programme");
         }
 
-        com.labattend.entity.LabGroup labGroup = null;
-        if (request.getLabGroupId() != null) {
-            labGroup = labGroupRepository.findById(request.getLabGroupId())
-                    .orElseThrow(() -> new ResourceNotFoundException("LabGroup", "id", request.getLabGroupId()));
-            if (!labGroup.getBatch().getId().equals(batch.getId())) {
-                throw new BadRequestException("Selected lab group does not belong to the selected batch");
-            }
-        }
-
-        UUID studentUuid = UUID.randomUUID();
-        int initialVersion = 1;
-        OffsetDateTime now = OffsetDateTime.now();
-        String token = qrCodeService.generateToken(studentUuid, initialVersion);
-        String qrTokenHash = qrCodeService.generateTokenHash(token);
+        LabGroup labGroup = resolveLabGroup(request, batch);
 
         Student student = Student.builder()
                 .studentId(studentId)
@@ -134,14 +132,15 @@ public class StudentService {
                 .degreeProgramme(programme)
                 .batch(batch)
                 .labGroup(labGroup)
-                .qrVersion(initialVersion)
-                .qrGeneratedAt(now)
-                .qrTokenHash(qrTokenHash)
+                .qrVersion(1)
+                .qrGeneratedAt(OffsetDateTime.now())
                 .isActive(true)
                 .build();
-        student.setId(studentUuid);
 
         Student saved = studentRepository.save(student);
+        String token = qrCodeService.generateToken(saved.getId(), saved.getQrVersion());
+        saved.setQrTokenHash(qrCodeService.generateTokenHash(token));
+        saved = studentRepository.save(saved);
         StudentResponse response = mapToResponse(saved);
 
         auditLogService.logAction("Student", saved.getId(), "CREATE", null, response);
@@ -173,14 +172,7 @@ public class StudentService {
             throw new BadRequestException("Selected batch does not belong to the selected degree programme");
         }
 
-        com.labattend.entity.LabGroup labGroup = null;
-        if (request.getLabGroupId() != null) {
-            labGroup = labGroupRepository.findById(request.getLabGroupId())
-                    .orElseThrow(() -> new ResourceNotFoundException("LabGroup", "id", request.getLabGroupId()));
-            if (!labGroup.getBatch().getId().equals(batch.getId())) {
-                throw new BadRequestException("Selected lab group does not belong to the selected batch");
-            }
-        }
+        LabGroup labGroup = resolveLabGroup(request, batch);
 
         String qrTokenHash = student.getQrTokenHash();
         if (request.getQrToken() != null && !request.getQrToken().isBlank()) {
@@ -455,12 +447,6 @@ public class StudentService {
                     });
                 }
 
-                UUID newId = UUID.randomUUID();
-                int qrVersion = 1;
-                OffsetDateTime now = OffsetDateTime.now();
-                String token = qrCodeService.generateToken(newId, qrVersion);
-                String qrTokenHash = qrCodeService.generateTokenHash(token);
-
                 seenStudentIds.add(upperStudentId);
                 seenEmails.add(lowerEmail);
 
@@ -471,18 +457,22 @@ public class StudentService {
                         .degreeProgramme(programme)
                         .batch(batch)
                         .labGroup(assignedGroup)
-                        .qrVersion(qrVersion)
-                        .qrGeneratedAt(now)
-                        .qrTokenHash(qrTokenHash)
+                        .qrVersion(1)
+                        .qrGeneratedAt(OffsetDateTime.now())
                         .isActive(true)
                         .build();
-                student.setId(newId);
 
                 studentsToSave.add(student);
             }
 
             if (!studentsToSave.isEmpty()) {
-                studentRepository.saveAll(studentsToSave);
+                List<Student> persistedList = studentRepository.saveAll(studentsToSave);
+                for (Student s : persistedList) {
+                    if (s.getId() != null) {
+                        String token = qrCodeService.generateToken(s.getId(), s.getQrVersion());
+                        s.setQrTokenHash(qrCodeService.generateTokenHash(token));
+                    }
+                }
                 Map<String, Object> auditSummary = new HashMap<>();
                 auditSummary.put("importedCount", studentsToSave.size());
                 auditSummary.put("errorCount", errors.size());
@@ -512,6 +502,35 @@ public class StudentService {
         if (index != null && index >= 0 && index < values.length) {
             String v = values[index].trim();
             return v.isEmpty() ? null : v;
+        }
+        return null;
+    }
+
+    private LabGroup resolveLabGroup(StudentRequest request, Batch batch) {
+        if (request.getLabGroupId() != null) {
+            LabGroup labGroup = labGroupRepository.findById(request.getLabGroupId())
+                    .orElseThrow(() -> new ResourceNotFoundException("LabGroup", "id", request.getLabGroupId()));
+            if (!labGroup.getBatch().getId().equals(batch.getId())) {
+                throw new BadRequestException("Selected lab group does not belong to the selected batch");
+            }
+            return labGroup;
+        } else if (request.getGroupName() != null && !request.getGroupName().trim().isBlank()) {
+            String cleanName = request.getGroupName().trim();
+            String normalizedName = cleanName.toLowerCase().startsWith("group ")
+                    ? "Group " + cleanName.substring(6).trim().toUpperCase()
+                    : (cleanName.length() == 1 ? "Group " + cleanName.toUpperCase() : cleanName);
+            String shortName = normalizedName.startsWith("Group ") ? normalizedName.substring(6).trim() : normalizedName;
+
+            return labGroupRepository.findByBatchIdAndGroupNameIgnoreCase(batch.getId(), normalizedName)
+                    .or(() -> labGroupRepository.findByBatchIdAndGroupNameIgnoreCase(batch.getId(), shortName))
+                    .or(() -> labGroupRepository.findByBatchIdAndGroupNameIgnoreCase(batch.getId(), cleanName))
+                    .orElseGet(() -> labGroupRepository.save(
+                            LabGroup.builder()
+                                    .batch(batch)
+                                    .groupName(normalizedName)
+                                    .isActive(true)
+                                    .build()
+                    ));
         }
         return null;
     }

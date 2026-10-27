@@ -45,6 +45,14 @@ public class LabGroupService {
     // =========================================================================
 
     @Transactional(readOnly = true)
+    public List<LabGroupResponse> getAllGroups() {
+        return labGroupRepository.findAll(org.springframework.data.domain.Sort.by(org.springframework.data.domain.Sort.Direction.ASC, "groupName"))
+                .stream()
+                .map(this::mapToResponse)
+                .collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
     public List<LabGroupResponse> getGroupsByBatch(UUID batchId) {
         if (!batchRepository.existsById(batchId)) {
             throw new ResourceNotFoundException("Batch not found with id: " + batchId);
@@ -146,6 +154,23 @@ public class LabGroupService {
             if (!targetGroup.getBatch().getId().equals(batchId)) {
                 throw new BadRequestException("Target lab group does not belong to the specified batch: " + batch.getBatchCode());
             }
+        } else if (request.getTargetGroupName() != null && !request.getTargetGroupName().trim().isBlank()) {
+            String cleanName = request.getTargetGroupName().trim();
+            String normalizedName = cleanName.toLowerCase().startsWith("group ")
+                    ? "Group " + cleanName.substring(6).trim().toUpperCase()
+                    : (cleanName.length() == 1 ? "Group " + cleanName.toUpperCase() : cleanName);
+            String shortName = normalizedName.startsWith("Group ") ? normalizedName.substring(6).trim() : normalizedName;
+
+            targetGroup = labGroupRepository.findByBatchIdAndGroupNameIgnoreCase(batchId, normalizedName)
+                    .or(() -> labGroupRepository.findByBatchIdAndGroupNameIgnoreCase(batchId, shortName))
+                    .or(() -> labGroupRepository.findByBatchIdAndGroupNameIgnoreCase(batchId, cleanName))
+                    .orElseGet(() -> labGroupRepository.save(
+                            LabGroup.builder()
+                                    .batch(batch)
+                                    .groupName(normalizedName)
+                                    .isActive(true)
+                                    .build()
+                    ));
         }
 
         List<Student> students = studentRepository.findAllById(request.getStudentIds());

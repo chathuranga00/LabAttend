@@ -15,6 +15,11 @@ import {
 import { sessionService } from '../../services/sessionService';
 import { useToast } from '../../context/ToastContext';
 
+const formatGroupName = (name) => {
+  if (!name) return '';
+  return name.toLowerCase().startsWith('group ') ? name : `Group ${name}`;
+};
+
 export default function CreateLabSessionPage() {
   const navigate = useNavigate();
   const { showToast } = useToast();
@@ -51,16 +56,11 @@ export default function CreateLabSessionPage() {
           const firstBatch = firstMod.batches && firstMod.batches.length > 0 ? firstMod.batches[0] : null;
           const firstHall = res.data.halls && res.data.halls.length > 0 ? res.data.halls[0] : null;
 
-          let initialGroupId = '';
-          if (firstBatch && !firstBatch.isWholeBatchAssigned && firstBatch.groups && firstBatch.groups.length > 0) {
-            initialGroupId = firstBatch.groups[0].groupId;
-          }
-
           setFormData((prev) => ({
             ...prev,
             moduleId: firstMod.moduleId,
             batchId: firstBatch ? firstBatch.batchId : '',
-            labGroupId: initialGroupId,
+            labGroupId: '', // Default to Whole Batch (teach all)
             hallId: firstHall ? firstHall.hallId : '',
             sessionDate: todayStr,
           }));
@@ -96,29 +96,20 @@ export default function CreateLabSessionPage() {
     const modId = e.target.value;
     const modObj = formOptions.modules.find((m) => m.moduleId === modId);
     const firstB = modObj && modObj.batches?.length > 0 ? modObj.batches[0] : null;
-    let initialGroupId = '';
-    if (firstB && !firstB.isWholeBatchAssigned && firstB.groups && firstB.groups.length > 0) {
-      initialGroupId = firstB.groups[0].groupId;
-    }
     setFormData((prev) => ({
       ...prev,
       moduleId: modId,
       batchId: firstB ? firstB.batchId : '',
-      labGroupId: initialGroupId,
+      labGroupId: '', // Default to Whole Batch (teach all)
     }));
   };
 
   const handleBatchChange = (e) => {
     const bId = e.target.value;
-    const bObj = availableBatches.find((b) => b.batchId === bId);
-    let initialGroupId = '';
-    if (bObj && !bObj.isWholeBatchAssigned && bObj.groups && bObj.groups.length > 0) {
-      initialGroupId = bObj.groups[0].groupId;
-    }
     setFormData((prev) => ({
       ...prev,
       batchId: bId,
-      labGroupId: initialGroupId,
+      labGroupId: '', // Default to Whole Batch (teach all)
     }));
   };
 
@@ -126,9 +117,7 @@ export default function CreateLabSessionPage() {
     const errs = {};
     if (!formData.moduleId) errs.moduleId = 'Please select an authorized module';
     if (!formData.batchId) errs.batchId = 'Please select an authorized batch cohort';
-    if (selectedBatchObj && !selectedBatchObj.isWholeBatchAssigned && !formData.labGroupId) {
-      errs.labGroupId = 'Please select an authorized lab group (you are assigned to specific groups for this batch)';
-    }
+    // Lab Group is optional: empty represents Whole Batch (Teach All)
     if (!formData.hallId) errs.hallId = 'Please select a laboratory hall';
     if (!formData.sessionDate) {
       errs.sessionDate = 'Session date is required';
@@ -269,31 +258,76 @@ export default function CreateLabSessionPage() {
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-                  Target Lab Group {isWholeBatchAllowed ? '(Optional)' : '*'}
-                </label>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block text-xs font-semibold text-slate-300">
+                    Target Lab Group
+                  </label>
+                  {availableGroups.length > 0 ? (
+                    <span className="text-[11px] font-medium text-teal-400 bg-teal-950/60 border border-teal-800/40 px-2 py-0.5 rounded-md">
+                      {availableGroups.length} Subgroups Available (Select Group or Teach All)
+                    </span>
+                  ) : (
+                    <span className="text-[11px] font-medium text-slate-400 bg-slate-800/60 px-2 py-0.5 rounded-md">
+                      Whole Cohort (No Subgroups)
+                    </span>
+                  )}
+                </div>
+
+                {/* Quick group selector pills for active lecturer interaction */}
+                {availableGroups.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 mb-2.5">
+                    <button
+                      type="button"
+                      onClick={() => setFormData(prev => ({ ...prev, labGroupId: '' }))}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition ${
+                        !formData.labGroupId
+                          ? 'bg-teal-600 text-white shadow-lg shadow-teal-600/30 ring-2 ring-teal-400'
+                          : 'bg-slate-800/90 text-slate-300 hover:text-white hover:bg-slate-700/80'
+                      }`}
+                    >
+                      All Groups / Whole Batch ({selectedBatchObj?.enrolledStudentCount || 0})
+                    </button>
+                    {availableGroups.map((g) => (
+                      <button
+                        key={g.groupId}
+                        type="button"
+                        onClick={() => setFormData(prev => ({ ...prev, labGroupId: g.groupId }))}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition ${
+                          formData.labGroupId === g.groupId
+                            ? 'bg-teal-600 text-white shadow-lg shadow-teal-600/30 ring-2 ring-teal-400'
+                            : 'bg-slate-800/90 text-slate-300 hover:text-white hover:bg-slate-700/80'
+                        }`}
+                      >
+                        {formatGroupName(g.groupName)} ({g.studentCount})
+                      </button>
+                    ))}
+                  </div>
+                )}
+
                 <select
                   value={formData.labGroupId}
                   onChange={(e) => setFormData({ ...formData, labGroupId: e.target.value })}
-                  disabled={availableBatches.length === 0 || (!isWholeBatchAllowed && availableGroups.length === 0)}
+                  disabled={availableBatches.length === 0}
                   className="w-full px-3.5 py-2.5 bg-slate-800/80 border border-slate-700 rounded-xl text-sm text-slate-100 focus:outline-none focus:border-teal-500 disabled:opacity-50"
                 >
-                  {isWholeBatchAllowed && (
-                    <option value="">Whole Batch ({selectedBatchObj?.enrolledStudentCount || 0} students)</option>
-                  )}
+                  <option value="">
+                    {availableGroups.length > 0
+                      ? `All Groups / Whole Batch (${selectedBatchObj?.enrolledStudentCount || 0} students) — Teach All`
+                      : `Whole Batch (${selectedBatchObj?.enrolledStudentCount || 0} students) — Teach All`}
+                  </option>
                   {availableGroups.map((g) => (
                     <option key={g.groupId} value={g.groupId}>
-                      Group {g.groupName} ({g.studentCount} students)
+                      {formatGroupName(g.groupName)} ({g.studentCount} students)
                     </option>
                   ))}
                 </select>
+                <p className="text-[11px] text-slate-400 mt-1">
+                  {availableGroups.length > 0
+                    ? 'This batch has groups. You can select an individual lab group or choose "Teach All" to conduct for the whole cohort.'
+                    : 'Session targets all enrolled active students in this batch.'}
+                </p>
                 {formErrors.labGroupId && (
                   <span className="text-xs text-rose-400 mt-1 block">{formErrors.labGroupId}</span>
-                )}
-                {selectedBatchObj && !isWholeBatchAllowed && (
-                  <p className="text-[11px] text-amber-400/90 mt-1">
-                    You are assigned to specific lab groups for this cohort.
-                  </p>
                 )}
               </div>
             </div>
@@ -311,9 +345,9 @@ export default function CreateLabSessionPage() {
                     </span>
                     <span className="text-xs text-slate-300">
                       {selectedGroupObj ? (
-                        <>Enrolled active students in <strong className="text-white">Group {selectedGroupObj.groupName}</strong> ({selectedBatchObj.batchCode})</>
+                        <>Enrolled active students in <strong className="text-white">{formatGroupName(selectedGroupObj.groupName)}</strong> ({selectedBatchObj.batchCode})</>
                       ) : (
-                        <>Enrolled active students in whole cohort <strong className="text-white">{selectedBatchObj.batchCode}</strong></>
+                        <>Enrolled active students in <strong className="text-white">All Groups / Whole Batch</strong> ({selectedBatchObj.batchCode})</>
                       )}
                     </span>
                   </div>

@@ -34,10 +34,11 @@ public interface StudentRepository extends JpaRepository<Student, UUID> {
     java.util.List<Student> findByBatchIdAndIsActiveTrueOrderByFullNameAsc(UUID batchId);
     java.util.List<Student> findByBatchIdAndIsActiveTrueOrderByStudentIdAsc(UUID batchId);
 
-    @Query("SELECT s FROM Student s WHERE " +
+    @Query("SELECT s FROM Student s " +
+           "LEFT JOIN s.labGroup lg WHERE " +
            "(:programmeId IS NULL OR s.degreeProgramme.id = :programmeId) AND " +
            "(:batchId IS NULL OR s.batch.id = :batchId) AND " +
-           "(:labGroupId IS NULL OR s.labGroup.id = :labGroupId) AND " +
+           "(:labGroupId IS NULL OR lg.id = :labGroupId) AND " +
            "(:isActive IS NULL OR s.isActive = :isActive) AND " +
            "(:search IS NULL OR LOWER(s.studentId) LIKE :search OR " +
            "LOWER(s.fullName) LIKE :search OR " +
