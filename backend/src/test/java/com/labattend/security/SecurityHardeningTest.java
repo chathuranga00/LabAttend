@@ -301,4 +301,20 @@ public class SecurityHardeningTest {
                 .andExpect(jsonPath("$.status").value(429))
                 .andExpect(jsonPath("$.message").value("Scan rate limit exceeded. Please wait a moment before scanning again."));
     }
+
+    @Test
+    @DisplayName("Security: Bulk QR endpoint rate limit triggered after excessive requests -> 429 Too Many Requests")
+    void testBulkQrRateLimiting() throws Exception {
+        // Simulate 30 requests to exhaust bucket for 127.0.0.1
+        for (int i = 0; i < 30; i++) {
+            rateLimiterService.isBulkQrAllowed("127.0.0.1");
+        }
+
+        mockMvc.perform(get("/api/admin/students/qr/bulk")
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isTooManyRequests())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.status").value(429))
+                .andExpect(jsonPath("$.message").value("Bulk QR export rate limit exceeded. Please wait a moment before trying again."));
+    }
 }

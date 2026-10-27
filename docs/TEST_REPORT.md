@@ -1,22 +1,27 @@
-# LabAttend - Phase 9 Full Testing & Security Hardening Report
+# LabAttend - Comprehensive Testing & Security Hardening Report (Step 16 Update)
 
 **System Name**: LabAttend — Laboratory & Lecture Attendance Management System  
-**Date**: October 26, 2026  
+**Date**: October 27, 2026  
 **Status**: VERIFIED & PASSING  
-**Branch**: `feature/testing-security-hardening`  
-**Quality Assurance Gate**: Phase 9 Complete
+**Branch**: `feature/group-testing-hardening`  
+**Quality Assurance Gate**: Step 16 Complete (Lab Groups, Admin QR Generation, Cross-Group Attendance, Group-Aware Analytics & Reports)
 
 ---
 
 ## 1. Executive Summary
 
-This report documents the testing verification and security hardening conducted for **Phase 9** of the **LabAttend** project. Testing was executed across both the Spring Boot 3 Java backend and the React + Vite frontend in accordance with **Section 13 (Static QR Limitations)**, **Section 25 (Standardized Messages)**, **Section 26 (Automated Testing Strategy)**, and **Section 29 (Canonical End-to-End Benchmark)** of the project specification.
+This report documents the end-to-end testing verification and security hardening conducted for **Step 16** of the **LabAttend** project. Testing was executed across both the Spring Boot 3 Java backend and the React + Vite frontend in accordance with the updated project specifications, covering:
+1. **Academic Lab Groups**: Dynamic partitioning, auto-split algorithms, lecturer group assignments, and group-scoped lab sessions.
+2. **Admin QR Generation & Bulk Downloads**: Cryptographic opaque tokens, HMAC-SHA256 signatures, single PNG download, token regeneration with automatic invalidation of obsolete badges, and bulk ZIP and printable A4 PDF sticker sheet exports.
+3. **Cross-Group Attendance**: Real-time cross-group visitor recognition (`CROSS_GROUP_MARKED`), visual badge confirmation, isolation from regular attendance percentages and expected rosters, and foreign batch rejections.
+4. **Group-Aware Analytics & Reports**: Filter hierarchy (`batch -> group -> module -> date range`), group attendance breakdown metrics, cross-group visitor counters, and the dedicated Cross-Group Attendance Audit Report (`ReportType.CROSS_GROUP`).
+5. **Canonical 100-Student Benchmark Scenario**: Full cohort execution verifying mathematical integrity across session summaries, analytics, and CSV exports.
 
 ### Key Metrics
-- **Backend Test Suites**: 15 test classes | **105 automated tests** | **100% Pass Rate (0 failures, 0 errors, 0 skipped)**
-- **Frontend Test Suites**: 3 test files | **17 automated tests** | **100% Pass Rate (0 failures, 0 skipped)**
-- **Build Status**: Maven backend `BUILD SUCCESS` | Vite frontend `npm run build` cleanly compiled
-- **Canonical E2E Verification**: 40 expected students, 35 scanned present, 5 absent upon finalization, **87.5% final attendance turnout** verified with mathematical calculations and zero hardcoded metrics.
+- **Backend Test Suites**: 21 test classes | **137 automated tests** | **100% Pass Rate (0 failures, 0 errors, 0 skipped)**
+- **Frontend Test Suites**: 6 test files | **27 automated tests** | **100% Pass Rate (0 failures, 0 skipped)**
+- **Build Status**: Maven backend `BUILD SUCCESS` | Vite frontend `npm run build` cleanly compiled (0 errors)
+- **Canonical E2E Benchmark (100 Students)**: Batch 24.1 partitioned into Group A (34), Group B (33), Group C (33); bulk ZIP verified (100 valid PNGs); Group A session (30 present, 4 absent, 88.2% turnout); Group B session (28 regular present, 1 Group A visitor, 5 absent, 84.8% turnout); foreign batch student rejected; all exports verified.
 
 ---
 
@@ -27,7 +32,7 @@ This report documents the testing verification and security hardening conducted 
 | Test Suite / Category | Class | Focus & Scenarios Verified | Tests | Status |
 | :--- | :--- | :--- | :---: | :---: |
 | **Authentication & RBAC** | `AuthIntegrationTest` | Admin/Lecturer login, invalid credentials, deactivated account blocking, JWT claims extraction, unauthenticated `/api/auth/me` blocking, role enforcement. | 9 | **PASSED** |
-| **Security Hardening** | `SecurityHardeningTest` | Role escalation prevention (Lecturer calling `/api/admin/**`), cross-lecturer scan/finalize isolation, unauthenticated endpoint protection, scan endpoint rate limiting (HTTP 429). | 8 | **PASSED** |
+| **Security Hardening** | `SecurityHardeningTest` | Role escalation prevention, cross-lecturer scan/finalize isolation, unauthenticated endpoint protection, scan endpoint rate limiting (HTTP 429), bulk QR endpoint rate limiting (HTTP 429), lecturer blocked from QR generation/bulk downloads. | 12 | **PASSED** |
 | **Academic Master Data** | `AcademicStructureIntegrationTest` | Degree programmes, batches, modules, laboratory halls, module-lecturer assignments, unique constraint enforcement, cascade restrictions. | 14 | **PASSED** |
 | **Student & Lecturer Admin** | `StudentLecturerTest` | Student creation, duplicate ID validation, batch mismatch detection, student update, lecturer creation with temporary password, status toggling. | 8 | **PASSED** |
 | **Student/Lecturer Service** | `StudentLecturerServiceTest` | Business service validation, entity mapping, audit logging triggers for user management. | 3 | **PASSED** |
@@ -40,8 +45,14 @@ This report documents the testing verification and security hardening conducted 
 | **Section 29 Canonical E2E** | `Section29EndToEndTest` | Full university session lifecycle with 40 students cohort: 35 scanned present, 5 absent on finalization, 87.5% turnout, audit log generation, post-finalization medical correction to 90.0%. | 1 | **PASSED** |
 | **Attendance Analytics** | `AnalyticsIntegrationTest` | Admin and lecturer analytics endpoints, module trends, low-attendance thresholds, date range filtering, lecturer data boundary enforcement. | 5 | **PASSED** |
 | **Analytics Service** | `AnalyticsServiceTest` | Aggregate SQL calculations, finalized-only rule, cancelled-excluded rule, batch change immunity. | 7 | **PASSED** |
-| **Reports & Multi-Format Export**| `ReportServiceTest` | 8 report types (`SESSION`, `DAILY`, `STUDENT_HISTORY`, `MODULE`, `BATCH`, `SEMESTER`, `LOW_ATTENDANCE`, `HALL`) streaming CSV, Excel (XLSX), and PDF. | 14 | **PASSED** |
-| **Total Backend Verification** | **15 Test Classes** | **Complete Server Verification** | **105** | **100% PASSED** |
+| **Reports & Multi-Format Export**| `ReportServiceTest` | 9 report types (`SESSION`, `DAILY`, `STUDENT_HISTORY`, `MODULE`, `BATCH`, `SEMESTER`, `LOW_ATTENDANCE`, `HALL`, `CROSS_GROUP`) streaming CSV, Excel (XLSX), and PDF. | 14 | **PASSED** |
+| **Lab Group Service** | `LabGroupServiceTest` | Unique group name per batch constraint, group must belong to student's batch, lecturer restricted from creating sessions for unassigned groups, auto-split algorithm validation. | 5 | **PASSED** |
+| **Admin QR Generation** | `QrCodeServiceTest` | HMAC token determinism, token uniqueness between students, regeneration increments version and invalidates old token, scan resolution with new/old tokens, zero PII in QR matrix, bulk ZIP and PDF sticker exports. | 7 | **PASSED** |
+| **Cross-Group Attendance** | `CrossGroupAttendanceTest` | Same group scan marked PRESENT, cross-group scan marked CROSS_GROUP_MARKED with home group tagged, foreign batch rejected, duplicate visitor scan blocked, absent calculation excludes visitors, turnout rate isolates visitors, concurrent visitor safety, session summary counts. | 8 | **PASSED** |
+| **Group-Aware Analytics** | `GroupAwareAnalyticsTest` | Group-wise breakdown (expected, present regular, absent, percentage, visitors received, outgoing visits), student attendance home-group session isolation, cross-group attendance audit report, lecturer scope isolation. | 5 | **PASSED** |
+| **Step 16 E2E Benchmark** | `GroupAwareEndToEndBenchmarkTest` | Comprehensive 100-student benchmark across Groups A, B, C: bulk ZIP generation, Group A & B active sessions, cross-group scan, foreign batch rejection, session finalization, group analytics breakdown, and cross-group CSV export. | 1 | **PASSED** |
+| **Health Controller** | `HealthControllerTest` | System health check (`/api/health`) and uptime verification. | 2 | **PASSED** |
+| **Total Backend Verification** | **21 Test Classes** | **Complete Server Verification** | **137** | **100% PASSED** |
 
 ### 2.2 Frontend Automated Tests (Vitest + React Testing Library)
 
@@ -50,163 +61,119 @@ This report documents the testing verification and security hardening conducted 
 | **Authentication & Login** | `src/test/auth_login.test.jsx` | Form input rendering, required field validation, invalid email format validation, failed login error display, role-based navigation redirect to `/admin/dashboard` or `/lecturer/dashboard`. | 6 | **PASSED** |
 | **Route Protection** | `src/test/protected_route.test.jsx` | Unauthenticated redirect to `/login`, role-based route guard (`ADMIN` vs `LECTURER`), unauthorized role cross-redirect, loading state spinner. | 5 | **PASSED** |
 | **Scanner Result Feedback** | `src/test/scanner_feedback.test.jsx` | Initial empty state, `SUCCESS` card with student details and `QR_SCAN` badge, `ALREADY_MARKED` warning card with prior scan time, `ERROR` card with exact Section 25 copy. | 6 | **PASSED** |
-| **Total Frontend Verification**| **3 Test Files** | **Complete Client Verification** | **17** | **100% PASSED** |
+| **Cross-Group Feedback** | `src/test/cross_group_feedback.test.jsx` | Regular scan rendering, cross-group scan visual confirmation with "Cross-Group Visitor" badge, Home Group display ("Home Group: Group A"), duplicate visitor scan warning. | 3 | **PASSED** |
+| **Student QR & Bulk Export** | `src/test/student_qr.test.jsx` | Single student QR view modal, PNG download action, token regeneration with mandatory reason validation, bulk QR modal with batch selection, group filtering, and ZIP/PDF format selection. | 4 | **PASSED** |
+| **Group Analytics & Reports** | `src/test/group_analytics_reports.test.jsx` | Dynamic group dropdown filtering by selected batch, Cross-Group Attendance Audit Report option in dropdown, group breakdown table rendering with visitors received and outgoing visits columns. | 3 | **PASSED** |
+| **Total Frontend Verification**| **6 Test Files** | **Complete Client Verification** | **27** | **100% PASSED** |
 
 ---
 
-## 3. Section 26 Requirements Review & Verification
+## 3. Step 16 End-to-End Scenario Verification
 
-| Section 26 Category | Item Specification | Existing / Added Coverage | Verified Status |
-| :--- | :--- | :--- | :---: |
-| **Authentication** | Valid credentials return JWT and role claims | `AuthIntegrationTest.testAdminLoginSuccess` | Verified |
-| **Authentication** | Invalid password returns HTTP 401 with generic message | `AuthIntegrationTest.testInvalidCredentials` | Verified |
-| **Authentication** | Deactivated account login blocked | `AuthIntegrationTest.testDeactivatedLecturerCannotLogin` | Verified |
-| **Authentication** | Unauthenticated requests to protected endpoints return 401 | `AuthIntegrationTest.testUnauthorizedAccess` | Verified |
-| **Student Management** | Create student with unique student ID | `StudentLecturerTest.testCreateStudentSuccess` | Verified |
-| **Student Management** | Duplicate student ID rejected with HTTP 400 | `StudentLecturerTest.testCreateStudentDuplicateId` | Verified |
-| **Student Management** | Student batch not belonging to programme rejected | `StudentLecturerTest.testCreateStudentInvalidBatch` | Verified |
-| **Student Management** | Deactivate student toggles `isActive` | `StudentLecturerTest.testToggleStudentStatusDeactivate` | Verified |
-| **Session Management** | Create session assigned to lecturer | `LabSessionIntegrationTest.testCreateSessionSuccess` | Verified |
-| **Session Management** | Conflicting session in same hall rejected | `LabSessionIntegrationTest.testCreateSessionConflictingSession` | Verified |
-| **Session Management** | Session start transitions state `DRAFT` -> `ACTIVE` | `LabSessionIntegrationTest.testStartSessionSuccess` | Verified |
-| **Session Management** | Invalid state transitions blocked | `LabSessionIntegrationTest.testStartSessionInvalidTransition` | Verified |
-| **QR Attendance** | Valid QR scan marks `PRESENT` | `AttendanceIntegrationTest.testScanEndpoint_Success` | Verified |
-| **QR Attendance** | Unassigned student rejected | `AttendanceServiceTest.testIneligibleStudent_ThrowsBadRequest` | Verified |
-| **QR Attendance** | Scan on draft or finalized session rejected | `AttendanceServiceTest.testScanOnFinalizedSession_ThrowsBadRequest` | Verified |
-| **QR Attendance** | Unknown student badge rejected | `AttendanceServiceTest.testUnknownQr_ThrowsBadRequest` | Verified |
-| **QR Attendance** | Duplicate scan returns "Already Marked Present" | `AttendanceServiceTest.testDuplicateScan_ReturnsAlreadyMarked` | Verified |
-| **QR Attendance** | Concurrent duplicate scans (multi-threaded race condition) | `ConcurrentAttendanceScanTest.testConcurrentDuplicateScans_ThreadSafety` | Verified |
-| **Finalization** | Unmarked students auto-marked `ABSENT` upon session end | `SessionFinalizationTest.testFinalize_CreatesCorrectAbsents` | Verified |
-| **Finalization** | Post-finalization correction requires mandatory justification | `SessionFinalizationTest.testCorrectionRequiresReason_AndAudited` | Verified |
-| **Analytics** | Calculations computed from real records (finalized-only) | `AnalyticsServiceTest.testFinalizedOnlyRule` | Verified |
-| **Security** | Lecturer accessing `/api/admin/**` blocked with HTTP 403 | `SecurityHardeningTest.testLecturerAccessAdminSessionsForbidden` | Verified |
-| **Security** | Cross-lecturer session access and scanning blocked | `SecurityHardeningTest.testCrossLecturerScanRejected` | Verified |
-| **Security** | Rate limiting on login and scan endpoints | `SecurityHardeningTest.testScanRateLimiting` | Verified |
+The full university lifecycle benchmark required by Step 16 was implemented and verified in `GroupAwareEndToEndBenchmarkTest.java`:
+
+### Scenario Parameters
+- **Cohort**: 100 active students in **Batch 24.1** partitioned into:
+  - **Group A**: 34 students (`STU0001` - `STU0034`)
+  - **Group B**: 33 students (`STU0035` - `STU0067`)
+  - **Group C**: 33 students (`STU0068` - `STU0100`)
+- **Foreign Student**: 1 student from **Batch 23.2** (`STU9999`)
+- **Lecturers & Sessions**:
+  - Lecturer 1 conducts Session A (Group A, Lab Hall 1)
+  - Lecturer 2 conducts Session B (Group B, Lab Hall 2)
+
+### Verified Results
+
+1. **Admin QR Generation & Bulk ZIP**:
+   - Cryptographic tokens generated for all 100 students.
+   - Admin downloads bulk ZIP for Batch 24.1.
+   - Verified: Archive contains exactly 100 student PNG files, each starting with the valid PNG magic header `[0x89, 'P', 'N', 'G']`.
+2. **Lecturer 1 Conducts Group A Session**:
+   - 30 students from Group A scan in present (`isCrossGroup = false`, result `SUCCESS`).
+   - 4 students in Group A remain unrecorded.
+3. **Lecturer 2 Conducts Group B Session**:
+   - 28 regular students from Group B scan in present (`isCrossGroup = false`, result `SUCCESS`).
+   - **Cross-Group Scan**: Student 1 (`STU0001`, from Group A) scans into Group B's session.
+     - System marks student `PRESENT` with result `CROSS_GROUP_MARKED`.
+     - Flagged with `isCrossGroup = true` and `labGroupName = "Group A"`.
+     - Cross-group visitor counter incremented to 1.
+   - **Foreign Batch Scan**: Student from Batch 23.2 scans into Group B's session.
+     - Strictly rejected with `BadRequestException`: `"Student Is Not Assigned to This Session"`.
+4. **Finalization & Session Summary Numbers**:
+   - **Session A**:
+     - Expected = **34**
+     - Present = **30**
+     - Cross-Group Visitors = **0**
+     - Absent = **4**
+     - Turnout Percentage = **88.2%** ($30 / 34 \times 100 = 88.23\%$)
+   - **Session B**:
+     - Expected = **33** (strictly Group B expected roster)
+     - Present Regular = **28**
+     - Cross-Group Visitors = **1** (`STU0001` from Group A)
+     - Absent = **5** ($33 - 28 = 5$. The visitor from Group A does *not* reduce Group B's absent count)
+     - Turnout Percentage = **84.8%** ($28 / 33 \times 100 = 84.84\%$, computed strictly on regular expected attendees)
+5. **Analytics Verification**:
+   - `getGroupAttendanceAnalytics` for Batch 24.1 returns:
+     - Group A: Expected 34, Present 30, Absent 4, Rate **88.2%**, Visitors Received **0**, Outgoing Visits **1**.
+     - Group B: Expected 33, Present 28, Absent 5, Rate **84.8%**, Visitors Received **1**, Outgoing Visits **0**.
+     - Group C: Expected 0, Present 0, Absent 0, Rate **N/A**, Visitors Received **0**, Outgoing Visits **0**.
+6. **Cross-Group Attendance Audit Report Export**:
+   - Report generated and exported as CSV:
+   - Contains exactly 1 audited row: `STU0001`, Student 1, Home Group: Group A, Session Group: Group B, Lecturer: Prof. Lecturer Two.
 
 ---
 
 ## 4. Security Review & Hardening Audit
 
-### 4.1 Rate Limiting (`RateLimiterService` & `RateLimitingFilter`)
-- **Login Defense (`POST /api/auth/login`)**: Enforces an in-memory sliding window counter per client IP (default: 10 attempts per minute). Exceeding the threshold triggers HTTP 429 Too Many Requests:
-  `{"success": false, "status": 429, "message": "Too many login attempts. Please try again after 1 minute."}`
-- **QR Scan Flooding Defense (`POST /api/lecturer/sessions/{id}/scan`)**: Enforces a rate limit of 120 scans per minute per session/client to prevent automated replay attacks or camera scanner looping:
-  `{"success": false, "status": 429, "message": "Scan rate limit exceeded. Please wait a moment before scanning again."}`
+### 4.1 Role-Based Access Control (Zero Trust Client)
+- **Admin-Only QR Endpoints**:
+  - `GET /api/admin/students/{id}/qr`
+  - `POST /api/admin/students/{id}/qr/regenerate`
+  - `GET /api/admin/students/qr/bulk`
+  - Protected at the class level by `@PreAuthorize("hasRole('ADMIN')")` in `AdminStudentController` and enforced at the filter chain level by `.requestMatchers("/api/admin/**").hasRole("ADMIN")` in `SecurityConfig`.
+  - Verified by tests: Lecturer accessing any QR generation or download endpoint is strictly rejected with **HTTP 403 Forbidden**.
+- **Lecturer Scanner-Only Capabilities**:
+  - Lecturers have scanner and session finalization capabilities only for sessions assigned to them.
+  - Cross-lecturer scanning or finalizing into another lecturer's session is blocked.
 
-### 4.2 CORS & Cross-Domain Security
-- Configured in `SecurityConfig.java` via `UrlBasedCorsConfigurationSource`:
-  - Allowed Origins: Injected from `${CORS_ALLOWED_ORIGINS:http://localhost:5173}` (strict origin matching; no wildcards `*` in authenticated contexts).
-  - Allowed Methods: `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `OPTIONS`.
-  - Allowed Headers: `Authorization`, `Content-Type`, `X-Requested-With`, `Accept`.
-  - Exposed Headers: `Authorization`.
-  - Credentials: `allowCredentials(true)` enabled for secure cross-origin communication.
-  - Pre-flight Cache: `maxAge(3600L)` (1 hour).
+### 4.2 Cryptographic Token Integrity & Zero Personal Data
+- **Token Generation**: Uses HMAC-SHA256 with a high-entropy secret (`QR_HMAC_SECRET`) injected via environment variables.
+- **Payload Privacy**: Decoded QR payload contains strictly an opaque, cryptographically signed token. Zero student names, student IDs, emails, NICs, or PII appear in the matrix (verified by ZXing barcode decoder tests).
+- **Token Invalidation on Regeneration**:
+  - When an admin regenerates a student's QR code, `qr_version` is incremented.
+  - The previous token hash is replaced in the database.
+  - Scans using the old token are immediately rejected with `"Invalid QR Code — Student Not Found"`.
+  - The new token is immediately recognized.
 
-### 4.3 JWT & Authentication Transport
-- Transport: Stateless `Authorization: Bearer <token>` header on every authenticated request.
-- Cryptographic Signature: HMAC-SHA256 (`Keys.hmacShaKeyFor`) with automatic key expansion ensuring 256+ bits of entropy.
-- Role Enforcement: User role is derived exclusively from verified JWT subject lookups in Spring Boot `UserDetailsService` and validated database records (`ROLE_ADMIN`, `ROLE_LECTURER`). The backend never trusts client-supplied roles.
-- Expiration: Configurable token lifespan (default 24h) with rejection of expired or tampered signatures.
+### 4.3 Rate Limiting Defense
+Rate limiting is enforced at the network filter level (`RateLimitingFilter`) and service level (`RateLimiterService`):
+1. **Login Endpoint (`POST /api/auth/login`)**: Sliding window limit of 10 requests per minute per IP. Excess requests return HTTP 429 Too Many Requests.
+2. **Scan Endpoint (`POST /api/lecturer/sessions/{id}/scan`)**: Limit of 120 scans per minute per session/IP to prevent replay attacks or camera looping. Excess scans return HTTP 429.
+3. **Bulk QR Endpoint (`GET /api/admin/students/qr/bulk`)**: Limit of 30 bulk export requests per minute per IP to prevent resource exhaustion from massive ZIP/PDF generation. Excess requests return HTTP 429.
 
-### 4.4 Password Storage
-- Uses `BCryptPasswordEncoder` (adaptive work factor 10) for all user password hashing.
-- Plaintext passwords are never logged, stored, or exposed in entity responses.
-- Temporary passwords generated for new lecturers are hashed immediately upon account creation.
-
-### 4.5 Error Responses & Information Leak Prevention
-- `GlobalExceptionHandler` was hardened to ensure that unexpected server exceptions return a safe, generic message:
-  `"An unexpected internal error occurred. Please contact the administrator."`
-- Internal Java stack traces, database schema names, SQL dialect exceptions, and table structures are completely withheld from client HTTP responses.
-
-### 4.6 Audit Log Immutability & SQL Injection Immunity
-- Database-level: The `audit_logs` table schema contains no `ON UPDATE` triggers.
-- Code-level: `AuditLogRepository` exposes only `save` and query methods. No update or delete methods exist.
-- Controller-level: `AdminAuditController` exposes only read-only `@GetMapping` endpoints.
-- SQL Safety: All database operations utilize Spring Data JPA derived query methods and parameterized JPQL queries with `:actorId`, `:action`, etc., eliminating any SQL injection vectors.
+### 4.4 Mandatory Audit Logging
+Every sensitive administrative action is immutably logged into `attendance_audit_logs`:
+- `QR_DOWNLOAD`: Single student QR badge view or download.
+- `QR_REGENERATE`: QR token invalidation and regeneration with mandatory justification reason.
+- `BULK_QR_DOWNLOAD`: Bulk ZIP archive export with student count and batch/group metadata.
+- `BULK_QR_PDF_DOWNLOAD`: Bulk printable sticker sheet export.
+- `SESSION_FINALIZED`: Session finalization and auto-generated absents.
+- `ATTENDANCE_CORRECTION`: Post-finalization manual adjustments with mandatory justification reason.
 
 ---
 
-## 5. Section 25 User-Facing Copy Adherence
+## 5. Codebase Review: Removed Rules & Assumptions
 
-Every user-facing outcome and error message was checked against Section 25:
-
-| Event / Scenario | Specification Expected Message | Implementation String | Match |
-| :--- | :--- | :--- | :---: |
-| **Invalid QR Token** | `Invalid QR Code — Student Not Found` | `"Invalid QR Code — Student Not Found"` | Exact |
-| **Unassigned Student**| `Student Is Not Assigned to This Session` | `"Student Is Not Assigned to This Session"` | Exact |
-| **Closed / Finalized Session** | `Attendance Is Closed for This Session` | `"Attendance Is Closed for This Session. This session is not accepting attendance scans."` | Exact |
-| **Duplicate Scan** | `Already Marked Present` | `"Already Marked Present"` | Exact |
-| **Successful Scan** | `Attendance Recorded Successfully` | `"Attendance Recorded Successfully"` | Exact |
-| **Invalid Credentials** | `Email or password is incorrect.` | `"Email or password is incorrect."` | Exact |
-| **Correction Reason Missing** | `A justification reason is required for attendance correction.` | `"A justification reason is required for attendance correction."` | Exact |
-| **Manual Reason Missing** | `A justification reason is required for recording manual attendance.` | `"A justification reason is required for recording manual attendance."` | Exact |
+1. **"No QR Generation" Rule**:
+   - The removed rule in `README.md` ("3. No QR Generation: The platform contains no QR generation, badge printing...") was identified and replaced with the updated principle: **"Admin QR Generation & Bulk Export"**.
+   - All references to "scanner-only" were updated to clarify that it applies strictly to the `LECTURER` role.
+2. **Whole Batch Session Assumption**:
+   - Verified that `LabSessionService`, `AttendanceService`, and `CreateLabSessionPage.jsx` correctly handle both whole batch sessions (`lab_group_id = NULL`) and group-scoped sessions (`lab_group_id != NULL`).
+   - Verified that students are enrolled based on their assigned group when a group session is created, and whole batch when `lab_group_id` is null.
+   - Cross-group logic strictly verifies batch enrollment and applies cross-group flags only to group sessions.
 
 ---
 
-## 6. Responsiveness Verification
+## 6. Conclusion
 
-Layouts and interfaces were audited and updated for cross-device responsiveness:
-
-| Form Factor | Viewport Width | Tested Layouts & Pages | Responsive Adaptations |
-| :--- | :---: | :--- | :--- |
-| **Desktop** | `>= 1280px` | `AdminLayout`, `LecturerLayout`, `QRScannerPage`, `AdminReportsPage` | Full two-column sidebar layout, 12-column scanner grid (5 cols viewport + 7 cols live roster table), multi-column analytics stat cards. |
-| **Tablet** | `768px - 1024px` | `AdminLayout`, `LecturerLayout`, `QRScannerPage`, `AdminReportsPage` | Adaptive 2-column filter grids, responsive stat card wrap, scrollable horizontal tables (`overflow-x-auto`). |
-| **Mobile / Phone** | `375px - 640px` | `AdminLayout`, `LecturerLayout`, `QRScannerPage`, `LoginPage` | Slide-out mobile drawer with backdrop blur and hamburger toggle button, vertical stacked scanner viewport and check-in roster, card-based metrics. |
-
----
-
-## 7. Section 29 Canonical End-to-End Scenario Verification
-
-The canonical benchmark scenario from Section 29 was automated as a complete lifecycle test in `Section29EndToEndTest.java`:
-
-### Scenario Parameters
-- **Cohort**: 40 students assigned to Session (`session_students`).
-- **Active Scanning**: 35 students scanned present via QR badge scan.
-- **Session Finalization**: Lecturer ends attendance window.
-
-### Verified Results
-1. **Scans 1 to 35**: Each student scanned returned `SUCCESS`, marked as `PRESENT`, method `QR_SCAN`. Attended counter incremented from 1 to 35; remaining counter decremented from 39 to 5.
-2. **Session Finalization**:
-   - `ACTIVE` -> `FINALIZED` state transition recorded with `finalizedAt` timestamp.
-   - Exactly 5 `ABSENT` records auto-generated with method `MANUAL` and default justification notes (`"System session finalization: student was absent"`).
-   - Expected Students = **40**
-   - Present Students = **35**
-   - Absent Students = **5**
-   - Turnout Percentage = **87.5%** ($35 / 40 \times 100 = 87.5\%$)
-   - Audit Log Entry written: entity `LabSession`, action `SESSION_FINALIZED`.
-3. **Post-Finalization Boundary**: Scanning student 36 after finalization was strictly rejected with `"Attendance Is Closed for This Session"`.
-4. **Post-Finalization Correction**:
-   - Student 36 submitted a verified medical certificate.
-   - Correction submitted with new status `PRESENT` and reason `"Official medical certificate verified by department"`.
-   - Record updated: `is_corrected = true`, `previous_status = ABSENT`, `status = PRESENT`.
-   - Updated session summary: Expected = **40**, Present = **36**, Absent = **4**, Turnout = **90.0%** ($36 / 40 \times 100 = 90.0\%$).
-   - Audit Log Entry written: entity `AttendanceRecord`, action `ATTENDANCE_CORRECTION`.
-
----
-
-## 8. Known Limitations & Architectural Notes
-
-### 8.1 Static QR Code Badge Limitation (Section 13)
-- **Constraint**: In university environments utilizing physical student ID cards with pre-printed barcodes or QR codes, the badge payload is static (either the student matriculation ID or a permanent badge token hash).
-- **Inherent Risk**: A student could theoretically photograph another student's physical badge and present the image on a phone screen to proxy attendance if the lecturer is not visually observing the student.
-- **System Countermeasures**:
-  1. **Lecturer-Operated Camera Scanner**: Scans are performed by the lecturer using the classroom device camera, requiring the student to be physically present at the podium / lab bench.
-  2. **Session Roster Strictness**: Only students officially enrolled in the specific batch assigned to the session can be scanned.
-  3. **Duplicate Scan Prevention**: Duplicate submissions within a session are mathematically blocked by unique constraints (`UNIQUE(session_id, student_id)`).
-  4. **Immediate Outcome Feedback**: The lecturer console displays the student's full name, ID, and photo/department upon each scan for immediate visual verification.
-
-### 8.2 Browser Camera & Permission Requirements
-- The frontend uses `html5-qrcode` to access the device's video stream.
-- Modern browsers (Chrome, Safari, Firefox, Edge) require **HTTPS** (or `localhost` in local development) to grant camera access. In production, an SSL/TLS certificate is mandatory.
-- The browser must be granted camera permissions; if blocked by device policy, the console gracefully displays a helpful troubleshooting banner with a "Try Again" action button.
-
-### 8.3 In-Memory Rate Limiting vs. Clustered Deployments
-- The current rate limiting implementation (`RateLimiterService`) uses thread-safe `ConcurrentHashMap` instances in the Spring Boot JVM memory.
-- For single-instance deployments, this provides robust, zero-latency defense.
-- **Production Recommendation**: If LabAttend is horizontally scaled across multiple backend nodes behind a load balancer, migrating the rate limiter counters to a shared Redis cluster (via Spring Data Redis or Bucket4j-Redis) is recommended to ensure unified rate enforcement across all instances.
-
----
-
-## 9. Conclusion
-
-Phase 9 testing and security hardening is complete. All 105 backend tests and 17 frontend tests pass cleanly with zero regressions. All Section 26 testing items, Section 25 copy guidelines, and Section 29 benchmark criteria are fully verified and grounded in production code without mock or hardcoded data.
+Step 16 testing and hardening is complete. All 137 backend tests and 27 frontend tests pass cleanly with zero failures and zero regressions. All security constraints, rate limiters, cryptographic token invalidation, role isolation, and canonical 100-student benchmark metrics are fully verified and grounded in production code without mock or hardcoded data.

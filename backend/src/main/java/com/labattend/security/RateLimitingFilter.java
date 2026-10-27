@@ -58,6 +58,15 @@ public class RateLimitingFilter extends OncePerRequestFilter {
             }
         }
 
+        // 3. Bulk QR Generation Rate Limiting (GET /api/admin/students/qr/bulk)
+        if ("GET".equalsIgnoreCase(method) && path.endsWith("/api/admin/students/qr/bulk")) {
+            String clientIp = extractClientIp(request);
+            if (!rateLimiterService.isBulkQrAllowed(clientIp)) {
+                writeTooManyRequestsResponse(response, path, "Bulk QR export rate limit exceeded. Please wait a moment before trying again.");
+                return;
+            }
+        }
+
         filterChain.doFilter(request, response);
     }
 

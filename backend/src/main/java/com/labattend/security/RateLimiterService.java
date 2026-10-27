@@ -29,8 +29,15 @@ public class RateLimiterService {
     @Value("${app.rate-limiting.scan.window-seconds:60}")
     private int scanWindowSeconds;
 
+    @Value("${app.rate-limiting.bulk-qr.max-requests:30}")
+    private int bulkQrMaxRequests;
+
+    @Value("${app.rate-limiting.bulk-qr.window-seconds:60}")
+    private int bulkQrWindowSeconds;
+
     private final ConcurrentHashMap<String, WindowCounter> loginBuckets = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, WindowCounter> scanBuckets = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, WindowCounter> bulkQrBuckets = new ConcurrentHashMap<>();
 
     public boolean isLoginAllowed(String clientIp) {
         if (!enabled) {
@@ -44,6 +51,13 @@ public class RateLimiterService {
             return true;
         }
         return isAllowed(scanBuckets, sessionOrUserId, scanMaxRequests, scanWindowSeconds);
+    }
+
+    public boolean isBulkQrAllowed(String clientIp) {
+        if (!enabled) {
+            return true;
+        }
+        return isAllowed(bulkQrBuckets, clientIp, bulkQrMaxRequests, bulkQrWindowSeconds);
     }
 
     private boolean isAllowed(ConcurrentHashMap<String, WindowCounter> buckets, String key, int maxRequests, int windowSeconds) {
@@ -65,6 +79,7 @@ public class RateLimiterService {
     public void reset() {
         loginBuckets.clear();
         scanBuckets.clear();
+        bulkQrBuckets.clear();
     }
 
     private static class WindowCounter {
