@@ -28,6 +28,7 @@ public class AnalyticsService {
     private final BatchRepository batchRepository;
     private final DegreeProgrammeRepository degreeProgrammeRepository;
     private final LecturerModuleAssignmentRepository lecturerModuleAssignmentRepository;
+    private final LabGroupRepository labGroupRepository;
 
     public AnalyticsService(
             LabSessionRepository labSessionRepository,
@@ -38,7 +39,8 @@ public class AnalyticsService {
             ModuleRepository moduleRepository,
             BatchRepository batchRepository,
             DegreeProgrammeRepository degreeProgrammeRepository,
-            LecturerModuleAssignmentRepository lecturerModuleAssignmentRepository
+            LecturerModuleAssignmentRepository lecturerModuleAssignmentRepository,
+            LabGroupRepository labGroupRepository
     ) {
         this.labSessionRepository = labSessionRepository;
         this.sessionStudentRepository = sessionStudentRepository;
@@ -49,6 +51,7 @@ public class AnalyticsService {
         this.batchRepository = batchRepository;
         this.degreeProgrammeRepository = degreeProgrammeRepository;
         this.lecturerModuleAssignmentRepository = lecturerModuleAssignmentRepository;
+        this.labGroupRepository = labGroupRepository;
     }
 
     // =========================================================================
@@ -58,12 +61,13 @@ public class AnalyticsService {
             UUID userId,
             UUID moduleId,
             UUID batchId,
+            UUID labGroupId,
             LocalDate startDate,
             LocalDate endDate,
             String semester
     ) {
         Lecturer lecturer = getLecturerByUserId(userId);
-        return buildOverview(lecturer.getId(), null, moduleId, batchId, startDate, endDate, semester, false);
+        return buildOverview(lecturer.getId(), null, moduleId, batchId, labGroupId, startDate, endDate, semester, false);
     }
 
     // =========================================================================
@@ -72,13 +76,14 @@ public class AnalyticsService {
     public AnalyticsOverviewResponse getAdminOverview(
             UUID programmeId,
             UUID batchId,
+            UUID labGroupId,
             UUID moduleId,
             UUID lecturerId,
             LocalDate startDate,
             LocalDate endDate,
             String semester
     ) {
-        return buildOverview(lecturerId, programmeId, moduleId, batchId, startDate, endDate, semester, true);
+        return buildOverview(lecturerId, programmeId, moduleId, batchId, labGroupId, startDate, endDate, semester, true);
     }
 
     private AnalyticsOverviewResponse buildOverview(
@@ -86,13 +91,14 @@ public class AnalyticsService {
             UUID programmeId,
             UUID moduleId,
             UUID batchId,
+            UUID labGroupId,
             LocalDate startDate,
             LocalDate endDate,
             String semester,
             boolean isAdmin
     ) {
         List<Object[]> statusCounts = labSessionRepository.countSessionsByStatus(
-                lecturerId, moduleId, batchId, programmeId, startDate, endDate, semester
+                lecturerId, moduleId, batchId, labGroupId, programmeId, startDate, endDate, semester
         );
 
         long draft = 0;
@@ -118,11 +124,11 @@ public class AnalyticsService {
 
         // Slot totals across finalized sessions only (Real database records)
         long totalExpectedSlots = sessionStudentRepository.countTotalExpectedFinalizedSlots(
-                lecturerId, moduleId, batchId, programmeId, startDate, endDate, semester
+                lecturerId, moduleId, batchId, labGroupId, programmeId, startDate, endDate, semester
         );
 
         List<Object[]> slotCounts = attendanceRecordRepository.countFinalizedAttendanceSlotsByStatus(
-                lecturerId, moduleId, batchId, programmeId, startDate, endDate, semester
+                lecturerId, moduleId, batchId, labGroupId, programmeId, startDate, endDate, semester
         );
 
         long totalPresentSlots = 0;
@@ -143,6 +149,10 @@ public class AnalyticsService {
             totalAbsentSlots = totalExpectedSlots - totalPresentSlots;
         }
 
+        long totalCrossGroupVisitors = attendanceRecordRepository.countTotalCrossGroupVisitorsFinalizedSlots(
+                lecturerId, moduleId, batchId, labGroupId, programmeId, startDate, endDate, semester
+        );
+
         String percentageStr = "N/A";
         Double percentageNum = null;
 
@@ -151,6 +161,10 @@ public class AnalyticsService {
             percentageNum = Math.round(raw * 10.0) / 10.0;
             percentageStr = String.format(Locale.US, "%.1f%%", raw);
         }
+
+        List<GroupAnalyticsResponse> groupAttendance = getGroupAttendanceAnalytics(
+                lecturerId, programmeId, batchId, labGroupId, moduleId, startDate, endDate, semester
+        );
 
         AnalyticsOverviewResponse.AnalyticsOverviewResponseBuilder builder = AnalyticsOverviewResponse.builder()
                 .totalSessions(totalSessions)
@@ -161,6 +175,8 @@ public class AnalyticsService {
                 .totalExpectedSlots(totalExpectedSlots)
                 .totalPresentSlots(totalPresentSlots)
                 .totalAbsentSlots(totalAbsentSlots)
+                .totalCrossGroupVisitors(totalCrossGroupVisitors)
+                .groupAttendance(groupAttendance)
                 .overallAttendancePercentage(percentageStr)
                 .percentageNumeric(percentageNum);
 
@@ -183,19 +199,20 @@ public class AnalyticsService {
             UUID programmeId,
             UUID moduleId,
             UUID batchId,
+            UUID labGroupId,
             LocalDate startDate,
             LocalDate endDate,
             String semester
     ) {
         List<LabSession> finalizedSessions = labSessionRepository.findFinalizedSessionsForTrends(
-                lecturerId, moduleId, batchId, programmeId, startDate, endDate, semester
+                lecturerId, moduleId, batchId, labGroupId, programmeId, startDate, endDate, semester
         );
 
         List<AttendanceTrendPoint> trend = new ArrayList<>();
 
         for (LabSession session : finalizedSessions) {
-            long expected = sessionStudentRepository.countBySessionId(session.getId());
-            long present = attendanceRecordRepository.countBySessionIdAndStatusIn(
+            long expected = sessionStudentRepository.countBySessionIdAndIsExpectedTrue(session.getId());
+            long present = attendanceRecordRepository.countBySessionIdAndIsCrossGroupFalseAndStatusIn(
                     session.getId(), Arrays.asList(AttendanceStatus.PRESENT, AttendanceStatus.LATE)
             );
             long absent = Math.max(0, expected - present);
@@ -233,13 +250,13 @@ public class AnalyticsService {
             UUID lecturerId,
             UUID programmeId,
             UUID batchId,
+            UUID labGroupId,
             LocalDate startDate,
             LocalDate endDate,
             String semester
     ) {
-        // Query non-cancelled sessions to aggregate by module
         List<LabSession> sessions = labSessionRepository.findSessionsForAnalytics(
-                lecturerId, null, batchId, programmeId, null, startDate, endDate, semester
+                lecturerId, null, batchId, labGroupId, programmeId, null, startDate, endDate, semester
         );
 
         Map<UUID, List<LabSession>> sessionsByModule = sessions.stream()
@@ -264,8 +281,8 @@ public class AnalyticsService {
                     active++;
                 } else if (s.getStatus() == SessionStatus.FINALIZED || s.getStatus() == SessionStatus.CLOSED) {
                     finalized++;
-                    long exp = sessionStudentRepository.countBySessionId(s.getId());
-                    long pres = attendanceRecordRepository.countBySessionIdAndStatusIn(
+                    long exp = sessionStudentRepository.countBySessionIdAndIsExpectedTrue(s.getId());
+                    long pres = attendanceRecordRepository.countBySessionIdAndIsCrossGroupFalseAndStatusIn(
                             s.getId(), Arrays.asList(AttendanceStatus.PRESENT, AttendanceStatus.LATE)
                     );
                     totalExpected += exp;
@@ -310,12 +327,13 @@ public class AnalyticsService {
             UUID lecturerId,
             UUID programmeId,
             UUID moduleId,
+            UUID labGroupId,
             LocalDate startDate,
             LocalDate endDate,
             String semester
     ) {
         List<LabSession> sessions = labSessionRepository.findSessionsForAnalytics(
-                lecturerId, moduleId, null, programmeId, null, startDate, endDate, semester
+                lecturerId, moduleId, null, labGroupId, programmeId, null, startDate, endDate, semester
         );
 
         Map<UUID, List<LabSession>> sessionsByBatch = sessions.stream()
@@ -337,8 +355,8 @@ public class AnalyticsService {
             for (LabSession s : batchSessions) {
                 if (s.getStatus() == SessionStatus.FINALIZED || s.getStatus() == SessionStatus.CLOSED) {
                     finalized++;
-                    long exp = sessionStudentRepository.countBySessionId(s.getId());
-                    long pres = attendanceRecordRepository.countBySessionIdAndStatusIn(
+                    long exp = sessionStudentRepository.countBySessionIdAndIsExpectedTrue(s.getId());
+                    long pres = attendanceRecordRepository.countBySessionIdAndIsCrossGroupFalseAndStatusIn(
                             s.getId(), Arrays.asList(AttendanceStatus.PRESENT, AttendanceStatus.LATE)
                     );
                     totalExpected += exp;
@@ -383,23 +401,25 @@ public class AnalyticsService {
             UUID programmeId,
             UUID moduleId,
             UUID batchId,
+            UUID labGroupId,
             SessionStatus status,
             LocalDate startDate,
             LocalDate endDate,
             String semester
     ) {
         List<LabSession> sessions = labSessionRepository.findSessionsForAnalytics(
-                lecturerId, moduleId, batchId, programmeId, status, startDate, endDate, semester
+                lecturerId, moduleId, batchId, labGroupId, programmeId, status, startDate, endDate, semester
         );
 
         List<SessionAnalyticsResponse> result = new ArrayList<>();
 
         for (LabSession s : sessions) {
-            long expected = sessionStudentRepository.countBySessionId(s.getId());
-            long present = attendanceRecordRepository.countBySessionIdAndStatusIn(
+            long expected = sessionStudentRepository.countBySessionIdAndIsExpectedTrue(s.getId());
+            long present = attendanceRecordRepository.countBySessionIdAndIsCrossGroupFalseAndStatusIn(
                     s.getId(), Arrays.asList(AttendanceStatus.PRESENT, AttendanceStatus.LATE)
             );
             long absent = Math.max(0, expected - present);
+            long visitors = attendanceRecordRepository.countBySessionIdAndIsCrossGroupTrue(s.getId());
 
             String pctStr = "N/A";
             Double pctNum = null;
@@ -415,12 +435,15 @@ public class AnalyticsService {
                     .moduleCode(s.getModule() != null ? s.getModule().getModuleCode() : null)
                     .moduleName(s.getModule() != null ? s.getModule().getName() : null)
                     .batchCode(s.getBatch() != null ? s.getBatch().getBatchCode() : null)
+                    .labGroupId(s.getLabGroup() != null ? s.getLabGroup().getId() : null)
+                    .labGroupName(s.getLabGroup() != null ? s.getLabGroup().getGroupName() : null)
                     .lecturerName(s.getLecturer() != null && s.getLecturer().getUser() != null ? s.getLecturer().getUser().getFullName() : null)
                     .sessionDate(s.getSessionDate())
                     .status(s.getStatus().name())
                     .expectedStudentCount(expected)
                     .presentCount(present)
                     .absentCount(absent)
+                    .crossGroupVisitorsCount(visitors)
                     .attendancePercentage(pctStr)
                     .percentageNumeric(pctNum)
                     .build());
@@ -437,6 +460,7 @@ public class AnalyticsService {
             UUID programmeId,
             UUID moduleId,
             UUID batchId,
+            UUID labGroupId,
             LocalDate startDate,
             LocalDate endDate,
             String semester,
@@ -445,12 +469,17 @@ public class AnalyticsService {
     ) {
         // Query 1: Eligible finalized sessions per student
         List<Object[]> eligibleRows = sessionStudentRepository.countEligibleFinalizedSessionsPerStudent(
-                lecturerId, moduleId, batchId, programmeId, startDate, endDate, semester
+                lecturerId, moduleId, batchId, labGroupId, programmeId, startDate, endDate, semester
         );
 
         // Query 2: Attended sessions per student
         List<Object[]> attendedRows = attendanceRecordRepository.countAttendedSessionsPerStudent(
-                lecturerId, moduleId, batchId, programmeId, startDate, endDate, semester
+                lecturerId, moduleId, batchId, labGroupId, programmeId, startDate, endDate, semester
+        );
+
+        // Query 3: Outgoing cross-group visits per student
+        List<Object[]> outgoingRows = attendanceRecordRepository.countOutgoingCrossGroupVisitsPerStudent(
+                lecturerId, moduleId, batchId, labGroupId, programmeId, startDate, endDate, semester
         );
 
         Map<UUID, Long> attendedMap = new HashMap<>();
@@ -458,6 +487,13 @@ public class AnalyticsService {
             UUID studentId = (UUID) row[0];
             long count = ((Number) row[1]).longValue();
             attendedMap.put(studentId, count);
+        }
+
+        Map<UUID, Long> outgoingMap = new HashMap<>();
+        for (Object[] row : outgoingRows) {
+            UUID studentId = (UUID) row[0];
+            long count = ((Number) row[1]).longValue();
+            outgoingMap.put(studentId, count);
         }
 
         String searchLower = search != null && !search.isBlank() ? search.trim().toLowerCase() : null;
@@ -468,7 +504,9 @@ public class AnalyticsService {
             String officialStudentId = (String) row[1];
             String fullName = (String) row[2];
             String batchCode = (String) row[3];
-            long eligibleFinalized = ((Number) row[4]).longValue();
+            UUID studentGroupId = (UUID) row[4];
+            String studentGroupName = (String) row[5];
+            long eligibleFinalized = ((Number) row[6]).longValue();
 
             if (searchLower != null) {
                 boolean matchesId = officialStudentId != null && officialStudentId.toLowerCase().contains(searchLower);
@@ -480,6 +518,7 @@ public class AnalyticsService {
 
             long attended = attendedMap.getOrDefault(studentId, 0L);
             long missed = Math.max(0, eligibleFinalized - attended);
+            long outgoingVisits = outgoingMap.getOrDefault(studentId, 0L);
 
             String pctStr = "N/A";
             Double pctNum = null;
@@ -499,9 +538,13 @@ public class AnalyticsService {
                     .officialStudentId(officialStudentId)
                     .fullName(fullName)
                     .batchCode(batchCode)
+                    .labGroupId(studentGroupId)
+                    .labGroupName(studentGroupName)
                     .eligibleFinalizedSessions(eligibleFinalized)
                     .attendedSessions(attended)
                     .missedSessions(missed)
+                    .outgoingCrossGroupVisits(outgoingVisits)
+                    .incomingCrossGroupVisits(0)
                     .attendancePercentage(pctStr)
                     .percentageNumeric(pctNum)
                     .isLowAttendance(isLow)
@@ -558,8 +601,10 @@ public class AnalyticsService {
         long eligibleFinalized = 0;
         long attended = 0;
         long missed = 0;
+        long outgoingCrossGroupVisits = 0;
 
         List<StudentDetailedAttendanceResponse.StudentSessionHistoryItem> history = new ArrayList<>();
+        List<StudentDetailedAttendanceResponse.CrossGroupVisitDetail> otherGroupVisits = new ArrayList<>();
 
         for (SessionStudent ss : sessionStudents) {
             LabSession s = ss.getSession();
@@ -592,6 +637,21 @@ public class AnalyticsService {
                 }
             }
 
+            boolean isCross = ar != null && Boolean.TRUE.equals(ar.getIsCrossGroup());
+            if (isCross && ("PRESENT".equalsIgnoreCase(attendanceStatus) || "LATE".equalsIgnoreCase(attendanceStatus))) {
+                outgoingCrossGroupVisits++;
+                otherGroupVisits.add(StudentDetailedAttendanceResponse.CrossGroupVisitDetail.builder()
+                        .sessionId(s.getId())
+                        .sessionCode(s.getSessionCode())
+                        .sessionDate(s.getSessionDate())
+                        .sessionGroupName(s.getLabGroup() != null ? s.getLabGroup().getGroupName() : null)
+                        .lecturerName(s.getLecturer() != null ? s.getLecturer().getFullName() : null)
+                        .moduleCode(s.getModule() != null ? s.getModule().getModuleCode() : null)
+                        .moduleName(s.getModule() != null ? s.getModule().getName() : null)
+                        .markedAt(markedAt)
+                        .build());
+            }
+
             history.add(StudentDetailedAttendanceResponse.StudentSessionHistoryItem.builder()
                     .sessionId(s.getId())
                     .sessionCode(s.getSessionCode())
@@ -607,7 +667,7 @@ public class AnalyticsService {
                     .markedAt(markedAt)
                     .isCorrected(isCorrected)
                     .justificationNotes(justificationNotes)
-                    .isCrossGroup(ar != null && Boolean.TRUE.equals(ar.getIsCrossGroup()))
+                    .isCrossGroup(isCross)
                     .sessionGroupName(s.getLabGroup() != null ? s.getLabGroup().getGroupName() : null)
                     .homeGroupName(ar != null && ar.getHomeLabGroup() != null ? ar.getHomeLabGroup().getGroupName() : (student.getLabGroup() != null ? student.getLabGroup().getGroupName() : null))
                     .lecturerName(s.getLecturer() != null ? s.getLecturer().getFullName() : null)
@@ -629,13 +689,123 @@ public class AnalyticsService {
                 .email(student.getEmail())
                 .batchCode(student.getBatch() != null ? student.getBatch().getBatchCode() : null)
                 .programmeName(student.getDegreeProgramme() != null ? student.getDegreeProgramme().getName() : null)
+                .labGroupId(student.getLabGroup() != null ? student.getLabGroup().getId() : null)
+                .labGroupName(student.getLabGroup() != null ? student.getLabGroup().getGroupName() : null)
                 .eligibleFinalizedSessions(eligibleFinalized)
                 .attendedSessions(attended)
                 .missedSessions(missed)
+                .outgoingCrossGroupVisits(outgoingCrossGroupVisits)
+                .otherGroupVisits(otherGroupVisits)
                 .attendancePercentage(pctStr)
                 .percentageNumeric(pctNum)
                 .history(history)
                 .build();
+    }
+
+    // =========================================================================
+    // 9. GROUP-WISE ATTENDANCE ANALYTICS
+    // =========================================================================
+    public List<GroupAnalyticsResponse> getGroupAttendanceAnalytics(
+            UUID lecturerId,
+            UUID programmeId,
+            UUID batchId,
+            UUID labGroupId,
+            UUID moduleId,
+            LocalDate startDate,
+            LocalDate endDate,
+            String semester
+    ) {
+        List<LabGroup> groups;
+        if (labGroupId != null) {
+            groups = labGroupRepository.findById(labGroupId).map(List::of).orElse(Collections.emptyList());
+        } else if (batchId != null) {
+            groups = labGroupRepository.findByBatchIdOrderByGroupNameAsc(batchId);
+        } else {
+            groups = labGroupRepository.findAll();
+        }
+
+        List<GroupAnalyticsResponse> result = new ArrayList<>();
+        for (LabGroup g : groups) {
+            if (programmeId != null && g.getBatch() != null && g.getBatch().getDegreeProgramme() != null) {
+                if (!programmeId.equals(g.getBatch().getDegreeProgramme().getId())) {
+                    continue;
+                }
+            }
+
+            List<Object[]> statusCounts = labSessionRepository.countSessionsByStatus(
+                    lecturerId, moduleId, g.getBatch() != null ? g.getBatch().getId() : null, g.getId(), programmeId, startDate, endDate, semester
+            );
+
+            long totalSessions = 0;
+            long finalizedSessions = 0;
+            for (Object[] row : statusCounts) {
+                SessionStatus st = (SessionStatus) row[0];
+                long cnt = ((Number) row[1]).longValue();
+                totalSessions += cnt;
+                if (st == SessionStatus.FINALIZED || st == SessionStatus.CLOSED) {
+                    finalizedSessions += cnt;
+                }
+            }
+
+            long totalExpected = sessionStudentRepository.countTotalExpectedFinalizedSlots(
+                    lecturerId, moduleId, g.getBatch() != null ? g.getBatch().getId() : null, g.getId(), programmeId, startDate, endDate, semester
+            );
+
+            List<Object[]> slotCounts = attendanceRecordRepository.countFinalizedAttendanceSlotsByStatus(
+                    lecturerId, moduleId, g.getBatch() != null ? g.getBatch().getId() : null, g.getId(), programmeId, startDate, endDate, semester
+            );
+
+            long totalPresent = 0;
+            long totalAbsent = 0;
+            for (Object[] row : slotCounts) {
+                AttendanceStatus st = (AttendanceStatus) row[0];
+                long cnt = ((Number) row[1]).longValue();
+                if (st == AttendanceStatus.PRESENT || st == AttendanceStatus.LATE) {
+                    totalPresent += cnt;
+                } else if (st == AttendanceStatus.ABSENT) {
+                    totalAbsent += cnt;
+                }
+            }
+            if (totalAbsent == 0 && totalExpected > totalPresent) {
+                totalAbsent = totalExpected - totalPresent;
+            }
+
+            long visitorsReceived = attendanceRecordRepository.countTotalCrossGroupVisitorsFinalizedSlots(
+                    lecturerId, moduleId, g.getBatch() != null ? g.getBatch().getId() : null, g.getId(), programmeId, startDate, endDate, semester
+            );
+
+            List<Object[]> outgoingRows = attendanceRecordRepository.countOutgoingCrossGroupVisitsPerStudent(
+                    lecturerId, moduleId, g.getBatch() != null ? g.getBatch().getId() : null, g.getId(), programmeId, startDate, endDate, semester
+            );
+            long outgoingVisits = outgoingRows.stream().mapToLong(r -> ((Number) r[1]).longValue()).sum();
+
+            String pctStr = "N/A";
+            Double pctNum = null;
+            if (totalExpected > 0) {
+                double raw = ((double) totalPresent / totalExpected) * 100.0;
+                pctNum = Math.round(raw * 10.0) / 10.0;
+                pctStr = String.format(Locale.US, "%.1f%%", raw);
+            }
+
+            result.add(GroupAnalyticsResponse.builder()
+                    .groupId(g.getId())
+                    .groupName(g.getGroupName())
+                    .batchId(g.getBatch() != null ? g.getBatch().getId() : null)
+                    .batchCode(g.getBatch() != null ? g.getBatch().getBatchCode() : null)
+                    .totalSessions(totalSessions)
+                    .finalizedSessions(finalizedSessions)
+                    .totalExpected(totalExpected)
+                    .totalPresent(totalPresent)
+                    .totalAbsent(totalAbsent)
+                    .attendancePercentage(pctStr)
+                    .percentageNumeric(pctNum)
+                    .visitorsReceived(visitorsReceived)
+                    .outgoingVisits(outgoingVisits)
+                    .build());
+        }
+
+        result.sort(Comparator.comparing(GroupAnalyticsResponse::getGroupName, Comparator.nullsLast(String::compareTo)));
+        return result;
     }
 
     public Lecturer getLecturerByUserId(UUID userId) {

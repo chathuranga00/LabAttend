@@ -114,6 +114,7 @@ public interface LabSessionRepository extends JpaRepository<LabSession, UUID> {
            "(:lecturerId IS NULL OR s.lecturer.id = :lecturerId) AND " +
            "(:moduleId IS NULL OR s.module.id = :moduleId) AND " +
            "(:batchId IS NULL OR s.batch.id = :batchId) AND " +
+           "(:labGroupId IS NULL OR s.labGroup.id = :labGroupId) AND " +
            "(:programmeId IS NULL OR s.module.degreeProgramme.id = :programmeId OR (s.batch IS NOT NULL AND s.batch.degreeProgramme.id = :programmeId)) AND " +
            "(:startDate IS NULL OR s.sessionDate >= :startDate) AND " +
            "(:endDate IS NULL OR s.sessionDate <= :endDate) AND " +
@@ -123,6 +124,7 @@ public interface LabSessionRepository extends JpaRepository<LabSession, UUID> {
             @Param("lecturerId") UUID lecturerId,
             @Param("moduleId") UUID moduleId,
             @Param("batchId") UUID batchId,
+            @Param("labGroupId") UUID labGroupId,
             @Param("programmeId") UUID programmeId,
             @Param("startDate") LocalDate startDate,
             @Param("endDate") LocalDate endDate,
@@ -132,12 +134,14 @@ public interface LabSessionRepository extends JpaRepository<LabSession, UUID> {
     @Query("SELECT s FROM LabSession s " +
            "JOIN FETCH s.module m " +
            "LEFT JOIN FETCH s.batch b " +
+           "LEFT JOIN FETCH s.labGroup lg " +
            "JOIN FETCH s.lecturer l " +
            "JOIN FETCH s.hall h " +
            "WHERE s.status IN (com.labattend.entity.enums.SessionStatus.FINALIZED, com.labattend.entity.enums.SessionStatus.CLOSED) AND " +
            "(:lecturerId IS NULL OR s.lecturer.id = :lecturerId) AND " +
            "(:moduleId IS NULL OR s.module.id = :moduleId) AND " +
            "(:batchId IS NULL OR s.batch.id = :batchId) AND " +
+           "(:labGroupId IS NULL OR s.labGroup.id = :labGroupId) AND " +
            "(:programmeId IS NULL OR m.degreeProgramme.id = :programmeId OR (b IS NOT NULL AND b.degreeProgramme.id = :programmeId)) AND " +
            "(:startDate IS NULL OR s.sessionDate >= :startDate) AND " +
            "(:endDate IS NULL OR s.sessionDate <= :endDate) AND " +
@@ -147,6 +151,7 @@ public interface LabSessionRepository extends JpaRepository<LabSession, UUID> {
             @Param("lecturerId") UUID lecturerId,
             @Param("moduleId") UUID moduleId,
             @Param("batchId") UUID batchId,
+            @Param("labGroupId") UUID labGroupId,
             @Param("programmeId") UUID programmeId,
             @Param("startDate") LocalDate startDate,
             @Param("endDate") LocalDate endDate,
@@ -156,6 +161,7 @@ public interface LabSessionRepository extends JpaRepository<LabSession, UUID> {
     @Query("SELECT s FROM LabSession s " +
            "JOIN FETCH s.module m " +
            "LEFT JOIN FETCH s.batch b " +
+           "LEFT JOIN FETCH s.labGroup lg " +
            "JOIN FETCH s.lecturer l " +
            "JOIN FETCH s.hall h " +
            "WHERE s.status != com.labattend.entity.enums.SessionStatus.CANCELLED AND " +
@@ -163,6 +169,7 @@ public interface LabSessionRepository extends JpaRepository<LabSession, UUID> {
            "(:lecturerId IS NULL OR s.lecturer.id = :lecturerId) AND " +
            "(:moduleId IS NULL OR s.module.id = :moduleId) AND " +
            "(:batchId IS NULL OR s.batch.id = :batchId) AND " +
+           "(:labGroupId IS NULL OR s.labGroup.id = :labGroupId) AND " +
            "(:programmeId IS NULL OR m.degreeProgramme.id = :programmeId OR (b IS NOT NULL AND b.degreeProgramme.id = :programmeId)) AND " +
            "(:startDate IS NULL OR s.sessionDate >= :startDate) AND " +
            "(:endDate IS NULL OR s.sessionDate <= :endDate) AND " +
@@ -172,6 +179,7 @@ public interface LabSessionRepository extends JpaRepository<LabSession, UUID> {
             @Param("lecturerId") UUID lecturerId,
             @Param("moduleId") UUID moduleId,
             @Param("batchId") UUID batchId,
+            @Param("labGroupId") UUID labGroupId,
             @Param("programmeId") UUID programmeId,
             @Param("status") SessionStatus status,
             @Param("startDate") LocalDate startDate,
@@ -182,6 +190,7 @@ public interface LabSessionRepository extends JpaRepository<LabSession, UUID> {
     @Query("SELECT s FROM LabSession s " +
            "JOIN FETCH s.module m " +
            "LEFT JOIN FETCH s.batch b " +
+           "LEFT JOIN FETCH s.labGroup lg " +
            "JOIN FETCH s.lecturer l " +
            "JOIN FETCH s.hall h " +
            "WHERE s.status IN (com.labattend.entity.enums.SessionStatus.FINALIZED, com.labattend.entity.enums.SessionStatus.CLOSED) AND " +
@@ -191,6 +200,7 @@ public interface LabSessionRepository extends JpaRepository<LabSession, UUID> {
            "(cast(:endDate as string) IS NULL OR s.sessionDate <= :endDate) AND " +
            "(cast(:moduleId as string) IS NULL OR m.id = :moduleId) AND " +
            "(cast(:batchId as string) IS NULL OR b.id = :batchId) AND " +
+           "(cast(:labGroupId as string) IS NULL OR s.labGroup.id = :labGroupId) AND " +
            "(cast(:programmeId as string) IS NULL OR m.degreeProgramme.id = :programmeId OR (b IS NOT NULL AND b.degreeProgramme.id = :programmeId)) AND " +
            "(cast(:semester as string) IS NULL OR m.semester = :semester) AND " +
            "(cast(:lecturerId as string) IS NULL OR l.id = :lecturerId) " +
@@ -202,6 +212,7 @@ public interface LabSessionRepository extends JpaRepository<LabSession, UUID> {
             @Param("endDate") LocalDate endDate,
             @Param("moduleId") UUID moduleId,
             @Param("batchId") UUID batchId,
+            @Param("labGroupId") UUID labGroupId,
             @Param("programmeId") UUID programmeId,
             @Param("semester") String semester,
             @Param("lecturerId") UUID lecturerId

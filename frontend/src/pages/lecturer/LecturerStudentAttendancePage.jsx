@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { 
   UserCheck, 
+  Users,
   Search, 
   Calendar, 
   Clock, 
@@ -243,6 +244,12 @@ export default function LecturerStudentAttendancePage() {
                           <span>Batch: {studentDetails.batchCode}</span>
                         </span>
                       )}
+                      {studentDetails.labGroupName && (
+                        <span className="flex items-center gap-1 text-emerald-400">
+                          <Users className="h-3 w-3" />
+                          <span>Group: {studentDetails.labGroupName}</span>
+                        </span>
+                      )}
                       {studentDetails.programmeName && (
                         <span>• {studentDetails.programmeName}</span>
                       )}
@@ -260,7 +267,7 @@ export default function LecturerStudentAttendancePage() {
                 </div>
 
                 {/* Metric Counter Badges */}
-                <div className="grid grid-cols-3 gap-4 pt-5">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 pt-5">
                   <div className="p-3 rounded-lg bg-slate-950/60 border border-slate-800/80 text-center">
                     <span className="text-[11px] text-slate-400 block mb-0.5 font-medium">Eligible Finalized</span>
                     <span className="text-xl font-extrabold text-white font-mono">
@@ -277,6 +284,12 @@ export default function LecturerStudentAttendancePage() {
                     <span className="text-[11px] text-rose-400 block mb-0.5 font-medium">Missed (Absent)</span>
                     <span className="text-xl font-extrabold text-rose-400 font-mono">
                       {studentDetails.missedSessions}
+                    </span>
+                  </div>
+                  <div className="p-3 rounded-lg bg-slate-950/60 border border-slate-800/80 text-center">
+                    <span className="text-[11px] text-amber-400 block mb-0.5 font-medium">Other Group Visits</span>
+                    <span className="text-xl font-extrabold text-amber-400 font-mono">
+                      {studentDetails.attendedOtherGroupSessionsCount || 0}
                     </span>
                   </div>
                 </div>

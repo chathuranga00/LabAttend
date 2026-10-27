@@ -19,10 +19,14 @@ public class StudentAttendanceSummaryResponse {
     private String officialStudentId;
     private String fullName;
     private String batchCode;
+    private UUID labGroupId;
+    private String labGroupName;
 
     private long eligibleFinalizedSessions;
     private long attendedSessions;
     private long missedSessions;
+    private long outgoingCrossGroupVisits;
+    private long incomingCrossGroupVisits;
 
     private String attendancePercentage; // "87.5%" or "N/A"
     private Double percentageNumeric;

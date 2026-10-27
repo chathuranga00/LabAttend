@@ -26,6 +26,9 @@ public class AnalyticsOverviewResponse {
     private String overallAttendancePercentage; // "87.5%" or "N/A"
     private Double percentageNumeric;
 
+    private long totalCrossGroupVisitors;
+    private java.util.List<GroupAnalyticsResponse> groupAttendance;
+
     // Optional admin system-wide metrics
     private Long totalStudents;
     private Long totalLecturers;

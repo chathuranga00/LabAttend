@@ -34,6 +34,7 @@ public class ReportService {
     private final LaboratoryHallRepository laboratoryHallRepository;
     private final DegreeProgrammeRepository degreeProgrammeRepository;
     private final LecturerModuleAssignmentRepository lecturerModuleAssignmentRepository;
+    private final LabGroupRepository labGroupRepository;
 
     private final CsvReportGenerator csvReportGenerator;
     private final ExcelReportGenerator excelReportGenerator;
@@ -54,6 +55,7 @@ public class ReportService {
             LaboratoryHallRepository laboratoryHallRepository,
             DegreeProgrammeRepository degreeProgrammeRepository,
             LecturerModuleAssignmentRepository lecturerModuleAssignmentRepository,
+            LabGroupRepository labGroupRepository,
             CsvReportGenerator csvReportGenerator,
             ExcelReportGenerator excelReportGenerator,
             PdfReportGenerator pdfReportGenerator
@@ -68,6 +70,7 @@ public class ReportService {
         this.laboratoryHallRepository = laboratoryHallRepository;
         this.degreeProgrammeRepository = degreeProgrammeRepository;
         this.lecturerModuleAssignmentRepository = lecturerModuleAssignmentRepository;
+        this.labGroupRepository = labGroupRepository;
         this.csvReportGenerator = csvReportGenerator;
         this.excelReportGenerator = excelReportGenerator;
         this.pdfReportGenerator = pdfReportGenerator;
@@ -115,15 +118,30 @@ public class ReportService {
         Map<UUID, AttendanceRecord> recordMap = records.stream()
                 .collect(Collectors.toMap(r -> r.getStudent().getId(), r -> r, (a, b) -> a));
 
-        int expected = sessionStudents.size();
-        int present = (int) records.stream().filter(r -> r.getStatus() == AttendanceStatus.PRESENT || r.getStatus() == AttendanceStatus.LATE).count();
-        int absent = (int) records.stream().filter(r -> r.getStatus() == AttendanceStatus.ABSENT).count();
+        int expected = (int) sessionStudents.stream()
+                .filter(ss -> ss.getIsExpected() == null || ss.getIsExpected())
+                .count();
+        if (expected == 0 && !sessionStudents.isEmpty()) {
+            expected = sessionStudents.size();
+        }
+
+        int present = (int) records.stream()
+                .filter(r -> (r.getIsCrossGroup() == null || !r.getIsCrossGroup()) &&
+                        (r.getStatus() == AttendanceStatus.PRESENT || r.getStatus() == AttendanceStatus.LATE))
+                .count();
+        int absent = Math.max(0, expected - present);
+        int visitors = (int) records.stream()
+                .filter(r -> Boolean.TRUE.equals(r.getIsCrossGroup()))
+                .count();
+
         String rate = formatRate(present, expected);
 
         Map<String, String> meta = new LinkedHashMap<>();
         meta.put("Session Code", session.getSessionCode());
         meta.put("Module", session.getModule().getModuleCode() + " - " + session.getModule().getName());
         meta.put("Batch", session.getBatch() != null ? session.getBatch().getBatchCode() : "N/A");
+        meta.put("Lab Group", session.getLabGroup() != null ? session.getLabGroup().getGroupName() : "Whole Batch");
+        meta.put("Cross-Group Visitors", String.valueOf(visitors));
         meta.put("Session Date", session.getSessionDate().format(DATE_FORMATTER));
         meta.put("Time Window", session.getStartTime().format(TIME_FORMATTER) + " - " + session.getEndTime().format(TIME_FORMATTER));
         meta.put("Laboratory Hall", session.getHall().getName());
@@ -131,13 +149,15 @@ public class ReportService {
         meta.put("Lab Sheet Number", getLabSheetOrNotes(session));
         meta.put("Session Status", session.getStatus().name());
 
-        List<String> headers = List.of("#", "Student ID", "Full Name", "Attendance Status", "Method", "Marked / Scanned Time", "Remarks / Correction Reason");
+        List<String> headers = List.of(
+                "#", "Student ID", "Full Name", "Lab Group", "Attendance Status", "Cross-Group", "Method", "Marked / Scanned Time", "Remarks / Correction Reason"
+        );
         List<List<String>> rows = new ArrayList<>();
 
         int idx = 1;
-        // Sort students alphabetically by student ID
-        sessionStudents.sort(Comparator.comparing(ss -> ss.getStudent().getStudentId()));
-        for (SessionStudent ss : sessionStudents) {
+        List<SessionStudent> sortedStudents = new ArrayList<>(sessionStudents);
+        sortedStudents.sort(Comparator.comparing(ss -> ss.getStudent().getStudentId()));
+        for (SessionStudent ss : sortedStudents) {
             Student s = ss.getStudent();
             AttendanceRecord r = recordMap.get(s.getId());
 
@@ -145,12 +165,18 @@ public class ReportService {
             String method = (r != null && r.getMethod() != null) ? r.getMethod().name() : "-";
             String time = (r != null && r.getMarkedAt() != null) ? r.getMarkedAt().format(DATE_TIME_FORMATTER) : "-";
             String remarks = (r != null && r.getJustificationNotes() != null) ? r.getJustificationNotes() : "-";
+            String studentGroup = s.getLabGroup() != null ? s.getLabGroup().getGroupName() : "-";
+            String crossGroup = (r != null && Boolean.TRUE.equals(r.getIsCrossGroup()))
+                    ? "Yes (" + (r.getHomeLabGroup() != null ? r.getHomeLabGroup().getGroupName() : (s.getLabGroup() != null ? s.getLabGroup().getGroupName() : "Other")) + ")"
+                    : "No";
 
             rows.add(List.of(
                     String.valueOf(idx++),
                     s.getStudentId(),
                     s.getFullName(),
+                    studentGroup,
                     status,
+                    crossGroup,
                     method,
                     time,
                     remarks
@@ -158,13 +184,13 @@ public class ReportService {
         }
 
         return buildReportData("Individual Session Attendance", ReportType.SESSION, meta, expected, present, absent, rate, headers, rows,
-                "Finalized official session record conducted at " + session.getHall().getName());
+                "Finalized official session record conducted at " + session.getHall().getName() + ". Cross-group visitors: " + visitors + ".");
     }
 
     // =========================================================================
     // 2. DAILY ATTENDANCE REPORT
     // =========================================================================
-    public ReportData generateDailyReport(LocalDate sessionDate, UUID requestingUserId, boolean isAdmin) {
+    public ReportData generateDailyReport(LocalDate sessionDate, UUID labGroupId, UUID requestingUserId, boolean isAdmin) {
         if (sessionDate == null) {
             throw new BadRequestException("Session date is required for Daily Attendance Report.");
         }
@@ -178,31 +204,38 @@ public class ReportService {
         }
 
         List<LabSession> sessions = labSessionRepository.findFinalizedSessionsForReports(
-                null, sessionDate, null, null, null, null, null, null, lecturerId);
+                null, sessionDate, null, null, null, null, labGroupId, null, null, lecturerId);
 
         int totalExpected = 0;
         int totalPresent = 0;
         int totalAbsent = 0;
+        int totalVisitors = 0;
 
-        List<String> headers = List.of("#", "Session Code", "Module", "Batch", "Hall", "Time Window", "Lecturer", "Lab Sheet #", "Expected", "Present", "Absent", "Attendance %");
+        List<String> headers = List.of(
+                "#", "Session Code", "Module", "Batch", "Lab Group", "Hall", "Time Window", "Lecturer", "Lab Sheet #", "Expected", "Present", "Absent", "Visitors", "Attendance %"
+        );
         List<List<String>> rows = new ArrayList<>();
 
         int idx = 1;
         for (LabSession s : sessions) {
-            int exp = (int) sessionStudentRepository.countBySessionId(s.getId());
-            int pres = (int) attendanceRecordRepository.countBySessionIdAndStatusIn(s.getId(), List.of(AttendanceStatus.PRESENT, AttendanceStatus.LATE));
-            int abs = (int) attendanceRecordRepository.countBySessionIdAndStatus(s.getId(), AttendanceStatus.ABSENT);
+            int exp = (int) sessionStudentRepository.countBySessionIdAndIsExpectedTrue(s.getId());
+            int pres = (int) attendanceRecordRepository.countBySessionIdAndIsCrossGroupFalseAndStatusIn(
+                    s.getId(), List.of(AttendanceStatus.PRESENT, AttendanceStatus.LATE));
+            int abs = Math.max(0, exp - pres);
+            int visitors = (int) attendanceRecordRepository.countBySessionIdAndIsCrossGroupTrue(s.getId());
             String r = formatRate(pres, exp);
 
             totalExpected += exp;
             totalPresent += pres;
             totalAbsent += abs;
+            totalVisitors += visitors;
 
             rows.add(List.of(
                     String.valueOf(idx++),
                     s.getSessionCode(),
                     s.getModule().getModuleCode(),
                     s.getBatch() != null ? s.getBatch().getBatchCode() : "N/A",
+                    s.getLabGroup() != null ? s.getLabGroup().getGroupName() : "Whole Batch",
                     s.getHall().getName(),
                     s.getStartTime().format(TIME_FORMATTER) + " - " + s.getEndTime().format(TIME_FORMATTER),
                     s.getLecturer().getFullName(),
@@ -210,6 +243,7 @@ public class ReportService {
                     String.valueOf(exp),
                     String.valueOf(pres),
                     String.valueOf(abs),
+                    String.valueOf(visitors),
                     r
             ));
         }
@@ -217,7 +251,12 @@ public class ReportService {
         Map<String, String> meta = new LinkedHashMap<>();
         meta.put("Report Date", sessionDate.format(DATE_FORMATTER));
         meta.put("Audited Scope", lecturerName);
+        if (labGroupId != null) {
+            LabGroup g = labGroupRepository.findById(labGroupId).orElse(null);
+            if (g != null) meta.put("Lab Group Filter", g.getGroupName());
+        }
         meta.put("Total Sessions Conducted", String.valueOf(sessions.size()));
+        meta.put("Total Cross-Group Visitors", String.valueOf(totalVisitors));
 
         return buildReportData("Daily Attendance Audit", ReportType.DAILY, meta, totalExpected, totalPresent, totalAbsent,
                 formatRate(totalPresent, totalExpected), headers, rows,
@@ -256,33 +295,38 @@ public class ReportService {
                 .filter(ss -> ss.getSession().getStatus() == SessionStatus.FINALIZED || ss.getSession().getStatus() == SessionStatus.CLOSED)
                 .collect(Collectors.toList());
 
-        if (!isAdmin && eligible.isEmpty()) {
-            // Check if lecturer even teaches this student's batches/modules
-            // If empty, student has no eligible sessions with this lecturer
-        }
-
         List<UUID> sessionIds = eligible.stream().map(ss -> ss.getSession().getId()).collect(Collectors.toList());
         List<AttendanceRecord> records = sessionIds.isEmpty() ? List.of() :
                 attendanceRecordRepository.findByStudentIdAndSessionIdIn(student.getId(), sessionIds);
         Map<UUID, AttendanceRecord> recordMap = records.stream()
                 .collect(Collectors.toMap(r -> r.getSession().getId(), r -> r, (a, b) -> a));
 
-        int totalEligible = eligible.size();
+        int totalEligible = 0;
         int presentCount = 0;
         int absentCount = 0;
+        int crossGroupCount = 0;
 
-        List<String> headers = List.of("#", "Date", "Session Code", "Module", "Batch", "Hall", "Lab Sheet #", "Attendance Status", "Marked Time", "Method");
+        List<String> headers = List.of(
+                "#", "Date", "Session Code", "Module", "Batch", "Lab Group", "Cross-Group", "Hall", "Lab Sheet #", "Attendance Status", "Marked Time", "Method"
+        );
         List<List<String>> rows = new ArrayList<>();
 
         int idx = 1;
         for (SessionStudent ss : eligible) {
             LabSession s = ss.getSession();
             AttendanceRecord r = recordMap.get(s.getId());
+            boolean isCrossGroup = (r != null && Boolean.TRUE.equals(r.getIsCrossGroup())) || Boolean.FALSE.equals(ss.getIsExpected());
             String status = r != null ? r.getStatus().name() : "ABSENT";
-            if (r != null && (r.getStatus() == AttendanceStatus.PRESENT || r.getStatus() == AttendanceStatus.LATE)) {
-                presentCount++;
+
+            if (isCrossGroup) {
+                crossGroupCount++;
             } else {
-                absentCount++;
+                totalEligible++;
+                if (r != null && (r.getStatus() == AttendanceStatus.PRESENT || r.getStatus() == AttendanceStatus.LATE)) {
+                    presentCount++;
+                } else {
+                    absentCount++;
+                }
             }
 
             rows.add(List.of(
@@ -291,6 +335,8 @@ public class ReportService {
                     s.getSessionCode(),
                     s.getModule().getModuleCode() + " - " + s.getModule().getName(),
                     s.getBatch() != null ? s.getBatch().getBatchCode() : "N/A",
+                    s.getLabGroup() != null ? s.getLabGroup().getGroupName() : "Whole Batch",
+                    isCrossGroup ? "Yes (Visitor)" : "No",
                     s.getHall().getName(),
                     getLabSheetOrNotes(s),
                     status,
@@ -303,7 +349,9 @@ public class ReportService {
         meta.put("Student Identification", student.getStudentId());
         meta.put("Full Name", student.getFullName());
         meta.put("Batch", student.getBatch() != null ? student.getBatch().getBatchCode() : "N/A");
+        meta.put("Lab Group", student.getLabGroup() != null ? student.getLabGroup().getGroupName() : "Unassigned");
         meta.put("Degree Programme", student.getDegreeProgramme() != null ? student.getDegreeProgramme().getName() : "N/A");
+        meta.put("Cross-Group Visits Attended", String.valueOf(crossGroupCount));
         if (startDate != null || endDate != null) {
             meta.put("Date Filter", (startDate != null ? startDate.format(DATE_FORMATTER) : "Earliest") + " to " +
                     (endDate != null ? endDate.format(DATE_FORMATTER) : "Latest"));
@@ -315,7 +363,7 @@ public class ReportService {
 
         return buildReportData("Student Attendance History", ReportType.STUDENT_HISTORY, meta,
                 totalEligible, presentCount, absentCount, formatRate(presentCount, totalEligible), headers, rows,
-                "Audited attendance history for " + student.getFullName() + " (" + student.getStudentId() + ")");
+                "Audited attendance history for " + student.getFullName() + " (" + student.getStudentId() + "). Attended other group sessions: " + crossGroupCount + ".");
     }
 
     // =========================================================================
@@ -324,6 +372,7 @@ public class ReportService {
     public ReportData generateModuleReport(
             UUID moduleId,
             UUID batchId,
+            UUID labGroupId,
             LocalDate startDate,
             LocalDate endDate,
             UUID requestingUserId,
@@ -339,7 +388,6 @@ public class ReportService {
         if (!isAdmin) {
             Lecturer lecturer = getLecturerByUserId(requestingUserId);
             lecturerId = lecturer.getId();
-            // Verify assignment
             boolean assigned = lecturerModuleAssignmentRepository.findByLecturerId(lecturerId).stream()
                     .anyMatch(lma -> lma.getModule().getId().equals(moduleId));
             if (!assigned) {
@@ -348,36 +396,44 @@ public class ReportService {
         }
 
         List<LabSession> sessions = labSessionRepository.findFinalizedSessionsForReports(
-                null, null, startDate, endDate, moduleId, batchId, null, null, lecturerId);
+                null, null, startDate, endDate, moduleId, batchId, labGroupId, null, null, lecturerId);
 
         int totalExpected = 0;
         int totalPresent = 0;
         int totalAbsent = 0;
+        int totalVisitors = 0;
 
-        List<String> headers = List.of("#", "Session Code", "Date", "Batch", "Hall", "Lecturer", "Lab Sheet #", "Expected", "Present", "Absent", "Attendance Rate");
+        List<String> headers = List.of(
+                "#", "Session Code", "Date", "Batch", "Lab Group", "Hall", "Lecturer", "Lab Sheet #", "Expected", "Present", "Absent", "Visitors", "Attendance Rate"
+        );
         List<List<String>> rows = new ArrayList<>();
 
         int idx = 1;
         for (LabSession s : sessions) {
-            int exp = (int) sessionStudentRepository.countBySessionId(s.getId());
-            int pres = (int) attendanceRecordRepository.countBySessionIdAndStatusIn(s.getId(), List.of(AttendanceStatus.PRESENT, AttendanceStatus.LATE));
-            int abs = (int) attendanceRecordRepository.countBySessionIdAndStatus(s.getId(), AttendanceStatus.ABSENT);
+            int exp = (int) sessionStudentRepository.countBySessionIdAndIsExpectedTrue(s.getId());
+            int pres = (int) attendanceRecordRepository.countBySessionIdAndIsCrossGroupFalseAndStatusIn(
+                    s.getId(), List.of(AttendanceStatus.PRESENT, AttendanceStatus.LATE));
+            int abs = Math.max(0, exp - pres);
+            int visitors = (int) attendanceRecordRepository.countBySessionIdAndIsCrossGroupTrue(s.getId());
 
             totalExpected += exp;
             totalPresent += pres;
             totalAbsent += abs;
+            totalVisitors += visitors;
 
             rows.add(List.of(
                     String.valueOf(idx++),
                     s.getSessionCode(),
                     s.getSessionDate().format(DATE_FORMATTER),
                     s.getBatch() != null ? s.getBatch().getBatchCode() : "N/A",
+                    s.getLabGroup() != null ? s.getLabGroup().getGroupName() : "Whole Batch",
                     s.getHall().getName(),
                     s.getLecturer().getFullName(),
                     getLabSheetOrNotes(s),
                     String.valueOf(exp),
                     String.valueOf(pres),
                     String.valueOf(abs),
+                    String.valueOf(visitors),
                     formatRate(pres, exp)
             ));
         }
@@ -389,11 +445,16 @@ public class ReportService {
             Batch b = batchRepository.findById(batchId).orElse(null);
             if (b != null) meta.put("Target Batch", b.getBatchCode());
         }
+        if (labGroupId != null) {
+            LabGroup g = labGroupRepository.findById(labGroupId).orElse(null);
+            if (g != null) meta.put("Lab Group Filter", g.getGroupName());
+        }
         if (startDate != null || endDate != null) {
             meta.put("Date Filter", (startDate != null ? startDate.format(DATE_FORMATTER) : "Start") + " to " +
                     (endDate != null ? endDate.format(DATE_FORMATTER) : "End"));
         }
         meta.put("Conducted Sessions", String.valueOf(sessions.size()));
+        meta.put("Total Cross-Group Visitors", String.valueOf(totalVisitors));
 
         return buildReportData("Module Attendance Comprehensive Audit", ReportType.MODULE, meta,
                 totalExpected, totalPresent, totalAbsent, formatRate(totalPresent, totalExpected), headers, rows,
@@ -406,6 +467,7 @@ public class ReportService {
     public ReportData generateBatchReport(
             UUID batchId,
             UUID moduleId,
+            UUID labGroupId,
             LocalDate startDate,
             LocalDate endDate,
             UUID requestingUserId,
@@ -424,36 +486,44 @@ public class ReportService {
         }
 
         List<LabSession> sessions = labSessionRepository.findFinalizedSessionsForReports(
-                null, null, startDate, endDate, moduleId, batchId, null, null, lecturerId);
+                null, null, startDate, endDate, moduleId, batchId, labGroupId, null, null, lecturerId);
 
         int totalExpected = 0;
         int totalPresent = 0;
         int totalAbsent = 0;
+        int totalVisitors = 0;
 
-        List<String> headers = List.of("#", "Date", "Session Code", "Module", "Hall", "Lecturer", "Lab Sheet #", "Expected", "Present", "Absent", "Rate (%)");
+        List<String> headers = List.of(
+                "#", "Date", "Session Code", "Module", "Lab Group", "Hall", "Lecturer", "Lab Sheet #", "Expected", "Present", "Absent", "Visitors", "Rate (%)"
+        );
         List<List<String>> rows = new ArrayList<>();
 
         int idx = 1;
         for (LabSession s : sessions) {
-            int exp = (int) sessionStudentRepository.countBySessionId(s.getId());
-            int pres = (int) attendanceRecordRepository.countBySessionIdAndStatusIn(s.getId(), List.of(AttendanceStatus.PRESENT, AttendanceStatus.LATE));
-            int abs = (int) attendanceRecordRepository.countBySessionIdAndStatus(s.getId(), AttendanceStatus.ABSENT);
+            int exp = (int) sessionStudentRepository.countBySessionIdAndIsExpectedTrue(s.getId());
+            int pres = (int) attendanceRecordRepository.countBySessionIdAndIsCrossGroupFalseAndStatusIn(
+                    s.getId(), List.of(AttendanceStatus.PRESENT, AttendanceStatus.LATE));
+            int abs = Math.max(0, exp - pres);
+            int visitors = (int) attendanceRecordRepository.countBySessionIdAndIsCrossGroupTrue(s.getId());
 
             totalExpected += exp;
             totalPresent += pres;
             totalAbsent += abs;
+            totalVisitors += visitors;
 
             rows.add(List.of(
                     String.valueOf(idx++),
                     s.getSessionDate().format(DATE_FORMATTER),
                     s.getSessionCode(),
                     s.getModule().getModuleCode() + " - " + s.getModule().getName(),
+                    s.getLabGroup() != null ? s.getLabGroup().getGroupName() : "Whole Batch",
                     s.getHall().getName(),
                     s.getLecturer().getFullName(),
                     getLabSheetOrNotes(s),
                     String.valueOf(exp),
                     String.valueOf(pres),
                     String.valueOf(abs),
+                    String.valueOf(visitors),
                     formatRate(pres, exp)
             ));
         }
@@ -462,6 +532,10 @@ public class ReportService {
         meta.put("Batch Code", batch.getBatchCode());
         meta.put("Degree Programme", batch.getDegreeProgramme() != null ? batch.getDegreeProgramme().getName() : "N/A");
         meta.put("Academic Year", batch.getAcademicYear() != null ? batch.getAcademicYear() : "N/A");
+        if (labGroupId != null) {
+            LabGroup g = labGroupRepository.findById(labGroupId).orElse(null);
+            if (g != null) meta.put("Lab Group Filter", g.getGroupName());
+        }
         if (moduleId != null) {
             Module m = moduleRepository.findById(moduleId).orElse(null);
             if (m != null) meta.put("Filtered Module", m.getModuleCode() + " - " + m.getName());
@@ -471,6 +545,7 @@ public class ReportService {
                     (endDate != null ? endDate.format(DATE_FORMATTER) : "End"));
         }
         meta.put("Total Sessions", String.valueOf(sessions.size()));
+        meta.put("Total Cross-Group Visitors", String.valueOf(totalVisitors));
 
         return buildReportData("Batch Attendance Audit", ReportType.BATCH, meta,
                 totalExpected, totalPresent, totalAbsent, formatRate(totalPresent, totalExpected), headers, rows,
@@ -484,6 +559,7 @@ public class ReportService {
             String semester,
             UUID programmeId,
             UUID batchId,
+            UUID labGroupId,
             UUID moduleId,
             LocalDate startDate,
             LocalDate endDate,
@@ -501,9 +577,8 @@ public class ReportService {
         }
 
         List<LabSession> sessions = labSessionRepository.findFinalizedSessionsForReports(
-                null, null, startDate, endDate, moduleId, batchId, programmeId, semester, lecturerId);
+                null, null, startDate, endDate, moduleId, batchId, labGroupId, programmeId, semester, lecturerId);
 
-        // Group sessions by module
         Map<Module, List<LabSession>> moduleMap = sessions.stream()
                 .collect(Collectors.groupingBy(LabSession::getModule));
 
@@ -511,7 +586,9 @@ public class ReportService {
         int totalPresent = 0;
         int totalAbsent = 0;
 
-        List<String> headers = List.of("#", "Module Code", "Module Name", "Finalized Sessions", "Expected Student Slots", "Present Slots", "Absent Slots", "Average Rate");
+        List<String> headers = List.of(
+                "#", "Module Code", "Module Name", "Finalized Sessions", "Expected Student Slots", "Present Slots", "Absent Slots", "Average Rate"
+        );
         List<List<String>> rows = new ArrayList<>();
 
         int idx = 1;
@@ -524,9 +601,10 @@ public class ReportService {
             int modAbs = 0;
 
             for (LabSession s : modSessions) {
-                int exp = (int) sessionStudentRepository.countBySessionId(s.getId());
-                int pres = (int) attendanceRecordRepository.countBySessionIdAndStatusIn(s.getId(), List.of(AttendanceStatus.PRESENT, AttendanceStatus.LATE));
-                int abs = (int) attendanceRecordRepository.countBySessionIdAndStatus(s.getId(), AttendanceStatus.ABSENT);
+                int exp = (int) sessionStudentRepository.countBySessionIdAndIsExpectedTrue(s.getId());
+                int pres = (int) attendanceRecordRepository.countBySessionIdAndIsCrossGroupFalseAndStatusIn(
+                        s.getId(), List.of(AttendanceStatus.PRESENT, AttendanceStatus.LATE));
+                int abs = Math.max(0, exp - pres);
                 modExp += exp;
                 modPres += pres;
                 modAbs += abs;
@@ -558,6 +636,10 @@ public class ReportService {
             Batch b = batchRepository.findById(batchId).orElse(null);
             if (b != null) meta.put("Batch", b.getBatchCode());
         }
+        if (labGroupId != null) {
+            LabGroup g = labGroupRepository.findById(labGroupId).orElse(null);
+            if (g != null) meta.put("Lab Group Filter", g.getGroupName());
+        }
         meta.put("Total Sessions Evaluated", String.valueOf(sessions.size()));
 
         return buildReportData("Semester-Wide Attendance Summary", ReportType.SEMESTER, meta,
@@ -573,6 +655,7 @@ public class ReportService {
             UUID programmeId,
             UUID moduleId,
             UUID batchId,
+            UUID labGroupId,
             LocalDate startDate,
             LocalDate endDate,
             UUID requestingUserId,
@@ -587,17 +670,19 @@ public class ReportService {
         }
 
         List<Object[]> eligibleRows = sessionStudentRepository.countEligibleFinalizedSessionsPerStudent(
-                lecturerId, moduleId, batchId, programmeId, startDate, endDate, null);
+                lecturerId, moduleId, batchId, labGroupId, programmeId, startDate, endDate, null);
 
         List<Object[]> attendedRows = attendanceRecordRepository.countAttendedSessionsPerStudent(
-                lecturerId, moduleId, batchId, programmeId, startDate, endDate, null);
+                lecturerId, moduleId, batchId, labGroupId, programmeId, startDate, endDate, null);
 
         Map<UUID, Long> attendedMap = new HashMap<>();
         for (Object[] r : attendedRows) {
-            attendedMap.put((UUID) r[0], (Long) r[1]);
+            attendedMap.put((UUID) r[0], ((Number) r[1]).longValue());
         }
 
-        List<String> headers = List.of("#", "Student ID", "Full Name", "Batch", "Eligible Sessions", "Attended Sessions", "Absent Sessions", "Attendance Rate", "Deficit to " + String.format("%.1f", cutoff) + "%");
+        List<String> headers = List.of(
+                "#", "Student ID", "Full Name", "Batch", "Lab Group", "Eligible Sessions", "Attended Sessions", "Absent Sessions", "Attendance Rate", "Deficit to " + String.format("%.1f", cutoff) + "%"
+        );
         List<List<String>> rows = new ArrayList<>();
 
         int totalExpectedSlots = 0;
@@ -610,7 +695,8 @@ public class ReportService {
             String studentIdStr = (String) r[1];
             String fullName = (String) r[2];
             String batchCode = (String) r[3];
-            long eligibleSessions = (Long) r[4];
+            String groupName = r[5] != null ? (String) r[5] : "Unassigned";
+            long eligibleSessions = ((Number) r[6]).longValue();
 
             if (eligibleSessions == 0) continue;
 
@@ -630,18 +716,17 @@ public class ReportService {
                         studentIdStr,
                         fullName,
                         batchCode != null ? batchCode : "N/A",
+                        groupName,
                         String.valueOf(eligibleSessions),
                         String.valueOf(attended),
                         String.valueOf(absent),
-                        String.format("%.1f%%", rate),
-                        String.format("-%.1f%%", deficit)
+                        String.format(Locale.US, "%.1f%%", rate),
+                        String.format(Locale.US, "-%.1f%%", deficit)
                 ));
             }
         }
 
-        // Sort by attendance rate ascending (most critical first)
-        rows.sort(Comparator.comparing(row -> Double.parseDouble(row.get(7).replace("%", ""))));
-        // Re-index
+        rows.sort(Comparator.comparing(row -> Double.parseDouble(row.get(8).replace("%", ""))));
         for (int i = 0; i < rows.size(); i++) {
             List<String> mutableRow = new ArrayList<>(rows.get(i));
             mutableRow.set(0, String.valueOf(i + 1));
@@ -649,7 +734,7 @@ public class ReportService {
         }
 
         Map<String, String> meta = new LinkedHashMap<>();
-        meta.put("Attendance Threshold", String.format("%.1f%%", cutoff));
+        meta.put("Attendance Threshold", String.format(Locale.US, "%.1f%%", cutoff));
         meta.put("At-Risk Students Identified", String.valueOf(rows.size()));
         if (moduleId != null) {
             Module m = moduleRepository.findById(moduleId).orElse(null);
@@ -659,11 +744,15 @@ public class ReportService {
             Batch b = batchRepository.findById(batchId).orElse(null);
             if (b != null) meta.put("Batch", b.getBatchCode());
         }
+        if (labGroupId != null) {
+            LabGroup g = labGroupRepository.findById(labGroupId).orElse(null);
+            if (g != null) meta.put("Lab Group Filter", g.getGroupName());
+        }
 
         return buildReportData("Low Attendance Risk Audit", ReportType.LOW_ATTENDANCE, meta,
                 totalExpectedSlots, totalPresentSlots, totalAbsentSlots,
                 formatRate(totalPresentSlots, totalExpectedSlots), headers, rows,
-                "Warning: Contains " + rows.size() + " students falling below the statutory " + String.format("%.1f", cutoff) + "% threshold.");
+                "Warning: Contains " + rows.size() + " students falling below the statutory " + String.format(Locale.US, "%.1f", cutoff) + "% threshold.");
     }
 
     // =========================================================================
@@ -689,20 +778,23 @@ public class ReportService {
         }
 
         List<LabSession> sessions = labSessionRepository.findFinalizedSessionsForReports(
-                hallId, null, startDate, endDate, null, null, null, null, lecturerId);
+                hallId, null, startDate, endDate, null, null, null, null, null, lecturerId);
 
         int totalExpected = 0;
         int totalPresent = 0;
         int totalAbsent = 0;
 
-        List<String> headers = List.of("#", "Date", "Session Code", "Module", "Batch", "Lecturer", "Time Slot", "Expected", "Present", "Absent", "Turnout Rate", "Hall Utilization");
+        List<String> headers = List.of(
+                "#", "Date", "Session Code", "Module", "Batch", "Lab Group", "Lecturer", "Time Slot", "Expected", "Present", "Absent", "Turnout Rate", "Hall Utilization"
+        );
         List<List<String>> rows = new ArrayList<>();
 
         int idx = 1;
         for (LabSession s : sessions) {
-            int exp = (int) sessionStudentRepository.countBySessionId(s.getId());
-            int pres = (int) attendanceRecordRepository.countBySessionIdAndStatusIn(s.getId(), List.of(AttendanceStatus.PRESENT, AttendanceStatus.LATE));
-            int abs = (int) attendanceRecordRepository.countBySessionIdAndStatus(s.getId(), AttendanceStatus.ABSENT);
+            int exp = (int) sessionStudentRepository.countBySessionIdAndIsExpectedTrue(s.getId());
+            int pres = (int) attendanceRecordRepository.countBySessionIdAndIsCrossGroupFalseAndStatusIn(
+                    s.getId(), List.of(AttendanceStatus.PRESENT, AttendanceStatus.LATE));
+            int abs = Math.max(0, exp - pres);
 
             totalExpected += exp;
             totalPresent += pres;
@@ -716,13 +808,14 @@ public class ReportService {
                     s.getSessionCode(),
                     s.getModule().getModuleCode() + " - " + s.getModule().getName(),
                     s.getBatch() != null ? s.getBatch().getBatchCode() : "N/A",
+                    s.getLabGroup() != null ? s.getLabGroup().getGroupName() : "Whole Batch",
                     s.getLecturer().getFullName(),
                     s.getStartTime().format(TIME_FORMATTER) + " - " + s.getEndTime().format(TIME_FORMATTER),
                     String.valueOf(exp),
                     String.valueOf(pres),
                     String.valueOf(abs),
                     formatRate(pres, exp),
-                    String.format("%.1f%%", hallUtilization)
+                    String.format(Locale.US, "%.1f%%", hallUtilization)
             ));
         }
 
@@ -739,6 +832,82 @@ public class ReportService {
         return buildReportData("Laboratory Hall Session & Utilization Audit", ReportType.HALL, meta,
                 totalExpected, totalPresent, totalAbsent, formatRate(totalPresent, totalExpected), headers, rows,
                 "Facility usage and attendance metrics for " + hall.getName());
+    }
+
+    // =========================================================================
+    // 9. CROSS-GROUP ATTENDANCE REPORT
+    // =========================================================================
+    public ReportData generateCrossGroupReport(
+            UUID batchId,
+            UUID labGroupId,
+            UUID moduleId,
+            LocalDate startDate,
+            LocalDate endDate,
+            UUID requestingUserId,
+            boolean isAdmin
+    ) {
+        UUID lecturerId = null;
+        if (!isAdmin) {
+            Lecturer lecturer = getLecturerByUserId(requestingUserId);
+            lecturerId = lecturer.getId();
+        }
+
+        List<AttendanceRecord> records = attendanceRecordRepository.findCrossGroupAttendanceRecords(
+                lecturerId, moduleId, batchId, labGroupId, startDate, endDate
+        );
+
+        List<String> headers = List.of(
+                "#", "Student ID", "Student Name", "Home Group", "Attended Session", "Session Group", "Session Date", "Lecturer", "Lab Sheet / Notes"
+        );
+        List<List<String>> rows = new ArrayList<>();
+
+        int idx = 1;
+        for (AttendanceRecord r : records) {
+            Student s = r.getStudent();
+            LabSession session = r.getSession();
+            String homeGroup = r.getHomeLabGroup() != null ? r.getHomeLabGroup().getGroupName() :
+                    (s.getLabGroup() != null ? s.getLabGroup().getGroupName() : "Unassigned");
+            String sessionGroup = session.getLabGroup() != null ? session.getLabGroup().getGroupName() : "Whole Batch";
+            String lecturerName = session.getLecturer() != null && session.getLecturer().getUser() != null ?
+                    session.getLecturer().getUser().getFullName() : (session.getLecturer() != null ? session.getLecturer().getFullName() : "N/A");
+
+            rows.add(List.of(
+                    String.valueOf(idx++),
+                    s.getStudentId(),
+                    s.getFullName(),
+                    homeGroup,
+                    session.getSessionCode(),
+                    sessionGroup,
+                    session.getSessionDate().format(DATE_FORMATTER),
+                    lecturerName,
+                    getLabSheetOrNotes(session)
+            ));
+        }
+
+        Map<String, String> meta = new LinkedHashMap<>();
+        meta.put("Report Type", "Cross-Group Attendance Audit");
+        meta.put("Scope", isAdmin ? "Institutional (All Sessions)" : "Lecturer Conducted Sessions");
+        if (batchId != null) {
+            Batch b = batchRepository.findById(batchId).orElse(null);
+            if (b != null) meta.put("Batch", b.getBatchCode());
+        }
+        if (labGroupId != null) {
+            LabGroup g = labGroupRepository.findById(labGroupId).orElse(null);
+            if (g != null) meta.put("Lab Group Filter", g.getGroupName());
+        }
+        if (moduleId != null) {
+            Module m = moduleRepository.findById(moduleId).orElse(null);
+            if (m != null) meta.put("Module", m.getModuleCode() + " - " + m.getName());
+        }
+        if (startDate != null || endDate != null) {
+            meta.put("Date Filter", (startDate != null ? startDate.format(DATE_FORMATTER) : "Start") + " to " +
+                    (endDate != null ? endDate.format(DATE_FORMATTER) : "End"));
+        }
+        meta.put("Total Cross-Group Visits", String.valueOf(records.size()));
+
+        return buildReportData("Cross-Group Attendance Audit", ReportType.CROSS_GROUP, meta,
+                records.size(), records.size(), 0, "100.0%", headers, rows,
+                "Audit includes all " + records.size() + " cross-group attendance occurrences within the audited scope.");
     }
 
     // =========================================================================

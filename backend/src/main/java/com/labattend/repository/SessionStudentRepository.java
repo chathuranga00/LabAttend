@@ -35,25 +35,29 @@ public interface SessionStudentRepository extends JpaRepository<SessionStudent, 
 
     @org.springframework.data.jpa.repository.Query(
         "SELECT ss.student.id, ss.student.studentId, ss.student.fullName, ss.student.batch.batchCode, " +
-        "COUNT(CASE WHEN s.status IN (com.labattend.entity.enums.SessionStatus.FINALIZED, com.labattend.entity.enums.SessionStatus.CLOSED) THEN 1 ELSE NULL END) " +
+        "ss.student.labGroup.id, ss.student.labGroup.groupName, " +
+        "COUNT(CASE WHEN s.status IN (com.labattend.entity.enums.SessionStatus.FINALIZED, com.labattend.entity.enums.SessionStatus.CLOSED) AND ss.isExpected = true THEN 1 ELSE NULL END) " +
         "FROM SessionStudent ss " +
         "JOIN ss.session s " +
         "LEFT JOIN s.batch b " +
         "JOIN s.module m " +
         "WHERE s.status != com.labattend.entity.enums.SessionStatus.CANCELLED AND " +
+        "ss.isExpected = true AND " +
         "(cast(:lecturerId as string) IS NULL OR s.lecturer.id = :lecturerId) AND " +
         "(cast(:moduleId as string) IS NULL OR m.id = :moduleId) AND " +
         "(cast(:batchId as string) IS NULL OR b.id = :batchId) AND " +
+        "(cast(:labGroupId as string) IS NULL OR s.labGroup.id = :labGroupId OR ss.student.labGroup.id = :labGroupId) AND " +
         "(cast(:programmeId as string) IS NULL OR m.degreeProgramme.id = :programmeId OR (b IS NOT NULL AND b.degreeProgramme.id = :programmeId)) AND " +
         "(cast(:startDate as string) IS NULL OR s.sessionDate >= :startDate) AND " +
         "(cast(:endDate as string) IS NULL OR s.sessionDate <= :endDate) AND " +
         "(cast(:semester as string) IS NULL OR m.semester = :semester) " +
-        "GROUP BY ss.student.id, ss.student.studentId, ss.student.fullName, ss.student.batch.batchCode"
+        "GROUP BY ss.student.id, ss.student.studentId, ss.student.fullName, ss.student.batch.batchCode, ss.student.labGroup.id, ss.student.labGroup.groupName"
     )
     List<Object[]> countEligibleFinalizedSessionsPerStudent(
             @org.springframework.data.repository.query.Param("lecturerId") UUID lecturerId,
             @org.springframework.data.repository.query.Param("moduleId") UUID moduleId,
             @org.springframework.data.repository.query.Param("batchId") UUID batchId,
+            @org.springframework.data.repository.query.Param("labGroupId") UUID labGroupId,
             @org.springframework.data.repository.query.Param("programmeId") UUID programmeId,
             @org.springframework.data.repository.query.Param("startDate") java.time.LocalDate startDate,
             @org.springframework.data.repository.query.Param("endDate") java.time.LocalDate endDate,
@@ -66,9 +70,11 @@ public interface SessionStudentRepository extends JpaRepository<SessionStudent, 
         "LEFT JOIN s.batch b " +
         "JOIN s.module m " +
         "WHERE s.status IN (com.labattend.entity.enums.SessionStatus.FINALIZED, com.labattend.entity.enums.SessionStatus.CLOSED) AND " +
+        "ss.isExpected = true AND " +
         "(cast(:lecturerId as string) IS NULL OR s.lecturer.id = :lecturerId) AND " +
         "(cast(:moduleId as string) IS NULL OR m.id = :moduleId) AND " +
         "(cast(:batchId as string) IS NULL OR b.id = :batchId) AND " +
+        "(cast(:labGroupId as string) IS NULL OR s.labGroup.id = :labGroupId) AND " +
         "(cast(:programmeId as string) IS NULL OR m.degreeProgramme.id = :programmeId OR (b IS NOT NULL AND b.degreeProgramme.id = :programmeId)) AND " +
         "(cast(:startDate as string) IS NULL OR s.sessionDate >= :startDate) AND " +
         "(cast(:endDate as string) IS NULL OR s.sessionDate <= :endDate) AND " +
@@ -78,6 +84,7 @@ public interface SessionStudentRepository extends JpaRepository<SessionStudent, 
             @org.springframework.data.repository.query.Param("lecturerId") UUID lecturerId,
             @org.springframework.data.repository.query.Param("moduleId") UUID moduleId,
             @org.springframework.data.repository.query.Param("batchId") UUID batchId,
+            @org.springframework.data.repository.query.Param("labGroupId") UUID labGroupId,
             @org.springframework.data.repository.query.Param("programmeId") UUID programmeId,
             @org.springframework.data.repository.query.Param("startDate") java.time.LocalDate startDate,
             @org.springframework.data.repository.query.Param("endDate") java.time.LocalDate endDate,

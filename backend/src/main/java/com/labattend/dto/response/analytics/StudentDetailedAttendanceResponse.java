@@ -25,15 +25,35 @@ public class StudentDetailedAttendanceResponse {
     private String email;
     private String batchCode;
     private String programmeName;
+    private UUID labGroupId;
+    private String labGroupName;
 
     private long eligibleFinalizedSessions;
     private long attendedSessions;
     private long missedSessions;
+    private long outgoingCrossGroupVisits;
 
     private String attendancePercentage;
     private Double percentageNumeric;
 
+    private List<CrossGroupVisitDetail> otherGroupVisits;
     private List<StudentSessionHistoryItem> history;
+
+    @Getter
+    @Setter
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @Builder
+    public static class CrossGroupVisitDetail {
+        private UUID sessionId;
+        private String sessionCode;
+        private LocalDate sessionDate;
+        private String sessionGroupName;
+        private String lecturerName;
+        private String moduleCode;
+        private String moduleName;
+        private OffsetDateTime markedAt;
+    }
 
     @Getter
     @Setter

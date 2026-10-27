@@ -23,6 +23,9 @@ export const analyticsService = {
   getLecturerBatches: (params = {}) =>
     api.get('/lecturer/analytics/batches', { params }),
 
+  getLecturerGroupAnalytics: (params = {}) =>
+    api.get('/lecturer/analytics/groups', { params }),
+
   // Admin Analytics Endpoints
   getAdminOverview: (params = {}) =>
     api.get('/admin/analytics/overview', { params }),
@@ -44,6 +47,9 @@ export const analyticsService = {
 
   getAdminBatches: (params = {}) =>
     api.get('/admin/analytics/batches', { params }),
+
+  getAdminGroupAnalytics: (params = {}) =>
+    api.get('/admin/analytics/groups', { params }),
 };
 
 export default analyticsService;

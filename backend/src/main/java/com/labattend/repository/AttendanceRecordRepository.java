@@ -68,10 +68,12 @@ public interface AttendanceRecordRepository extends JpaRepository<AttendanceReco
         "LEFT JOIN s.batch b " +
         "JOIN s.module m " +
         "WHERE s.status IN (com.labattend.entity.enums.SessionStatus.FINALIZED, com.labattend.entity.enums.SessionStatus.CLOSED) AND " +
+        "a.isCrossGroup = false AND " +
         "a.status IN (com.labattend.entity.enums.AttendanceStatus.PRESENT, com.labattend.entity.enums.AttendanceStatus.LATE) AND " +
         "(cast(:lecturerId as string) IS NULL OR s.lecturer.id = :lecturerId) AND " +
         "(cast(:moduleId as string) IS NULL OR m.id = :moduleId) AND " +
         "(cast(:batchId as string) IS NULL OR b.id = :batchId) AND " +
+        "(cast(:labGroupId as string) IS NULL OR s.labGroup.id = :labGroupId OR a.student.labGroup.id = :labGroupId) AND " +
         "(cast(:programmeId as string) IS NULL OR m.degreeProgramme.id = :programmeId OR (b IS NOT NULL AND b.degreeProgramme.id = :programmeId)) AND " +
         "(cast(:startDate as string) IS NULL OR s.sessionDate >= :startDate) AND " +
         "(cast(:endDate as string) IS NULL OR s.sessionDate <= :endDate) AND " +
@@ -82,6 +84,36 @@ public interface AttendanceRecordRepository extends JpaRepository<AttendanceReco
             @org.springframework.data.repository.query.Param("lecturerId") UUID lecturerId,
             @org.springframework.data.repository.query.Param("moduleId") UUID moduleId,
             @org.springframework.data.repository.query.Param("batchId") UUID batchId,
+            @org.springframework.data.repository.query.Param("labGroupId") UUID labGroupId,
+            @org.springframework.data.repository.query.Param("programmeId") UUID programmeId,
+            @org.springframework.data.repository.query.Param("startDate") java.time.LocalDate startDate,
+            @org.springframework.data.repository.query.Param("endDate") java.time.LocalDate endDate,
+            @org.springframework.data.repository.query.Param("semester") String semester
+    );
+
+    @org.springframework.data.jpa.repository.Query(
+        "SELECT a.student.id, COUNT(a.id) FROM AttendanceRecord a " +
+        "JOIN a.session s " +
+        "LEFT JOIN s.batch b " +
+        "JOIN s.module m " +
+        "WHERE s.status IN (com.labattend.entity.enums.SessionStatus.FINALIZED, com.labattend.entity.enums.SessionStatus.CLOSED) AND " +
+        "a.isCrossGroup = true AND " +
+        "a.status IN (com.labattend.entity.enums.AttendanceStatus.PRESENT, com.labattend.entity.enums.AttendanceStatus.LATE) AND " +
+        "(cast(:lecturerId as string) IS NULL OR s.lecturer.id = :lecturerId) AND " +
+        "(cast(:moduleId as string) IS NULL OR m.id = :moduleId) AND " +
+        "(cast(:batchId as string) IS NULL OR b.id = :batchId) AND " +
+        "(cast(:labGroupId as string) IS NULL OR s.labGroup.id = :labGroupId OR a.student.labGroup.id = :labGroupId) AND " +
+        "(cast(:programmeId as string) IS NULL OR m.degreeProgramme.id = :programmeId OR (b IS NOT NULL AND b.degreeProgramme.id = :programmeId)) AND " +
+        "(cast(:startDate as string) IS NULL OR s.sessionDate >= :startDate) AND " +
+        "(cast(:endDate as string) IS NULL OR s.sessionDate <= :endDate) AND " +
+        "(cast(:semester as string) IS NULL OR m.semester = :semester) " +
+        "GROUP BY a.student.id"
+    )
+    List<Object[]> countOutgoingCrossGroupVisitsPerStudent(
+            @org.springframework.data.repository.query.Param("lecturerId") UUID lecturerId,
+            @org.springframework.data.repository.query.Param("moduleId") UUID moduleId,
+            @org.springframework.data.repository.query.Param("batchId") UUID batchId,
+            @org.springframework.data.repository.query.Param("labGroupId") UUID labGroupId,
             @org.springframework.data.repository.query.Param("programmeId") UUID programmeId,
             @org.springframework.data.repository.query.Param("startDate") java.time.LocalDate startDate,
             @org.springframework.data.repository.query.Param("endDate") java.time.LocalDate endDate,
@@ -94,9 +126,11 @@ public interface AttendanceRecordRepository extends JpaRepository<AttendanceReco
         "LEFT JOIN s.batch b " +
         "JOIN s.module m " +
         "WHERE s.status IN (com.labattend.entity.enums.SessionStatus.FINALIZED, com.labattend.entity.enums.SessionStatus.CLOSED) AND " +
+        "a.isCrossGroup = false AND " +
         "(:lecturerId IS NULL OR s.lecturer.id = :lecturerId) AND " +
         "(:moduleId IS NULL OR m.id = :moduleId) AND " +
         "(:batchId IS NULL OR b.id = :batchId) AND " +
+        "(:labGroupId IS NULL OR s.labGroup.id = :labGroupId) AND " +
         "(:programmeId IS NULL OR m.degreeProgramme.id = :programmeId OR (b IS NOT NULL AND b.degreeProgramme.id = :programmeId)) AND " +
         "(:startDate IS NULL OR s.sessionDate >= :startDate) AND " +
         "(:endDate IS NULL OR s.sessionDate <= :endDate) AND " +
@@ -107,10 +141,67 @@ public interface AttendanceRecordRepository extends JpaRepository<AttendanceReco
             @org.springframework.data.repository.query.Param("lecturerId") UUID lecturerId,
             @org.springframework.data.repository.query.Param("moduleId") UUID moduleId,
             @org.springframework.data.repository.query.Param("batchId") UUID batchId,
+            @org.springframework.data.repository.query.Param("labGroupId") UUID labGroupId,
             @org.springframework.data.repository.query.Param("programmeId") UUID programmeId,
             @org.springframework.data.repository.query.Param("startDate") java.time.LocalDate startDate,
             @org.springframework.data.repository.query.Param("endDate") java.time.LocalDate endDate,
             @org.springframework.data.repository.query.Param("semester") String semester
+    );
+
+    @org.springframework.data.jpa.repository.Query(
+        "SELECT COUNT(a.id) FROM AttendanceRecord a " +
+        "JOIN a.session s " +
+        "LEFT JOIN s.batch b " +
+        "JOIN s.module m " +
+        "WHERE s.status IN (com.labattend.entity.enums.SessionStatus.FINALIZED, com.labattend.entity.enums.SessionStatus.CLOSED) AND " +
+        "a.isCrossGroup = true AND " +
+        "a.status IN (com.labattend.entity.enums.AttendanceStatus.PRESENT, com.labattend.entity.enums.AttendanceStatus.LATE) AND " +
+        "(cast(:lecturerId as string) IS NULL OR s.lecturer.id = :lecturerId) AND " +
+        "(cast(:moduleId as string) IS NULL OR m.id = :moduleId) AND " +
+        "(cast(:batchId as string) IS NULL OR b.id = :batchId) AND " +
+        "(cast(:labGroupId as string) IS NULL OR s.labGroup.id = :labGroupId) AND " +
+        "(cast(:programmeId as string) IS NULL OR m.degreeProgramme.id = :programmeId OR (b IS NOT NULL AND b.degreeProgramme.id = :programmeId)) AND " +
+        "(cast(:startDate as string) IS NULL OR s.sessionDate >= :startDate) AND " +
+        "(cast(:endDate as string) IS NULL OR s.sessionDate <= :endDate) AND " +
+        "(cast(:semester as string) IS NULL OR m.semester = :semester)"
+    )
+    long countTotalCrossGroupVisitorsFinalizedSlots(
+            @org.springframework.data.repository.query.Param("lecturerId") UUID lecturerId,
+            @org.springframework.data.repository.query.Param("moduleId") UUID moduleId,
+            @org.springframework.data.repository.query.Param("batchId") UUID batchId,
+            @org.springframework.data.repository.query.Param("labGroupId") UUID labGroupId,
+            @org.springframework.data.repository.query.Param("programmeId") UUID programmeId,
+            @org.springframework.data.repository.query.Param("startDate") java.time.LocalDate startDate,
+            @org.springframework.data.repository.query.Param("endDate") java.time.LocalDate endDate,
+            @org.springframework.data.repository.query.Param("semester") String semester
+    );
+
+    @org.springframework.data.jpa.repository.Query(
+        "SELECT a FROM AttendanceRecord a " +
+        "JOIN FETCH a.student st " +
+        "LEFT JOIN FETCH st.labGroup hlg " +
+        "JOIN FETCH a.session s " +
+        "LEFT JOIN FETCH s.batch b " +
+        "LEFT JOIN FETCH s.labGroup slg " +
+        "JOIN FETCH s.module m " +
+        "JOIN FETCH s.lecturer l " +
+        "WHERE a.isCrossGroup = true AND " +
+        "s.status IN (com.labattend.entity.enums.SessionStatus.FINALIZED, com.labattend.entity.enums.SessionStatus.CLOSED) AND " +
+        "(cast(:lecturerId as string) IS NULL OR s.lecturer.id = :lecturerId) AND " +
+        "(cast(:moduleId as string) IS NULL OR m.id = :moduleId) AND " +
+        "(cast(:batchId as string) IS NULL OR b.id = :batchId) AND " +
+        "(cast(:labGroupId as string) IS NULL OR s.labGroup.id = :labGroupId OR st.labGroup.id = :labGroupId) AND " +
+        "(cast(:startDate as string) IS NULL OR s.sessionDate >= :startDate) AND " +
+        "(cast(:endDate as string) IS NULL OR s.sessionDate <= :endDate) " +
+        "ORDER BY s.sessionDate DESC, a.markedAt DESC"
+    )
+    List<AttendanceRecord> findCrossGroupAttendanceRecords(
+            @org.springframework.data.repository.query.Param("lecturerId") UUID lecturerId,
+            @org.springframework.data.repository.query.Param("moduleId") UUID moduleId,
+            @org.springframework.data.repository.query.Param("batchId") UUID batchId,
+            @org.springframework.data.repository.query.Param("labGroupId") UUID labGroupId,
+            @org.springframework.data.repository.query.Param("startDate") java.time.LocalDate startDate,
+            @org.springframework.data.repository.query.Param("endDate") java.time.LocalDate endDate
     );
 
     @org.springframework.data.jpa.repository.Query(
@@ -120,4 +211,6 @@ public interface AttendanceRecordRepository extends JpaRepository<AttendanceReco
             @org.springframework.data.repository.query.Param("studentId") UUID studentId,
             @org.springframework.data.repository.query.Param("sessionIds") java.util.Collection<UUID> sessionIds
     );
+
+    List<AttendanceRecord> findByStudentIdAndIsCrossGroupTrue(UUID studentId);
 }

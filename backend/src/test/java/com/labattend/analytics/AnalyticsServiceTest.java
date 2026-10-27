@@ -56,6 +56,9 @@ public class AnalyticsServiceTest {
     @Mock
     private LecturerModuleAssignmentRepository lecturerModuleAssignmentRepository;
 
+    @Mock
+    private LabGroupRepository labGroupRepository;
+
     @InjectMocks
     private AnalyticsService analyticsService;
 
@@ -179,11 +182,11 @@ public class AnalyticsServiceTest {
         List<Object[]> statusCounts = Collections.singletonList(
                 new Object[]{SessionStatus.FINALIZED, 1L}
         );
-        when(labSessionRepository.countSessionsByStatus(eq(lecturer.getId()), isNull(), isNull(), isNull(), isNull(), isNull(), isNull()))
+        when(labSessionRepository.countSessionsByStatus(eq(lecturer.getId()), isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull()))
                 .thenReturn(statusCounts);
 
         // 40 expected student slots
-        when(sessionStudentRepository.countTotalExpectedFinalizedSlots(eq(lecturer.getId()), isNull(), isNull(), isNull(), isNull(), isNull(), isNull()))
+        when(sessionStudentRepository.countTotalExpectedFinalizedSlots(eq(lecturer.getId()), isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull()))
                 .thenReturn(40L);
 
         // 35 present slots, 5 absent slots
@@ -191,11 +194,11 @@ public class AnalyticsServiceTest {
                 new Object[]{AttendanceStatus.PRESENT, 35L},
                 new Object[]{AttendanceStatus.ABSENT, 5L}
         );
-        when(attendanceRecordRepository.countFinalizedAttendanceSlotsByStatus(eq(lecturer.getId()), isNull(), isNull(), isNull(), isNull(), isNull(), isNull()))
+        when(attendanceRecordRepository.countFinalizedAttendanceSlotsByStatus(eq(lecturer.getId()), isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull()))
                 .thenReturn(slotCounts);
 
         AnalyticsOverviewResponse overview = analyticsService.getLecturerOverview(
-                lecturerUser.getId(), null, null, null, null, null
+                lecturerUser.getId(), null, null, null, null, null, null
         );
 
         assertNotNull(overview);
@@ -217,21 +220,21 @@ public class AnalyticsServiceTest {
                 new Object[]{SessionStatus.FINALIZED, 1L},
                 new Object[]{SessionStatus.CANCELLED, 1L}
         );
-        when(labSessionRepository.countSessionsByStatus(eq(lecturer.getId()), isNull(), isNull(), isNull(), isNull(), isNull(), isNull()))
+        when(labSessionRepository.countSessionsByStatus(eq(lecturer.getId()), isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull()))
                 .thenReturn(statusCounts);
 
         // Expected slots query only queries FINALIZED sessions
-        when(sessionStudentRepository.countTotalExpectedFinalizedSlots(eq(lecturer.getId()), isNull(), isNull(), isNull(), isNull(), isNull(), isNull()))
+        when(sessionStudentRepository.countTotalExpectedFinalizedSlots(eq(lecturer.getId()), isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull()))
                 .thenReturn(30L);
 
         List<Object[]> slotCounts = Collections.singletonList(
                 new Object[]{AttendanceStatus.PRESENT, 24L}
         );
-        when(attendanceRecordRepository.countFinalizedAttendanceSlotsByStatus(eq(lecturer.getId()), isNull(), isNull(), isNull(), isNull(), isNull(), isNull()))
+        when(attendanceRecordRepository.countFinalizedAttendanceSlotsByStatus(eq(lecturer.getId()), isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull()))
                 .thenReturn(slotCounts);
 
         AnalyticsOverviewResponse overview = analyticsService.getLecturerOverview(
-                lecturerUser.getId(), null, null, null, null, null
+                lecturerUser.getId(), null, null, null, null, null, null
         );
 
         assertEquals(2, overview.getTotalSessions());
@@ -252,17 +255,17 @@ public class AnalyticsServiceTest {
         List<Object[]> statusCounts = Collections.singletonList(
                 new Object[]{SessionStatus.ACTIVE, 1L}
         );
-        when(labSessionRepository.countSessionsByStatus(eq(lecturer.getId()), isNull(), isNull(), isNull(), isNull(), isNull(), isNull()))
+        when(labSessionRepository.countSessionsByStatus(eq(lecturer.getId()), isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull()))
                 .thenReturn(statusCounts);
 
-        when(sessionStudentRepository.countTotalExpectedFinalizedSlots(eq(lecturer.getId()), isNull(), isNull(), isNull(), isNull(), isNull(), isNull()))
+        when(sessionStudentRepository.countTotalExpectedFinalizedSlots(eq(lecturer.getId()), isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull()))
                 .thenReturn(0L);
 
-        when(attendanceRecordRepository.countFinalizedAttendanceSlotsByStatus(eq(lecturer.getId()), isNull(), isNull(), isNull(), isNull(), isNull(), isNull()))
+        when(attendanceRecordRepository.countFinalizedAttendanceSlotsByStatus(eq(lecturer.getId()), isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull()))
                 .thenReturn(Collections.emptyList());
 
         AnalyticsOverviewResponse overview = analyticsService.getLecturerOverview(
-                lecturerUser.getId(), null, null, null, null, null
+                lecturerUser.getId(), null, null, null, null, null, null
         );
 
         assertEquals(1, overview.getTotalSessions());
@@ -277,18 +280,18 @@ public class AnalyticsServiceTest {
     @DisplayName("Zero eligible sessions must be handled with 'N/A' and null numeric percentage")
     void testZeroEligibleHandled() {
         List<Object[]> eligibleRows = Collections.singletonList(
-                new Object[]{student.getId(), student.getStudentId(), student.getFullName(), batchA.getBatchCode(), 0L}
+                new Object[]{student.getId(), student.getStudentId(), student.getFullName(), batchA.getBatchCode(), null, "Group A", 0L}
         );
         when(sessionStudentRepository.countEligibleFinalizedSessionsPerStudent(
-                isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull()
+                isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull()
         )).thenReturn(eligibleRows);
 
         when(attendanceRecordRepository.countAttendedSessionsPerStudent(
-                isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull()
+                isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull()
         )).thenReturn(Collections.emptyList());
 
         List<StudentAttendanceSummaryResponse> summaries = analyticsService.getStudentAttendanceSummaries(
-                null, null, null, null, null, null, null, null, null
+                null, null, null, null, null, null, null, null, null, null
         );
 
         assertEquals(1, summaries.size());
@@ -378,11 +381,11 @@ public class AnalyticsServiceTest {
         UUID s2Id = UUID.randomUUID();
 
         List<Object[]> eligibleRows = Arrays.asList(
-                new Object[]{s1Id, "IT001", "Alice", "B1", 10L},
-                new Object[]{s2Id, "IT002", "Bob", "B1", 10L}
+                new Object[]{s1Id, "IT001", "Alice", "B1", null, "Group A", 10L},
+                new Object[]{s2Id, "IT002", "Bob", "B1", null, "Group B", 10L}
         );
         when(sessionStudentRepository.countEligibleFinalizedSessionsPerStudent(
-                isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull()
+                isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull()
         )).thenReturn(eligibleRows);
 
         // Alice attended 9/10 (90%), Bob attended 6/10 (60%)
@@ -391,11 +394,11 @@ public class AnalyticsServiceTest {
                 new Object[]{s2Id, 6L}
         );
         when(attendanceRecordRepository.countAttendedSessionsPerStudent(
-                isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull()
+                isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull()
         )).thenReturn(attendedRows);
 
         List<StudentAttendanceSummaryResponse> summaries = analyticsService.getStudentAttendanceSummaries(
-                null, null, null, null, null, null, null, 75.0, null
+                null, null, null, null, null, null, null, null, 75.0, null
         );
 
         assertEquals(2, summaries.size());

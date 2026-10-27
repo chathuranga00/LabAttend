@@ -60,6 +60,8 @@ public class ReportServiceTest {
     private DegreeProgrammeRepository degreeProgrammeRepository;
     @Mock
     private LecturerModuleAssignmentRepository lecturerModuleAssignmentRepository;
+    @Mock
+    private LabGroupRepository labGroupRepository;
 
     @Spy
     private CsvReportGenerator csvReportGenerator = new CsvReportGenerator();
@@ -287,7 +289,7 @@ public class ReportServiceTest {
         when(lecturerModuleAssignmentRepository.findByLecturerId(lecturerA.getId())).thenReturn(Collections.emptyList());
 
         assertThrows(AccessDeniedException.class, () ->
-                reportService.generateModuleReport(module.getId(), null, null, null, lecturerUserA.getId(), false)
+                reportService.generateModuleReport(module.getId(), null, null, null, null, lecturerUserA.getId(), false)
         );
     }
 
@@ -327,13 +329,12 @@ public class ReportServiceTest {
     @DisplayName("Daily Report generates compliant ReportData")
     void testDailyReport_GeneratesCompliantData() {
         when(labSessionRepository.findFinalizedSessionsForReports(
-                isNull(), eq(LocalDate.of(2026, 10, 20)), isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull()))
+                isNull(), eq(LocalDate.of(2026, 10, 20)), isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull()))
                 .thenReturn(List.of(finalizedSession));
-        when(sessionStudentRepository.countBySessionId(finalizedSession.getId())).thenReturn(25L);
-        when(attendanceRecordRepository.countBySessionIdAndStatusIn(eq(finalizedSession.getId()), anyList())).thenReturn(23L);
-        when(attendanceRecordRepository.countBySessionIdAndStatus(finalizedSession.getId(), AttendanceStatus.ABSENT)).thenReturn(2L);
+        when(sessionStudentRepository.countBySessionIdAndIsExpectedTrue(finalizedSession.getId())).thenReturn(25L);
+        when(attendanceRecordRepository.countBySessionIdAndIsCrossGroupFalseAndStatusIn(eq(finalizedSession.getId()), anyList())).thenReturn(23L);
 
-        ReportData report = reportService.generateDailyReport(LocalDate.of(2026, 10, 20), null, true);
+        ReportData report = reportService.generateDailyReport(LocalDate.of(2026, 10, 20), null, null, true);
 
         assertEquals(ReportType.DAILY, report.getType());
         assertEquals(25, report.getExpectedCount());
@@ -348,8 +349,8 @@ public class ReportServiceTest {
     void testStudentHistoryReport_GeneratesCompliantData() {
         Student s = Student.builder().studentId("IT21001").fullName("Kamal Perera").batch(batch).degreeProgramme(programme).build();
         s.setId(UUID.randomUUID());
-        SessionStudent ss = SessionStudent.builder().session(finalizedSession).student(s).build();
-        AttendanceRecord ar = AttendanceRecord.builder().session(finalizedSession).student(s).status(AttendanceStatus.PRESENT).method(AttendanceMethod.QR_SCAN).markedAt(OffsetDateTime.now()).build();
+        SessionStudent ss = SessionStudent.builder().session(finalizedSession).student(s).isExpected(true).build();
+        AttendanceRecord ar = AttendanceRecord.builder().session(finalizedSession).student(s).status(AttendanceStatus.PRESENT).method(AttendanceMethod.QR_SCAN).markedAt(OffsetDateTime.now()).isCrossGroup(false).build();
 
         when(studentRepository.findById(s.getId())).thenReturn(Optional.of(s));
         when(sessionStudentRepository.findStudentEligibleSessions(eq(s.getId()), isNull(), isNull(), isNull(), isNull()))
@@ -371,13 +372,12 @@ public class ReportServiceTest {
     void testBatchReport_GeneratesCompliantData() {
         when(batchRepository.findById(batch.getId())).thenReturn(Optional.of(batch));
         when(labSessionRepository.findFinalizedSessionsForReports(
-                isNull(), isNull(), isNull(), isNull(), isNull(), eq(batch.getId()), isNull(), isNull(), isNull()))
+                isNull(), isNull(), isNull(), isNull(), isNull(), eq(batch.getId()), isNull(), isNull(), isNull(), isNull()))
                 .thenReturn(List.of(finalizedSession));
-        when(sessionStudentRepository.countBySessionId(finalizedSession.getId())).thenReturn(40L);
-        when(attendanceRecordRepository.countBySessionIdAndStatusIn(eq(finalizedSession.getId()), anyList())).thenReturn(36L);
-        when(attendanceRecordRepository.countBySessionIdAndStatus(finalizedSession.getId(), AttendanceStatus.ABSENT)).thenReturn(4L);
+        when(sessionStudentRepository.countBySessionIdAndIsExpectedTrue(finalizedSession.getId())).thenReturn(40L);
+        when(attendanceRecordRepository.countBySessionIdAndIsCrossGroupFalseAndStatusIn(eq(finalizedSession.getId()), anyList())).thenReturn(36L);
 
-        ReportData report = reportService.generateBatchReport(batch.getId(), null, null, null, null, true);
+        ReportData report = reportService.generateBatchReport(batch.getId(), null, null, null, null, null, true);
 
         assertEquals(ReportType.BATCH, report.getType());
         assertEquals(40, report.getExpectedCount());
@@ -389,13 +389,12 @@ public class ReportServiceTest {
     @DisplayName("Semester Report aggregates multiple modules accurately")
     void testSemesterReport_AggregatesModulesAccurately() {
         when(labSessionRepository.findFinalizedSessionsForReports(
-                isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), eq("Year 2 Semester 1"), isNull()))
+                isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), eq("Year 2 Semester 1"), isNull()))
                 .thenReturn(List.of(finalizedSession));
-        when(sessionStudentRepository.countBySessionId(finalizedSession.getId())).thenReturn(50L);
-        when(attendanceRecordRepository.countBySessionIdAndStatusIn(eq(finalizedSession.getId()), anyList())).thenReturn(45L);
-        when(attendanceRecordRepository.countBySessionIdAndStatus(finalizedSession.getId(), AttendanceStatus.ABSENT)).thenReturn(5L);
+        when(sessionStudentRepository.countBySessionIdAndIsExpectedTrue(finalizedSession.getId())).thenReturn(50L);
+        when(attendanceRecordRepository.countBySessionIdAndIsCrossGroupFalseAndStatusIn(eq(finalizedSession.getId()), anyList())).thenReturn(45L);
 
-        ReportData report = reportService.generateSemesterReport("Year 2 Semester 1", null, null, null, null, null, null, true);
+        ReportData report = reportService.generateSemesterReport("Year 2 Semester 1", null, null, null, null, null, null, null, true);
 
         assertEquals(ReportType.SEMESTER, report.getType());
         assertEquals(50, report.getExpectedCount());
@@ -409,7 +408,7 @@ public class ReportServiceTest {
     @DisplayName("Low Attendance Alert Report filters and ranks at-risk students below threshold")
     void testLowAttendanceReport_IdentifiesStudentsBelowThreshold() {
         UUID studentId = UUID.randomUUID();
-        Object[] eligibleRow = new Object[]{studentId, "IT21099", "At Risk Student", "Y2S1.01", 10L};
+        Object[] eligibleRow = new Object[]{studentId, "IT21099", "At Risk Student", "Y2S1.01", UUID.randomUUID(), "Group A", 10L};
         Object[] attendedRow = new Object[]{studentId, 6L}; // 6/10 = 60%, below 80% threshold
 
         List<Object[]> eligibleList = new ArrayList<>();
@@ -418,19 +417,20 @@ public class ReportServiceTest {
         attendedList.add(attendedRow);
 
         when(sessionStudentRepository.countEligibleFinalizedSessionsPerStudent(
-                isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull()))
+                isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull()))
                 .thenReturn(eligibleList);
         when(attendanceRecordRepository.countAttendedSessionsPerStudent(
-                isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull()))
+                isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull()))
                 .thenReturn(attendedList);
 
-        ReportData report = reportService.generateLowAttendanceReport(80.0, null, null, null, null, null, null, true);
+        ReportData report = reportService.generateLowAttendanceReport(80.0, null, null, null, null, null, null, null, true);
 
         assertEquals(ReportType.LOW_ATTENDANCE, report.getType());
         assertEquals(1, report.getRows().size());
         assertEquals("IT21099", report.getRows().get(0).get(1));
-        assertEquals("60.0%", report.getRows().get(0).get(7));
-        assertEquals("-20.0%", report.getRows().get(0).get(8));
+        assertEquals("Group A", report.getRows().get(0).get(4));
+        assertEquals("60.0%", report.getRows().get(0).get(8));
+        assertEquals("-20.0%", report.getRows().get(0).get(9));
     }
 
     @Test
@@ -438,11 +438,10 @@ public class ReportServiceTest {
     void testHallReport_GeneratesCapacityAndTurnoutMetrics() {
         when(laboratoryHallRepository.findById(hall.getId())).thenReturn(Optional.of(hall));
         when(labSessionRepository.findFinalizedSessionsForReports(
-                eq(hall.getId()), isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull()))
+                eq(hall.getId()), isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull()))
                 .thenReturn(List.of(finalizedSession));
-        when(sessionStudentRepository.countBySessionId(finalizedSession.getId())).thenReturn(40L);
-        when(attendanceRecordRepository.countBySessionIdAndStatusIn(eq(finalizedSession.getId()), anyList())).thenReturn(30L);
-        when(attendanceRecordRepository.countBySessionIdAndStatus(finalizedSession.getId(), AttendanceStatus.ABSENT)).thenReturn(10L);
+        when(sessionStudentRepository.countBySessionIdAndIsExpectedTrue(finalizedSession.getId())).thenReturn(40L);
+        when(attendanceRecordRepository.countBySessionIdAndIsCrossGroupFalseAndStatusIn(eq(finalizedSession.getId()), anyList())).thenReturn(30L);
 
         ReportData report = reportService.generateHallReport(hall.getId(), null, null, null, true);
 
@@ -453,6 +452,6 @@ public class ReportServiceTest {
         assertEquals("75.0%", report.getAttendancePercentage());
         assertEquals(1, report.getRows().size());
         // Hall capacity is 60, present is 30 -> 50.0% utilization
-        assertEquals("50.0%", report.getRows().get(0).get(11));
+        assertEquals("50.0%", report.getRows().get(0).get(12));
     }
 }

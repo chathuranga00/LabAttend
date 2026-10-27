@@ -39,6 +39,7 @@ public class AdminReportController {
             @RequestParam(required = false) UUID studentId,
             @RequestParam(required = false) UUID moduleId,
             @RequestParam(required = false) UUID batchId,
+            @RequestParam(required = false) UUID labGroupId,
             @RequestParam(required = false) UUID programmeId,
             @RequestParam(required = false) String semester,
             @RequestParam(required = false) Double threshold,
@@ -48,7 +49,7 @@ public class AdminReportController {
             @AuthenticationPrincipal CustomUserDetails userDetails
     ) {
         ReportData reportData = generateReportData(
-                type, sessionId, sessionDate, studentId, moduleId, batchId, programmeId, semester, threshold, hallId, startDate, endDate, userDetails.getId(), true
+                type, sessionId, sessionDate, studentId, moduleId, batchId, labGroupId, programmeId, semester, threshold, hallId, startDate, endDate, userDetails.getId(), true
         );
         return ResponseEntity.ok(ApiResponse.success(reportData));
     }
@@ -61,6 +62,7 @@ public class AdminReportController {
             @RequestParam(required = false) UUID studentId,
             @RequestParam(required = false) UUID moduleId,
             @RequestParam(required = false) UUID batchId,
+            @RequestParam(required = false) UUID labGroupId,
             @RequestParam(required = false) UUID programmeId,
             @RequestParam(required = false) String semester,
             @RequestParam(required = false) Double threshold,
@@ -69,7 +71,7 @@ public class AdminReportController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
             @AuthenticationPrincipal CustomUserDetails userDetails
     ) {
-        return getPreviewByPath(type, sessionId, sessionDate, studentId, moduleId, batchId, programmeId, semester, threshold, hallId, startDate, endDate, userDetails);
+        return getPreviewByPath(type, sessionId, sessionDate, studentId, moduleId, batchId, labGroupId, programmeId, semester, threshold, hallId, startDate, endDate, userDetails);
     }
 
     @GetMapping("/{type}/export")
@@ -81,6 +83,7 @@ public class AdminReportController {
             @RequestParam(required = false) UUID studentId,
             @RequestParam(required = false) UUID moduleId,
             @RequestParam(required = false) UUID batchId,
+            @RequestParam(required = false) UUID labGroupId,
             @RequestParam(required = false) UUID programmeId,
             @RequestParam(required = false) String semester,
             @RequestParam(required = false) Double threshold,
@@ -90,7 +93,7 @@ public class AdminReportController {
             @AuthenticationPrincipal CustomUserDetails userDetails
     ) {
         ReportData reportData = generateReportData(
-                type, sessionId, sessionDate, studentId, moduleId, batchId, programmeId, semester, threshold, hallId, startDate, endDate, userDetails.getId(), true
+                type, sessionId, sessionDate, studentId, moduleId, batchId, labGroupId, programmeId, semester, threshold, hallId, startDate, endDate, userDetails.getId(), true
         );
 
         byte[] reportBytes = reportService.exportReport(reportData, format);
@@ -121,6 +124,7 @@ public class AdminReportController {
             @RequestParam(required = false) UUID studentId,
             @RequestParam(required = false) UUID moduleId,
             @RequestParam(required = false) UUID batchId,
+            @RequestParam(required = false) UUID labGroupId,
             @RequestParam(required = false) UUID programmeId,
             @RequestParam(required = false) String semester,
             @RequestParam(required = false) Double threshold,
@@ -129,7 +133,7 @@ public class AdminReportController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
             @AuthenticationPrincipal CustomUserDetails userDetails
     ) {
-        return exportByPath(type, format, sessionId, sessionDate, studentId, moduleId, batchId, programmeId, semester, threshold, hallId, startDate, endDate, userDetails);
+        return exportByPath(type, format, sessionId, sessionDate, studentId, moduleId, batchId, labGroupId, programmeId, semester, threshold, hallId, startDate, endDate, userDetails);
     }
 
     private ReportData generateReportData(
@@ -139,6 +143,7 @@ public class AdminReportController {
             UUID studentId,
             UUID moduleId,
             UUID batchId,
+            UUID labGroupId,
             UUID programmeId,
             String semester,
             Double threshold,
@@ -150,13 +155,14 @@ public class AdminReportController {
     ) {
         return switch (type) {
             case SESSION -> reportService.generateSessionReport(sessionId, requestingUserId, isAdmin);
-            case DAILY -> reportService.generateDailyReport(sessionDate, requestingUserId, isAdmin);
+            case DAILY -> reportService.generateDailyReport(sessionDate, labGroupId, requestingUserId, isAdmin);
             case STUDENT_HISTORY -> reportService.generateStudentHistoryReport(studentId, moduleId, startDate, endDate, requestingUserId, isAdmin);
-            case MODULE -> reportService.generateModuleReport(moduleId, batchId, startDate, endDate, requestingUserId, isAdmin);
-            case BATCH -> reportService.generateBatchReport(batchId, moduleId, startDate, endDate, requestingUserId, isAdmin);
-            case SEMESTER -> reportService.generateSemesterReport(semester, programmeId, batchId, moduleId, startDate, endDate, requestingUserId, isAdmin);
-            case LOW_ATTENDANCE -> reportService.generateLowAttendanceReport(threshold, programmeId, moduleId, batchId, startDate, endDate, requestingUserId, isAdmin);
+            case MODULE -> reportService.generateModuleReport(moduleId, batchId, labGroupId, startDate, endDate, requestingUserId, isAdmin);
+            case BATCH -> reportService.generateBatchReport(batchId, moduleId, labGroupId, startDate, endDate, requestingUserId, isAdmin);
+            case SEMESTER -> reportService.generateSemesterReport(semester, programmeId, batchId, labGroupId, moduleId, startDate, endDate, requestingUserId, isAdmin);
+            case LOW_ATTENDANCE -> reportService.generateLowAttendanceReport(threshold, programmeId, moduleId, batchId, labGroupId, startDate, endDate, requestingUserId, isAdmin);
             case HALL -> reportService.generateHallReport(hallId, startDate, endDate, requestingUserId, isAdmin);
+            case CROSS_GROUP -> reportService.generateCrossGroupReport(batchId, labGroupId, moduleId, startDate, endDate, requestingUserId, isAdmin);
         };
     }
 

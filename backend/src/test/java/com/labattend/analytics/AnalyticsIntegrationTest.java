@@ -128,7 +128,7 @@ public class AnalyticsIntegrationTest {
                 .totalProgrammes(2L)
                 .build();
 
-        when(analyticsService.getAdminOverview(any(), any(), any(), any(), any(), any(), any()))
+        when(analyticsService.getAdminOverview(any(), any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(mockResponse);
 
         mockMvc.perform(get("/api/admin/analytics/overview")
@@ -180,7 +180,7 @@ public class AnalyticsIntegrationTest {
                 .percentageNumeric(85.0)
                 .build();
 
-        when(analyticsService.getLecturerOverview(eq(lecturerUser.getId()), any(), any(), any(), any(), any()))
+        when(analyticsService.getLecturerOverview(eq(lecturerUser.getId()), any(), any(), any(), any(), any(), any()))
                 .thenReturn(mockOverview);
 
         when(analyticsService.getLecturerByUserId(lecturerUser.getId())).thenReturn(lecturer);
@@ -207,7 +207,7 @@ public class AnalyticsIntegrationTest {
                 .isLowAttendance(false)
                 .build();
 
-        when(analyticsService.getStudentAttendanceSummaries(eq(lecturer.getId()), any(), any(), any(), any(), any(), any(), any(), any()))
+        when(analyticsService.getStudentAttendanceSummaries(eq(lecturer.getId()), any(), any(), any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(Collections.singletonList(studentSummary));
 
         mockMvc.perform(get("/api/lecturer/analytics/students")

@@ -45,6 +45,7 @@ export default function AdminDashboardPage() {
   // Filters State
   const [programmeId, setProgrammeId] = useState('');
   const [batchId, setBatchId] = useState('');
+  const [labGroupId, setLabGroupId] = useState('');
   const [moduleId, setModuleId] = useState('');
   const [lecturerId, setLecturerId] = useState('');
   const [startDate, setStartDate] = useState('');
@@ -53,6 +54,7 @@ export default function AdminDashboardPage() {
   // Dropdown Options
   const [programmes, setProgrammes] = useState([]);
   const [batches, setBatches] = useState([]);
+  const [labGroups, setLabGroups] = useState([]);
   const [modules, setModules] = useState([]);
   const [lecturers, setLecturers] = useState([]);
 
@@ -62,6 +64,7 @@ export default function AdminDashboardPage() {
   const [trends, setTrends] = useState([]);
   const [moduleStats, setModuleStats] = useState([]);
   const [batchStats, setBatchStats] = useState([]);
+  const [groupStats, setGroupStats] = useState([]);
   const [recentSessions, setRecentSessions] = useState([]);
   const [recentActivities, setRecentActivities] = useState([]);
 
@@ -86,6 +89,24 @@ export default function AdminDashboardPage() {
     loadOptions();
   }, []);
 
+  // Fetch Lab Groups when batchId changes
+  useEffect(() => {
+    if (!batchId) {
+      setLabGroups([]);
+      setLabGroupId('');
+      return;
+    }
+    academicService.labGroup.getGroupsByBatch(batchId)
+      .then((res) => {
+        if (res.data) {
+          setLabGroups(Array.isArray(res.data) ? res.data : (res.data.content || []));
+        } else {
+          setLabGroups([]);
+        }
+      })
+      .catch(() => setLabGroups([]));
+  }, [batchId]);
+
   // Fetch Dashboard Analytics
   const fetchDashboardData = useCallback(async () => {
     try {
@@ -93,18 +114,20 @@ export default function AdminDashboardPage() {
       const params = {};
       if (programmeId) params.programmeId = programmeId;
       if (batchId) params.batchId = batchId;
+      if (labGroupId) params.labGroupId = labGroupId;
       if (moduleId) params.moduleId = moduleId;
       if (lecturerId) params.lecturerId = lecturerId;
       if (startDate) params.startDate = startDate;
       if (endDate) params.endDate = endDate;
 
-      const [overviewRes, trendsRes, modRes, batchRes, sessionsRes, auditsRes] = await Promise.all([
+      const [overviewRes, trendsRes, modRes, batchRes, sessionsRes, auditsRes, groupsRes] = await Promise.all([
         analyticsService.getAdminOverview(params),
         analyticsService.getAdminAttendanceTrends(params),
         analyticsService.getAdminModules(params),
         analyticsService.getAdminBatches(params),
         analyticsService.getAdminSessions({ ...params, size: 6 }),
         attendanceService.getAdminAuditLogs({ page: 0, size: 6 }),
+        analyticsService.getAdminGroupAnalytics(params),
       ]);
 
       if (overviewRes.success) setOverview(overviewRes.data);
@@ -112,6 +135,7 @@ export default function AdminDashboardPage() {
       if (modRes.success) setModuleStats(modRes.data || []);
       if (batchRes.success) setBatchStats(batchRes.data || []);
       if (sessionsRes.success) setRecentSessions(sessionsRes.data || []);
+      if (groupsRes.success) setGroupStats(groupsRes.data || []);
       if (auditsRes.success && auditsRes.data?.content) {
         setRecentActivities(auditsRes.data.content);
       }
@@ -120,7 +144,7 @@ export default function AdminDashboardPage() {
     } finally {
       setLoading(false);
     }
-  }, [programmeId, batchId, moduleId, lecturerId, startDate, endDate, showToast]);
+  }, [programmeId, batchId, labGroupId, moduleId, lecturerId, startDate, endDate, showToast]);
 
   useEffect(() => {
     fetchDashboardData();
@@ -129,6 +153,7 @@ export default function AdminDashboardPage() {
   const handleResetFilters = () => {
     setProgrammeId('');
     setBatchId('');
+    setLabGroupId('');
     setModuleId('');
     setLecturerId('');
     setStartDate('');
@@ -176,7 +201,7 @@ export default function AdminDashboardPage() {
           <Filter className="h-3.5 w-3.5 text-emerald-400" />
           <span>Analytics Filter Bar</span>
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-7 gap-3">
           {/* Degree Programme */}
           <div>
             <label className="block text-[11px] text-slate-400 mb-1">Programme</label>
@@ -206,6 +231,24 @@ export default function AdminDashboardPage() {
               {batches.map((b) => (
                 <option key={b.id} value={b.id}>
                   {b.batchCode} ({b.academicYear})
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Lab Group */}
+          <div>
+            <label className="block text-[11px] text-slate-400 mb-1">Lab Group</label>
+            <select
+              value={labGroupId}
+              onChange={(e) => setLabGroupId(e.target.value)}
+              disabled={!batchId && labGroups.length === 0}
+              className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-emerald-500 disabled:opacity-50"
+            >
+              <option value="">{batchId ? 'All Groups in Batch' : 'Select Batch First'}</option>
+              {labGroups.map((g) => (
+                <option key={g.id} value={g.id}>
+                  {g.groupName}
                 </option>
               ))}
             </select>
@@ -280,13 +323,13 @@ export default function AdminDashboardPage() {
 
       {/* Summary Cards */}
       {loading && !overview ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {[1, 2, 3, 4].map((i) => (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+          {[1, 2, 3, 4, 5].map((i) => (
             <div key={i} className="h-28 rounded-xl bg-slate-900/60 border border-slate-800 animate-pulse" />
           ))}
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
           {/* Card 1: Overall Official Attendance */}
           <div className="bg-slate-900/80 border border-slate-800 rounded-xl p-5 relative overflow-hidden">
             <div className="flex items-center justify-between mb-2">
@@ -357,7 +400,25 @@ export default function AdminDashboardPage() {
             </div>
           </div>
 
-          {/* Card 4: System Entity Directory */}
+          {/* Card 4: Cross-Group Visitors */}
+          <div className="bg-slate-900/80 border border-slate-800 rounded-xl p-5 relative overflow-hidden">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                Cross-Group Visitors
+              </span>
+              <div className="h-8 w-8 rounded-lg bg-amber-500/10 text-amber-400 flex items-center justify-center">
+                <Users className="h-4 w-4" />
+              </div>
+            </div>
+            <div className="text-3xl font-extrabold text-amber-400">
+              {overview?.totalCrossGroupVisitors || 0}
+            </div>
+            <div className="mt-2 text-xs text-slate-400">
+              <span>Visiting students received</span>
+            </div>
+          </div>
+
+          {/* Card 5: System Entity Directory */}
           <div className="bg-slate-900/80 border border-slate-800 rounded-xl p-5 relative overflow-hidden">
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
@@ -375,6 +436,56 @@ export default function AdminDashboardPage() {
               <span>•</span>
               <span>{overview?.totalModules || 0} Modules</span>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Group Attendance Breakdown (When Available) */}
+      {groupStats.length > 0 && (
+        <div className="bg-slate-900/80 border border-slate-800 rounded-xl p-6 shadow-xl">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-base font-bold text-white tracking-tight flex items-center gap-2">
+              <Users className="h-4 w-4 text-emerald-400" />
+              Lab Group Attendance & Cross-Group Analytics ({groupStats.length} Groups)
+            </h2>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead>
+                <tr className="border-b border-slate-800 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
+                  <th className="pb-2.5 px-3">Lab Group</th>
+                  <th className="pb-2.5 px-3">Batch</th>
+                  <th className="pb-2.5 px-3">Finalized Sessions</th>
+                  <th className="pb-2.5 px-3">Expected Slots</th>
+                  <th className="pb-2.5 px-3">Present</th>
+                  <th className="pb-2.5 px-3">Absent</th>
+                  <th className="pb-2.5 px-3">Turnout Rate</th>
+                  <th className="pb-2.5 px-3 text-amber-400">Visitors Received</th>
+                  <th className="pb-2.5 px-3 text-cyan-400">Outgoing Visits</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-800 text-slate-200">
+                {groupStats.map((g) => (
+                  <tr key={g.groupId} className="hover:bg-slate-850/50">
+                    <td className="py-2.5 px-3 font-semibold text-white">{g.groupName}</td>
+                    <td className="py-2.5 px-3 text-slate-400 font-mono">{g.batchCode}</td>
+                    <td className="py-2.5 px-3">{g.finalizedSessions}</td>
+                    <td className="py-2.5 px-3 font-mono">{g.totalExpected}</td>
+                    <td className="py-2.5 px-3 text-emerald-400 font-mono">{g.totalPresent}</td>
+                    <td className="py-2.5 px-3 text-rose-400 font-mono">{g.totalAbsent}</td>
+                    <td className="py-2.5 px-3">
+                      <span className="font-bold text-emerald-400">{g.attendancePercentage}</span>
+                    </td>
+                    <td className="py-2.5 px-3 font-mono font-bold text-amber-400">
+                      {g.visitorsReceived || 0}
+                    </td>
+                    <td className="py-2.5 px-3 font-mono font-bold text-cyan-400">
+                      {g.outgoingVisits || 0}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
       )}

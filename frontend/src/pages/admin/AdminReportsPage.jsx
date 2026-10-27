@@ -34,6 +34,7 @@ const REPORT_TYPES = [
   { id: 'SEMESTER', label: 'Semester Summary', desc: 'Institution-wide audit across all modules taught in a specific semester' },
   { id: 'LOW_ATTENDANCE', label: 'Low Attendance Alert', desc: 'Identifies students falling below the statutory attendance threshold' },
   { id: 'HALL', label: 'Laboratory Hall', desc: 'Facility utilization, seating capacity vs actual turnout per hall' },
+  { id: 'CROSS_GROUP', label: 'Cross-Group Audit', desc: 'Audit of students attending sessions outside their assigned home lab group' },
 ];
 
 export default function AdminReportsPage() {
@@ -48,6 +49,7 @@ export default function AdminReportsPage() {
   const [studentId, setStudentId] = useState('');
   const [moduleId, setModuleId] = useState('');
   const [batchId, setBatchId] = useState('');
+  const [labGroupId, setLabGroupId] = useState('');
   const [programmeId, setProgrammeId] = useState('');
   const [semester, setSemester] = useState('Year 2 Semester 1');
   const [threshold, setThreshold] = useState(80.0);
@@ -58,6 +60,7 @@ export default function AdminReportsPage() {
   // Dropdown Reference Data
   const [modules, setModules] = useState([]);
   const [batches, setBatches] = useState([]);
+  const [labGroups, setLabGroups] = useState([]);
   const [programmes, setProgrammes] = useState([]);
   const [halls, setHalls] = useState([]);
   const [finalizedSessions, setFinalizedSessions] = useState([]);
@@ -105,9 +108,31 @@ export default function AdminReportsPage() {
     loadOptions();
   }, []);
 
+  // Fetch Lab Groups when batchId changes
+  useEffect(() => {
+    if (!batchId) {
+      setLabGroups([]);
+      setLabGroupId('');
+      return;
+    }
+    academicService.labGroup.getGroupsByBatch(batchId)
+      .then((res) => {
+        if (res.data) {
+          setLabGroups(Array.isArray(res.data) ? res.data : (res.data.content || []));
+        } else {
+          setLabGroups([]);
+        }
+      })
+      .catch((err) => {
+        console.error('Failed to load lab groups for batch', err);
+        setLabGroups([]);
+      });
+  }, [batchId]);
+
   // Build filter query params
   const getQueryParams = () => {
     const params = {};
+    if (labGroupId) params.labGroupId = labGroupId;
     if (reportType === 'SESSION' && sessionId) params.sessionId = sessionId;
     if (reportType === 'DAILY' && sessionDate) params.sessionDate = sessionDate;
     if (reportType === 'STUDENT_HISTORY') {
@@ -136,6 +161,11 @@ export default function AdminReportsPage() {
     }
     if (reportType === 'HALL') {
       if (hallId) params.hallId = hallId;
+    }
+    if (reportType === 'CROSS_GROUP') {
+      if (batchId) params.batchId = batchId;
+      if (labGroupId) params.labGroupId = labGroupId;
+      if (moduleId) params.moduleId = moduleId;
     }
     if (startDate) params.startDate = startDate;
     if (endDate) params.endDate = endDate;
@@ -337,7 +367,7 @@ export default function AdminReportsPage() {
           )}
 
           {/* MODULE: Module Dropdown */}
-          {(reportType === 'MODULE' || reportType === 'STUDENT_HISTORY' || reportType === 'BATCH' || reportType === 'SEMESTER' || reportType === 'LOW_ATTENDANCE') && (
+          {(reportType === 'MODULE' || reportType === 'STUDENT_HISTORY' || reportType === 'BATCH' || reportType === 'SEMESTER' || reportType === 'LOW_ATTENDANCE' || reportType === 'CROSS_GROUP') && (
             <div>
               <label className="block text-[11px] font-medium text-slate-400 mb-1.5">
                 Module / Course {reportType === 'MODULE' && '*'}
@@ -358,7 +388,7 @@ export default function AdminReportsPage() {
           )}
 
           {/* BATCH: Batch Dropdown */}
-          {(reportType === 'BATCH' || reportType === 'MODULE' || reportType === 'SEMESTER' || reportType === 'LOW_ATTENDANCE') && (
+          {(reportType === 'BATCH' || reportType === 'MODULE' || reportType === 'SEMESTER' || reportType === 'LOW_ATTENDANCE' || reportType === 'CROSS_GROUP') && (
             <div>
               <label className="block text-[11px] font-medium text-slate-400 mb-1.5">
                 Student Batch Cohort {reportType === 'BATCH' && '*'}
@@ -372,6 +402,28 @@ export default function AdminReportsPage() {
                 {batches.map((b) => (
                   <option key={b.id} value={b.id}>
                     {b.batchCode} ({b.academicYear})
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {/* LAB GROUP: Lab Group Dropdown (when batch is chosen or for CROSS_GROUP / BATCH) */}
+          {(batchId || reportType === 'CROSS_GROUP' || reportType === 'BATCH') && (
+            <div>
+              <label className="block text-[11px] font-medium text-slate-400 mb-1.5">
+                Lab Group (Optional)
+              </label>
+              <select
+                value={labGroupId}
+                onChange={(e) => setLabGroupId(e.target.value)}
+                disabled={!batchId && labGroups.length === 0}
+                className="w-full bg-slate-800/90 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-emerald-500 disabled:opacity-50"
+              >
+                <option value="">{batchId ? 'All Groups / Whole Batch' : 'Select Batch First'}</option>
+                {labGroups.map((g) => (
+                  <option key={g.id} value={g.id}>
+                    {g.groupName}
                   </option>
                 ))}
               </select>
@@ -555,6 +607,19 @@ export default function AdminReportsPage() {
                 {previewData.attendancePercentage}
               </span>
             </div>
+            {previewData.metadata && (previewData.metadata['Cross-Group Visitors'] || previewData.metadata['Total Cross-Group Visitors'] || previewData.metadata['Total Cross-Group Visits']) && (
+              <div className="p-4 rounded-xl bg-amber-950/30 border border-amber-800/50 shadow-md col-span-2 lg:col-span-4">
+                <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider block mb-1">
+                  Cross-Group Visitors Audited
+                </span>
+                <span className="text-2xl font-black text-amber-300">
+                  {previewData.metadata['Cross-Group Visitors'] || previewData.metadata['Total Cross-Group Visitors'] || previewData.metadata['Total Cross-Group Visits']}
+                </span>
+                <span className="text-xs text-slate-400 block mt-0.5">
+                  Visitors are isolated and accounted for separately from standard cohort percentage calculations.
+                </span>
+              </div>
+            )}
           </div>
 
           {/* Metadata Key-Value Header */}

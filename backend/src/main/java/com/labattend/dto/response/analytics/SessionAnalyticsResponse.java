@@ -21,6 +21,8 @@ public class SessionAnalyticsResponse {
     private String moduleCode;
     private String moduleName;
     private String batchCode;
+    private UUID labGroupId;
+    private String labGroupName;
     private String lecturerName;
     private LocalDate sessionDate;
     private String status;
@@ -28,6 +30,7 @@ public class SessionAnalyticsResponse {
     private long expectedStudentCount;
     private long presentCount;
     private long absentCount;
+    private long crossGroupVisitorsCount;
 
     private String attendancePercentage;
     private Double percentageNumeric;

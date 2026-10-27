@@ -53,6 +53,7 @@ const REPORT_TYPES = [
   { id: 'SEMESTER', label: 'Semester Summary', desc: 'Semester-wide attendance across your taught modules' },
   { id: 'LOW_ATTENDANCE', label: 'Low Attendance Alert', desc: 'Students in your cohorts falling below statutory threshold' },
   { id: 'HALL', label: 'Laboratory Hall', desc: 'Hall turnout and utilization metrics for your sessions' },
+  { id: 'CROSS_GROUP', label: 'Cross-Group Audit', desc: 'Audit of students attending your sessions from outside their assigned home group' },
 ];
 
 export default function LecturerReportsPage() {
@@ -70,6 +71,7 @@ export default function LecturerReportsPage() {
   const [exportStudentId, setExportStudentId] = useState('');
   const [exportModuleId, setExportModuleId] = useState('');
   const [exportBatchId, setExportBatchId] = useState('');
+  const [exportLabGroupId, setExportLabGroupId] = useState('');
   const [exportSemester, setExportSemester] = useState('Year 2 Semester 1');
   const [exportThreshold, setExportThreshold] = useState(80.0);
   const [exportHallId, setExportHallId] = useState('');
@@ -85,6 +87,7 @@ export default function LecturerReportsPage() {
   const [myFinalizedSessions, setMyFinalizedSessions] = useState([]);
   const [moduleOptions, setModuleOptions] = useState([]);
   const [batchOptions, setBatchOptions] = useState([]);
+  const [exportLabGroups, setExportLabGroups] = useState([]);
   const [hallOptions, setHallOptions] = useState([]);
 
   // =========================================================================
@@ -92,6 +95,8 @@ export default function LecturerReportsPage() {
   // =========================================================================
   const [analyticsModuleId, setAnalyticsModuleId] = useState('');
   const [analyticsBatchId, setAnalyticsBatchId] = useState('');
+  const [analyticsLabGroupId, setAnalyticsLabGroupId] = useState('');
+  const [analyticsLabGroups, setAnalyticsLabGroups] = useState([]);
   const [analyticsSemester, setAnalyticsSemester] = useState('');
   const [analyticsStartDate, setAnalyticsStartDate] = useState('');
   const [analyticsEndDate, setAnalyticsEndDate] = useState('');
@@ -105,6 +110,7 @@ export default function LecturerReportsPage() {
   const [sessions, setSessions] = useState([]);
   const [modules, setModules] = useState([]);
   const [batches, setBatches] = useState([]);
+  const [groupAnalytics, setGroupAnalytics] = useState([]);
   const [students, setStudents] = useState([]);
 
   // Load lecturer form options and finalized sessions
@@ -137,6 +143,42 @@ export default function LecturerReportsPage() {
     loadFormOptions();
   }, []);
 
+  // Load lab groups for export batch
+  useEffect(() => {
+    if (!exportBatchId) {
+      setExportLabGroups([]);
+      setExportLabGroupId('');
+      return;
+    }
+    academicService.labGroup.getGroupsByBatch(exportBatchId)
+      .then((res) => {
+        if (res.data) {
+          setExportLabGroups(Array.isArray(res.data) ? res.data : (res.data.content || []));
+        } else {
+          setExportLabGroups([]);
+        }
+      })
+      .catch(() => setExportLabGroups([]));
+  }, [exportBatchId]);
+
+  // Load lab groups for analytics batch
+  useEffect(() => {
+    if (!analyticsBatchId) {
+      setAnalyticsLabGroups([]);
+      setAnalyticsLabGroupId('');
+      return;
+    }
+    academicService.labGroup.getGroupsByBatch(analyticsBatchId)
+      .then((res) => {
+        if (res.data) {
+          setAnalyticsLabGroups(Array.isArray(res.data) ? res.data : (res.data.content || []));
+        } else {
+          setAnalyticsLabGroups([]);
+        }
+      })
+      .catch(() => setAnalyticsLabGroups([]));
+  }, [analyticsBatchId]);
+
   // Fetch Analytics Data (Phase 7 tab)
   const fetchAnalytics = useCallback(async () => {
     try {
@@ -144,6 +186,7 @@ export default function LecturerReportsPage() {
       const params = {};
       if (analyticsModuleId) params.moduleId = analyticsModuleId;
       if (analyticsBatchId) params.batchId = analyticsBatchId;
+      if (analyticsLabGroupId) params.labGroupId = analyticsLabGroupId;
       if (analyticsSemester) params.semester = analyticsSemester;
       if (analyticsStartDate) params.startDate = analyticsStartDate;
       if (analyticsEndDate) params.endDate = analyticsEndDate;
@@ -154,13 +197,14 @@ export default function LecturerReportsPage() {
         search: studentSearch,
       };
 
-      const [overviewRes, trendsRes, sessionsRes, modRes, batchRes, studentsRes] = await Promise.all([
+      const [overviewRes, trendsRes, sessionsRes, modRes, batchRes, studentsRes, groupsRes] = await Promise.all([
         analyticsService.getLecturerOverview(params),
         analyticsService.getLecturerAttendanceTrends(params),
         analyticsService.getLecturerSessions(params),
         analyticsService.getLecturerModules(params),
         analyticsService.getLecturerBatches(params),
         analyticsService.getLecturerStudents(studentParams),
+        analyticsService.getLecturerGroupAnalytics(params),
       ]);
 
       if (overviewRes.success) setOverview(overviewRes.data);
@@ -169,12 +213,13 @@ export default function LecturerReportsPage() {
       if (modRes.success) setModules(modRes.data || []);
       if (batchRes.success) setBatches(batchRes.data || []);
       if (studentsRes.success) setStudents(studentsRes.data || []);
+      if (groupsRes.success) setGroupAnalytics(groupsRes.data || []);
     } catch (err) {
       showToast(err.message || 'Failed to fetch analytics', 'error');
     } finally {
       setAnalyticsLoading(false);
     }
-  }, [analyticsModuleId, analyticsBatchId, analyticsSemester, analyticsStartDate, analyticsEndDate, analyticsThreshold, studentSearch, showToast]);
+  }, [analyticsModuleId, analyticsBatchId, analyticsLabGroupId, analyticsSemester, analyticsStartDate, analyticsEndDate, analyticsThreshold, studentSearch, showToast]);
 
   useEffect(() => {
     if (activeTab === 'ANALYTICS') {
@@ -185,6 +230,7 @@ export default function LecturerReportsPage() {
   // Build report query params
   const getReportParams = () => {
     const params = {};
+    if (exportLabGroupId) params.labGroupId = exportLabGroupId;
     if (reportType === 'SESSION' && exportSessionId) params.sessionId = exportSessionId;
     if (reportType === 'DAILY' && exportSessionDate) params.sessionDate = exportSessionDate;
     if (reportType === 'STUDENT_HISTORY') {
@@ -211,6 +257,11 @@ export default function LecturerReportsPage() {
     }
     if (reportType === 'HALL') {
       if (exportHallId) params.hallId = exportHallId;
+    }
+    if (reportType === 'CROSS_GROUP') {
+      if (exportBatchId) params.batchId = exportBatchId;
+      if (exportLabGroupId) params.labGroupId = exportLabGroupId;
+      if (exportModuleId) params.moduleId = exportModuleId;
     }
     if (exportStartDate) params.startDate = exportStartDate;
     if (exportEndDate) params.endDate = exportEndDate;
@@ -441,7 +492,7 @@ export default function LecturerReportsPage() {
               )}
 
               {/* MODULE: Module Dropdown */}
-              {(reportType === 'MODULE' || reportType === 'STUDENT_HISTORY' || reportType === 'BATCH' || reportType === 'SEMESTER' || reportType === 'LOW_ATTENDANCE') && (
+              {(reportType === 'MODULE' || reportType === 'STUDENT_HISTORY' || reportType === 'BATCH' || reportType === 'SEMESTER' || reportType === 'LOW_ATTENDANCE' || reportType === 'CROSS_GROUP') && (
                 <div>
                   <label className="block text-[11px] font-medium text-slate-400 mb-1.5">
                     Assigned Module {reportType === 'MODULE' && '*'}
@@ -462,7 +513,7 @@ export default function LecturerReportsPage() {
               )}
 
               {/* BATCH: Batch Dropdown */}
-              {(reportType === 'BATCH' || reportType === 'MODULE' || reportType === 'SEMESTER' || reportType === 'LOW_ATTENDANCE') && (
+              {(reportType === 'BATCH' || reportType === 'MODULE' || reportType === 'SEMESTER' || reportType === 'LOW_ATTENDANCE' || reportType === 'CROSS_GROUP') && (
                 <div>
                   <label className="block text-[11px] font-medium text-slate-400 mb-1.5">
                     Assigned Batch {reportType === 'BATCH' && '*'}
@@ -476,6 +527,28 @@ export default function LecturerReportsPage() {
                     {batchOptions.map((b) => (
                       <option key={b.id} value={b.id}>
                         {b.batchCode} ({b.academicYear})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {/* LAB GROUP: Lab Group Dropdown */}
+              {(exportBatchId || reportType === 'CROSS_GROUP' || reportType === 'BATCH') && (
+                <div>
+                  <label className="block text-[11px] font-medium text-slate-400 mb-1.5">
+                    Lab Group (Optional)
+                  </label>
+                  <select
+                    value={exportLabGroupId}
+                    onChange={(e) => setExportLabGroupId(e.target.value)}
+                    disabled={!exportBatchId && exportLabGroups.length === 0}
+                    className="w-full bg-slate-800/90 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-teal-500 disabled:opacity-50"
+                  >
+                    <option value="">{exportBatchId ? 'All Groups / Whole Batch' : 'Select Batch First'}</option>
+                    {exportLabGroups.map((g) => (
+                      <option key={g.id} value={g.id}>
+                        {g.groupName}
                       </option>
                     ))}
                   </select>
@@ -638,6 +711,19 @@ export default function LecturerReportsPage() {
                     {previewData.attendancePercentage}
                   </span>
                 </div>
+                {previewData.metadata && (previewData.metadata['Cross-Group Visitors'] || previewData.metadata['Total Cross-Group Visitors'] || previewData.metadata['Total Cross-Group Visits']) && (
+                  <div className="p-4 rounded-xl bg-amber-950/30 border border-amber-800/50 shadow-md col-span-2 lg:col-span-4">
+                    <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider block mb-1">
+                      Cross-Group Visitors Audited
+                    </span>
+                    <span className="text-2xl font-black text-amber-300">
+                      {previewData.metadata['Cross-Group Visitors'] || previewData.metadata['Total Cross-Group Visitors'] || previewData.metadata['Total Cross-Group Visits']}
+                    </span>
+                    <span className="text-xs text-slate-400 block mt-0.5">
+                      Visitors are tracked and reported separately from standard roster percentage calculations.
+                    </span>
+                  </div>
+                )}
               </div>
 
               {/* Metadata Card */}
@@ -813,7 +899,7 @@ export default function LecturerReportsPage() {
               </button>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3">
               <div>
                 <label className="block text-[11px] font-medium text-slate-400 mb-1">Module</label>
                 <select
@@ -838,6 +924,21 @@ export default function LecturerReportsPage() {
                   <option value="">All Batches</option>
                   {batchOptions.map((b) => (
                     <option key={b.id} value={b.id}>{b.batchCode}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-medium text-slate-400 mb-1">Lab Group</label>
+                <select
+                  value={analyticsLabGroupId}
+                  onChange={(e) => setAnalyticsLabGroupId(e.target.value)}
+                  disabled={!analyticsBatchId && analyticsLabGroups.length === 0}
+                  className="w-full bg-slate-800/90 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-teal-500 disabled:opacity-50"
+                >
+                  <option value="">{analyticsBatchId ? 'All Groups in Batch' : 'Select Batch First'}</option>
+                  {analyticsLabGroups.map((g) => (
+                    <option key={g.id} value={g.id}>{g.groupName}</option>
                   ))}
                 </select>
               </div>
@@ -876,7 +977,7 @@ export default function LecturerReportsPage() {
           </div>
 
           {/* Overview Cards */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
             <div className="p-4 rounded-xl bg-slate-900 border border-slate-800 shadow-md">
               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
                 Finalized Sessions
@@ -896,24 +997,81 @@ export default function LecturerReportsPage() {
               <span className="text-[10px] text-slate-500 block mt-1">Present attendance rate</span>
             </div>
             <div className="p-4 rounded-xl bg-slate-900 border border-slate-800 shadow-md">
+              <span className="text-[10px] font-bold text-amber-300 uppercase tracking-wider block mb-1">
+                Cross-Group Visitors
+              </span>
+              <span className="text-2xl font-black text-amber-400">
+                {overview?.totalCrossGroupVisitors ?? 0}
+              </span>
+              <span className="text-[10px] text-slate-500 block mt-1">Visiting students received</span>
+            </div>
+            <div className="p-4 rounded-xl bg-slate-900 border border-slate-800 shadow-md">
               <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider block mb-1">
-                Active Provisional Sessions
+                Active Provisional
               </span>
               <span className="text-2xl font-black text-amber-400">
                 {overview?.activeProvisionalSessionsCount ?? 0}
               </span>
-              <span className="text-[10px] text-amber-500/80 block mt-1">Clearly labelled provisional</span>
+              <span className="text-[10px] text-amber-500/80 block mt-1">Provisional sessions</span>
             </div>
-            <div className="p-4 rounded-xl bg-slate-900 border border-slate-800 shadow-md">
+            <div className="p-4 rounded-xl bg-slate-900 border border-slate-800 shadow-md col-span-2 lg:col-span-1">
               <span className="text-[10px] font-bold text-rose-400 uppercase tracking-wider block mb-1">
-                Low Attendance Alerts
+                Low Attendance
               </span>
               <span className="text-2xl font-black text-rose-400">
                 {lowAttendanceCount}
               </span>
-              <span className="text-[10px] text-slate-500 block mt-1">Below {analyticsThreshold}% cutoff</span>
+              <span className="text-[10px] text-slate-500 block mt-1">Below {analyticsThreshold}%</span>
             </div>
           </div>
+
+          {/* Group Attendance Breakdown (When Available) */}
+          {groupAnalytics.length > 0 && (
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl">
+              <h3 className="text-sm font-bold text-white mb-3 flex items-center gap-2">
+                <Users className="h-4 w-4 text-teal-400" />
+                Lab Group Attendance & Cross-Group Breakdown ({groupAnalytics.length} Groups)
+              </h3>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead>
+                    <tr className="border-b border-slate-800 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
+                      <th className="pb-2.5 px-3">Lab Group</th>
+                      <th className="pb-2.5 px-3">Batch</th>
+                      <th className="pb-2.5 px-3">Finalized Sessions</th>
+                      <th className="pb-2.5 px-3">Expected Slots</th>
+                      <th className="pb-2.5 px-3">Present</th>
+                      <th className="pb-2.5 px-3">Absent</th>
+                      <th className="pb-2.5 px-3">Turnout Rate</th>
+                      <th className="pb-2.5 px-3 text-amber-400">Visitors Received</th>
+                      <th className="pb-2.5 px-3 text-cyan-400">Outgoing Visits</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800 text-slate-200">
+                    {groupAnalytics.map((g) => (
+                      <tr key={g.groupId} className="hover:bg-slate-850/50">
+                        <td className="py-2.5 px-3 font-semibold text-white">{g.groupName}</td>
+                        <td className="py-2.5 px-3 text-slate-400 font-mono">{g.batchCode}</td>
+                        <td className="py-2.5 px-3">{g.finalizedSessions}</td>
+                        <td className="py-2.5 px-3 font-mono">{g.totalExpected}</td>
+                        <td className="py-2.5 px-3 text-emerald-400 font-mono">{g.totalPresent}</td>
+                        <td className="py-2.5 px-3 text-rose-400 font-mono">{g.totalAbsent}</td>
+                        <td className="py-2.5 px-3">
+                          <span className="font-bold text-teal-400">{g.attendancePercentage}</span>
+                        </td>
+                        <td className="py-2.5 px-3 font-mono font-bold text-amber-400">
+                          {g.visitorsReceived || 0}
+                        </td>
+                        <td className="py-2.5 px-3 font-mono font-bold text-cyan-400">
+                          {g.outgoingVisits || 0}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
 
           {/* Attendance Trend Chart */}
           <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl">

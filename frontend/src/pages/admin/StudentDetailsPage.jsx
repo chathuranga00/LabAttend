@@ -213,6 +213,10 @@ export default function StudentDetailsPage() {
                   <Calendar className="h-3.5 w-3.5 text-teal-400" />
                   Cohort: {student.batchCode} ({student.batchAcademicYear || 'Current'})
                 </span>
+                <span className="flex items-center gap-1.5 bg-slate-800/70 px-2.5 py-1 rounded-lg">
+                  <Users className="h-3.5 w-3.5 text-emerald-400" />
+                  Home Group: {student.labGroupName || (student.labGroup ? student.labGroup.groupName : 'Whole Batch')}
+                </span>
                 <span className="flex items-center gap-1.5 bg-slate-800/70 px-2.5 py-1 rounded-lg font-mono">
                   <QrCode className="h-3.5 w-3.5 text-amber-400" />
                   Badge QR: {student.hasQrToken ? 'Mapped & Verified (SHA-256)' : 'Unmapped'}
@@ -325,7 +329,7 @@ export default function StudentDetailsPage() {
       </div>
 
       {/* Metrics Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
         {/* Total Eligible Sessions */}
         <div className="bg-slate-900/60 border border-slate-800/80 rounded-2xl p-5 shadow-lg">
           <div className="flex items-center justify-between text-slate-400 mb-2">
@@ -359,7 +363,7 @@ export default function StudentDetailsPage() {
         {/* Attendance Percentage */}
         <div className="bg-slate-900/60 border border-slate-800/80 rounded-2xl p-5 shadow-lg">
           <div className="flex items-center justify-between text-slate-400 mb-2">
-            <span className="text-xs font-semibold uppercase tracking-wider">Cumulative Attendance</span>
+            <span className="text-xs font-semibold uppercase tracking-wider">Cumulative Rate</span>
             <ShieldCheck className="h-4 w-4 text-emerald-400" />
           </div>
           <div className="text-3xl font-bold text-white tracking-tight">
@@ -374,6 +378,18 @@ export default function StudentDetailsPage() {
           <span className="text-xs text-slate-500 mt-1 block">
             {attendancePercentage !== null ? 'Target benchmark: 80.0%' : 'No finalized sessions recorded yet'}
           </span>
+        </div>
+
+        {/* Cross-Group Visits */}
+        <div className="bg-slate-900/60 border border-slate-800/80 rounded-2xl p-5 shadow-lg col-span-2 sm:col-span-1">
+          <div className="flex items-center justify-between text-slate-400 mb-2">
+            <span className="text-xs font-semibold uppercase tracking-wider">Other Group Visits</span>
+            <Users className="h-4 w-4 text-amber-400" />
+          </div>
+          <div className="text-3xl font-bold text-amber-400 tracking-tight">
+            {historyData?.crossGroupVisitsCount ?? attendanceRecords.filter((r) => r.isCrossGroup).length}
+          </div>
+          <span className="text-xs text-slate-500 mt-1 block">Attended as visitor (isolated)</span>
         </div>
       </div>
 

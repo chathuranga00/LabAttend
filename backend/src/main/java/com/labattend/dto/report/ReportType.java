@@ -8,5 +8,6 @@ public enum ReportType {
     BATCH,
     SEMESTER,
     LOW_ATTENDANCE,
-    HALL
+    HALL,
+    CROSS_GROUP
 }
