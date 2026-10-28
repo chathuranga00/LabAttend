@@ -17,7 +17,8 @@ import {
   Download,
   Printer,
   FileArchive,
-  ShieldCheck
+  ShieldCheck,
+  Trash2
 } from 'lucide-react';
 import { 
   studentService, 
@@ -51,6 +52,7 @@ export default function StudentsPage() {
   const [selectedGroupId, setSelectedGroupId] = useState('');
   const [filterGroups, setFilterGroups] = useState([]);
   const [selectedStatus, setSelectedStatus] = useState('');
+  const [selectedOfferedBy, setSelectedOfferedBy] = useState('');
   const [search, setSearch] = useState('');
 
   // Bulk Selection states
@@ -74,6 +76,12 @@ export default function StudentsPage() {
   // Single QR Download Modal states
   const [singleQrModalStudent, setSingleQrModalStudent] = useState(null);
   const [downloadingSingleQrFormat, setDownloadingSingleQrFormat] = useState(null);
+
+  // Delete states
+  const [deletingStudent, setDeletingStudent] = useState(null);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [isBulkDeleteModalOpen, setIsBulkDeleteModalOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // New Student Created Success State (QR Generated)
   const [newlyCreatedStudent, setNewlyCreatedStudent] = useState(null);
@@ -172,6 +180,7 @@ export default function StudentsPage() {
         batchId: selectedBatchId || undefined,
         labGroupId: selectedGroupId || undefined,
         isActive: selectedStatus === 'active' ? true : selectedStatus === 'inactive' ? false : undefined,
+        offeredBy: selectedOfferedBy || undefined,
         search: search.trim() || undefined,
         page,
         size: 10,
@@ -189,7 +198,7 @@ export default function StudentsPage() {
     } finally {
       setLoading(false);
     }
-  }, [selectedProgrammeId, selectedBatchId, selectedGroupId, selectedStatus, search, page, showToast]);
+  }, [selectedProgrammeId, selectedBatchId, selectedGroupId, selectedStatus, selectedOfferedBy, search, page, showToast]);
 
   useEffect(() => {
     loadProgrammes();
@@ -203,26 +212,28 @@ export default function StudentsPage() {
   // Update batch options when form degree programme changes
   useEffect(() => {
     if (formData.degreeProgrammeId) {
-      const matching = batches.filter(b => b.degreeProgrammeId === formData.degreeProgrammeId);
+      const matching = batches.filter(b => !b.degreeProgrammeId || b.degreeProgrammeId === formData.degreeProgrammeId);
       setFilteredBatches(matching);
       if (matching.length > 0 && !matching.some(b => b.id === formData.batchId)) {
         setFormData(prev => ({ ...prev, batchId: matching[0].id }));
       }
     } else {
-      setFilteredBatches([]);
+      setFilteredBatches(batches);
     }
   }, [formData.degreeProgrammeId, batches, formData.batchId]);
 
   const handleOpenCreate = () => {
     setEditingItem(null);
     const firstProg = programmes[0]?.id || '';
-    const matchingBatches = batches.filter(b => b.degreeProgrammeId === firstProg);
+    const matchingBatches = batches.filter(b => !b.degreeProgrammeId || b.degreeProgrammeId === firstProg);
     setFormData({
       studentId: '',
+      title: 'Mr.',
       fullName: '',
       email: '',
+      offeredBy: 'NSBM',
       degreeProgrammeId: firstProg,
-      batchId: matchingBatches[0]?.id || '',
+      batchId: matchingBatches[0]?.id || (batches[0]?.id || ''),
       labGroupId: '',
       groupName: '',
       qrToken: '',
@@ -235,8 +246,10 @@ export default function StudentsPage() {
     setEditingItem(item);
     setFormData({
       studentId: item.studentId || '',
+      title: item.title || '',
       fullName: item.fullName || '',
       email: item.email || '',
+      offeredBy: item.offeredBy || '',
       degreeProgrammeId: item.degreeProgrammeId || '',
       batchId: item.batchId || '',
       labGroupId: item.labGroupId || '',
@@ -251,9 +264,7 @@ export default function StudentsPage() {
     const errs = {};
     if (!formData.studentId.trim()) errs.studentId = 'Student ID is required';
     if (!formData.fullName.trim()) errs.fullName = 'Full Name is required';
-    if (!formData.email.trim()) {
-      errs.email = 'Email address is required';
-    } else if (!/\S+@\S+\.\S+/.test(formData.email)) {
+    if (formData.email.trim() && !/\S+@\S+\.\S+/.test(formData.email)) {
       errs.email = 'Invalid email address format';
     }
     if (!formData.degreeProgrammeId) errs.degreeProgrammeId = 'Degree Programme is required';
@@ -362,8 +373,10 @@ export default function StudentsPage() {
       setSubmitting(true);
       const payload = {
         studentId: formData.studentId.trim(),
+        title: formData.title ? formData.title.trim() : null,
         fullName: formData.fullName.trim(),
         email: formData.email.trim(),
+        offeredBy: formData.offeredBy ? formData.offeredBy.trim() : null,
         degreeProgrammeId: formData.degreeProgrammeId,
         batchId: formData.batchId,
         labGroupId: formData.labGroupId || null,
@@ -408,6 +421,52 @@ export default function StudentsPage() {
       fetchStudents();
     } catch (err) {
       showToast(err.message || 'Failed to update student status', 'error');
+    }
+  };
+
+  const handleOpenDelete = (item) => {
+    setDeletingStudent(item);
+    setIsDeleteModalOpen(true);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!deletingStudent) return;
+    try {
+      setIsDeleting(true);
+      await studentService.deleteStudent(deletingStudent.id);
+      showToast('Student record deleted successfully', 'success');
+      setIsDeleteModalOpen(false);
+      setDeletingStudent(null);
+      setSelectedStudentIds((prev) => prev.filter((id) => id !== deletingStudent.id));
+      fetchStudents();
+    } catch (err) {
+      showToast(err.message || 'Failed to delete student', 'error');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const handleOpenBulkDelete = () => {
+    if (selectedStudentIds.length === 0) {
+      showToast('No students selected', 'error');
+      return;
+    }
+    setIsBulkDeleteModalOpen(true);
+  };
+
+  const handleConfirmBulkDelete = async () => {
+    if (selectedStudentIds.length === 0) return;
+    try {
+      setIsDeleting(true);
+      await studentService.deleteStudentsBulk(selectedStudentIds);
+      showToast(`${selectedStudentIds.length} student records deleted successfully`, 'success');
+      setIsBulkDeleteModalOpen(false);
+      setSelectedStudentIds([]);
+      fetchStudents();
+    } catch (err) {
+      showToast(err.message || 'Failed to delete selected students', 'error');
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -545,8 +604,15 @@ export default function StudentsPage() {
       accessor: 'fullName',
       render: (item) => (
         <div>
-          <span className="font-medium text-slate-100 block">{item.fullName}</span>
-          <span className="text-xs text-slate-400">{item.email}</span>
+          <span className="font-medium text-slate-100 block">
+            {item.title ? <span className="text-emerald-400 font-semibold mr-1.5">{item.title}</span> : null}
+            {item.fullName}
+          </span>
+          {item.email ? (
+            <span className="text-xs text-slate-400">{item.email}</span>
+          ) : (
+            <span className="text-xs text-slate-600 italic">No email</span>
+          )}
         </div>
       ),
     },
@@ -555,10 +621,17 @@ export default function StudentsPage() {
       accessor: 'batchCode',
       render: (item) => (
         <div>
-          <span className="text-sm text-slate-200 block font-medium">
-            {item.degreeProgrammeCode} ({item.batchCode})
-          </span>
-          <span className="text-xs text-slate-500">{item.degreeProgrammeName}</span>
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="text-sm text-slate-200 block font-medium">
+              {item.degreeProgrammeCode ? `${item.degreeProgrammeCode} ` : ''}({item.batchCode})
+            </span>
+            {item.offeredBy && (
+              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-teal-950/60 border border-teal-800/50 text-teal-300">
+                {item.offeredBy}
+              </span>
+            )}
+          </div>
+          <span className="text-xs text-slate-500 block mt-0.5">{item.degreeProgrammeName}</span>
         </div>
       ),
     },
@@ -628,6 +701,13 @@ export default function StudentsPage() {
             title="Edit Student"
           >
             <Edit2 className="h-4 w-4" />
+          </button>
+          <button
+            onClick={() => handleOpenDelete(item)}
+            className="p-1.5 rounded-lg bg-slate-800 hover:bg-rose-950/60 text-slate-400 hover:text-rose-400 border border-transparent hover:border-rose-800/40 transition"
+            title="Delete Student Record"
+          >
+            <Trash2 className="h-4 w-4" />
           </button>
         </div>
       ),
@@ -707,7 +787,7 @@ export default function StudentsPage() {
             <option value="">All Programmes</option>
             {programmes.map((p) => (
               <option key={p.id} value={p.id}>
-                {p.code} - {p.name}
+                {p.code ? `${p.code} - ` : ''}{p.name}
               </option>
             ))}
           </select>
@@ -724,7 +804,7 @@ export default function StudentsPage() {
           >
             <option value="">All Batches</option>
             {batches
-              .filter((b) => !selectedProgrammeId || b.degreeProgrammeId === selectedProgrammeId)
+              .filter((b) => !selectedProgrammeId || !b.degreeProgrammeId || b.degreeProgrammeId === selectedProgrammeId)
               .map((b) => (
                 <option key={b.id} value={b.id}>
                   {b.batchCode}
@@ -753,6 +833,22 @@ export default function StudentsPage() {
           </div>
         )}
 
+        <div className="w-full md:w-44">
+          <select
+            value={selectedOfferedBy}
+            onChange={(e) => {
+              setSelectedOfferedBy(e.target.value);
+              setPage(0);
+            }}
+            className="w-full px-3 py-2 bg-slate-800/80 border border-slate-700 rounded-xl text-sm text-slate-200 focus:outline-none focus:border-emerald-500"
+          >
+            <option value="">All Offered By</option>
+            <option value="NSBM">NSBM</option>
+            <option value="Plymouth University">Plymouth University</option>
+            <option value="Victoria University">Victoria University</option>
+          </select>
+        </div>
+
         <div className="w-full md:w-36">
           <select
             value={selectedStatus}
@@ -768,12 +864,13 @@ export default function StudentsPage() {
           </select>
         </div>
 
-        {(selectedProgrammeId || selectedBatchId || selectedGroupId || selectedStatus || search) && (
+        {(selectedProgrammeId || selectedBatchId || selectedGroupId || selectedOfferedBy || selectedStatus || search) && (
           <button
             onClick={() => {
               setSelectedProgrammeId('');
               setSelectedBatchId('');
               setSelectedGroupId('');
+              setSelectedOfferedBy('');
               setSelectedStatus('');
               setSearch('');
               setPage(0);
@@ -823,6 +920,15 @@ export default function StudentsPage() {
               <Layers className="w-3.5 h-3.5" />
               Assign to Lab Group
             </button>
+            <button
+              type="button"
+              onClick={handleOpenBulkDelete}
+              className="inline-flex items-center gap-2 px-3.5 py-2 bg-rose-600/90 hover:bg-rose-600 text-white rounded-xl text-xs font-semibold shadow-lg shadow-rose-600/20 transition"
+              title="Delete selected students"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              Delete ({selectedStudentIds.length})
+            </button>
           </div>
         </div>
       )}
@@ -837,9 +943,11 @@ export default function StudentsPage() {
         />
 
         <Pagination
+          pageNumber={page}
           currentPage={page}
           totalPages={totalPages}
           totalElements={totalElements}
+          pageSize={10}
           onPageChange={(p) => setPage(p)}
         />
       </div>
@@ -867,36 +975,119 @@ export default function StudentsPage() {
             )}
           </div>
 
-          <div>
-            <label className="block text-xs font-medium text-slate-300 mb-1">
-              Full Legal Name *
-            </label>
-            <input
-              type="text"
-              value={formData.fullName}
-              onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
-              placeholder="e.g. Kasun Chamara"
-              className="w-full px-3 py-2 bg-slate-800/80 border border-slate-700 rounded-xl text-sm text-slate-200 focus:outline-none focus:border-emerald-500"
-            />
-            {formErrors.fullName && (
-              <span className="text-xs text-rose-400 mt-1 block">{formErrors.fullName}</span>
-            )}
+          <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+            <div className="sm:col-span-1">
+              <label className="block text-xs font-medium text-slate-300 mb-1">
+                Title
+              </label>
+              <select
+                value={formData.title}
+                onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                className="w-full px-3 py-2 bg-slate-800/80 border border-slate-700 rounded-xl text-sm text-slate-200 focus:outline-none focus:border-emerald-500 font-medium"
+              >
+                <option value="">None</option>
+                <option value="Mr.">Mr.</option>
+                <option value="Ms.">Ms.</option>
+                <option value="Mrs.">Mrs.</option>
+                <option value="Dr.">Dr.</option>
+                <option value="Rev.">Rev.</option>
+              </select>
+              <div className="flex items-center gap-1.5 mt-1.5">
+                {['Mr.', 'Ms.'].map((t) => (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() => setFormData(prev => ({ ...prev, title: prev.title === t ? '' : t }))}
+                    className={`flex-1 py-1 rounded text-xs font-semibold text-center transition ${
+                      formData.title === t
+                        ? 'bg-emerald-600 text-white shadow-sm ring-1 ring-emerald-400'
+                        : 'bg-slate-800 text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    {t}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="sm:col-span-3">
+              <label className="block text-xs font-medium text-slate-300 mb-1">
+                Full Legal Name *
+              </label>
+              <input
+                type="text"
+                value={formData.fullName}
+                onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
+                placeholder="e.g. Kasun Chamara"
+                className="w-full px-3 py-2 bg-slate-800/80 border border-slate-700 rounded-xl text-sm text-slate-200 focus:outline-none focus:border-emerald-500"
+              />
+              {formErrors.fullName && (
+                <span className="text-xs text-rose-400 mt-1 block">{formErrors.fullName}</span>
+              )}
+            </div>
           </div>
 
           <div>
             <label className="block text-xs font-medium text-slate-300 mb-1">
-              Institutional Email *
+              Institutional Email <span className="text-slate-500 font-normal lowercase">(optional)</span>
             </label>
             <input
               type="email"
               value={formData.email}
               onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-              placeholder="e.g. kasun@uni.ac.lk"
+              placeholder="e.g. kasun@uni.ac.lk (optional)"
               className="w-full px-3 py-2 bg-slate-800/80 border border-slate-700 rounded-xl text-sm text-slate-200 focus:outline-none focus:border-emerald-500"
             />
             {formErrors.email && (
               <span className="text-xs text-rose-400 mt-1 block">{formErrors.email}</span>
             )}
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-xs font-medium text-slate-300">
+                Offered By / Awarding University <span className="text-slate-500 font-normal lowercase">(optional)</span>
+              </label>
+              {formData.offeredBy && (
+                <button
+                  type="button"
+                  onClick={() => setFormData(prev => ({ ...prev, offeredBy: '' }))}
+                  className="text-[11px] text-slate-400 hover:text-white"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+
+            {/* Quick Click Chips */}
+            <div className="flex flex-wrap items-center gap-2 mb-2">
+              {['NSBM', 'Plymouth University', 'Victoria University'].map((univ) => (
+                <button
+                  key={univ}
+                  type="button"
+                  onClick={() => setFormData(prev => ({ ...prev, offeredBy: prev.offeredBy === univ ? '' : univ }))}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-medium transition ${
+                    formData.offeredBy === univ
+                      ? 'bg-emerald-600 text-white font-semibold shadow-md shadow-emerald-600/30 ring-2 ring-emerald-400'
+                      : 'bg-slate-800/80 text-slate-300 hover:text-white hover:bg-slate-700/80'
+                  }`}
+                >
+                  {univ}
+                </button>
+              ))}
+            </div>
+
+            {/* Dropdown Selector */}
+            <select
+              value={formData.offeredBy}
+              onChange={(e) => setFormData({ ...formData, offeredBy: e.target.value })}
+              className="w-full px-3 py-2 bg-slate-800/80 border border-slate-700 rounded-xl text-sm text-slate-200 focus:outline-none focus:border-emerald-500"
+            >
+              <option value="">Select Offered By (Optional)</option>
+              <option value="NSBM">NSBM</option>
+              <option value="Plymouth University">Plymouth University</option>
+              <option value="Victoria University">Victoria University</option>
+            </select>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -912,7 +1103,7 @@ export default function StudentsPage() {
                 <option value="">Select Programme</option>
                 {programmes.map((p) => (
                   <option key={p.id} value={p.id}>
-                    {p.code} - {p.name}
+                    {p.code ? `${p.code} - ` : ''}{p.name}
                   </option>
                 ))}
               </select>
@@ -1084,19 +1275,25 @@ export default function StudentsPage() {
         title="Bulk Import Student Roster (CSV)"
       >
         <div className="space-y-5">
-          <div className="p-4 bg-slate-800/50 border border-slate-700/60 rounded-xl text-xs text-slate-300 space-y-2">
+          <div className="p-4 bg-slate-800/50 border border-slate-700/60 rounded-xl text-xs text-slate-300 space-y-2.5">
             <div className="flex items-center gap-2 font-semibold text-emerald-400">
               <FileSpreadsheet className="h-4 w-4" />
-              <span>CSV Format Specification:</span>
+              <span>Supported Spreadsheet / CSV Formats:</span>
             </div>
-            <p className="text-slate-400">
-              Your CSV file must include headers matching standard student fields.
+            <p className="text-slate-300 text-xs leading-relaxed">
+              You can directly export your university Excel roster as <strong>.csv</strong>. Email and programme codes are completely optional.
             </p>
-            <div className="bg-slate-950 p-2.5 rounded-lg font-mono text-[11px] text-emerald-300 overflow-x-auto border border-slate-800">
-              student_id,full_name,email,degree_programme_code,batch_code,qr_token
+            <div className="space-y-1.5">
+              <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">Standard University Excel Export (Recommended):</span>
+              <div className="bg-slate-950 p-2.5 rounded-lg font-mono text-[11px] text-emerald-300 overflow-x-auto border border-slate-800">
+                Serial No,Student ID,Batch,Faculty,Degree,Offered By,Title,Name in Full,Name with Initials
+              </div>
+              <div className="text-[11px] text-slate-400">
+                Example: <code className="text-slate-300">1,43453,2026.3,Faculty Of Computing,BSc in Management Information Systems,NSBM,Mr.,Liyanage Tharu Nethma Liyanage,Liyanage L T N</code>
+              </div>
             </div>
-            <div className="text-[11px] text-slate-500">
-              Example row: <code className="text-slate-400">STU101,Kamal Perera,kamal@uni.ac.lk,SE,Y2026-B1,BADGE-CARD-001</code>
+            <div className="text-[11px] text-slate-400 pt-1 border-t border-slate-800/60 flex items-center justify-between">
+              <span>* Batches and Degree Programmes will be automatically resolved and registered if not yet in the system.</span>
             </div>
           </div>
 
@@ -1677,6 +1874,119 @@ export default function StudentsPage() {
             </button>
           </div>
         </form>
+      </Modal>
+
+      {/* Delete Student Confirmation Modal */}
+      <Modal
+        isOpen={isDeleteModalOpen}
+        onClose={() => {
+          if (!isDeleting) {
+            setIsDeleteModalOpen(false);
+            setDeletingStudent(null);
+          }
+        }}
+        title="Delete Student Record"
+      >
+        <div className="space-y-4">
+          <div className="flex items-start gap-3 p-4 bg-rose-950/30 border border-rose-800/40 rounded-xl">
+            <ShieldAlert className="h-6 w-6 text-rose-400 shrink-0 mt-0.5" />
+            <div>
+              <p className="text-sm font-semibold text-rose-200">
+                Are you sure you want to permanently delete this student?
+              </p>
+              <p className="text-xs text-rose-300/80 mt-1">
+                Student: <strong className="text-white font-mono">{deletingStudent?.studentId}</strong> — {deletingStudent?.fullName}
+              </p>
+              <p className="text-xs text-slate-400 mt-2">
+                This will remove the student record and invalidate their mapped QR tokens. This action cannot be undone.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-800">
+            <button
+              type="button"
+              disabled={isDeleting}
+              onClick={() => {
+                setIsDeleteModalOpen(false);
+                setDeletingStudent(null);
+              }}
+              className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-sm font-medium transition"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              disabled={isDeleting}
+              onClick={handleConfirmDelete}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-rose-600 hover:bg-rose-500 disabled:opacity-50 text-white rounded-xl text-sm font-semibold shadow-lg shadow-rose-600/20 transition"
+            >
+              {isDeleting ? (
+                <>
+                  <RefreshCw className="h-4 w-4 animate-spin" />
+                  <span>Deleting...</span>
+                </>
+              ) : (
+                <>
+                  <Trash2 className="h-4 w-4" />
+                  <span>Confirm Delete</span>
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Bulk Delete Students Confirmation Modal */}
+      <Modal
+        isOpen={isBulkDeleteModalOpen}
+        onClose={() => {
+          if (!isDeleting) setIsBulkDeleteModalOpen(false);
+        }}
+        title="Delete Selected Students"
+      >
+        <div className="space-y-4">
+          <div className="flex items-start gap-3 p-4 bg-rose-950/30 border border-rose-800/40 rounded-xl">
+            <ShieldAlert className="h-6 w-6 text-rose-400 shrink-0 mt-0.5" />
+            <div>
+              <p className="text-sm font-semibold text-rose-200">
+                Are you sure you want to permanently delete {selectedStudentIds.length} students?
+              </p>
+              <p className="text-xs text-slate-400 mt-2">
+                All selected student records will be permanently removed from the system. This action cannot be undone.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-800">
+            <button
+              type="button"
+              disabled={isDeleting}
+              onClick={() => setIsBulkDeleteModalOpen(false)}
+              className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-sm font-medium transition"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              disabled={isDeleting}
+              onClick={handleConfirmBulkDelete}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-rose-600 hover:bg-rose-500 disabled:opacity-50 text-white rounded-xl text-sm font-semibold shadow-lg shadow-rose-600/20 transition"
+            >
+              {isDeleting ? (
+                <>
+                  <RefreshCw className="h-4 w-4 animate-spin" />
+                  <span>Deleting...</span>
+                </>
+              ) : (
+                <>
+                  <Trash2 className="h-4 w-4" />
+                  <span>Delete {selectedStudentIds.length} Students</span>
+                </>
+              )}
+            </button>
+          </div>
+        </div>
       </Modal>
     </div>
   );

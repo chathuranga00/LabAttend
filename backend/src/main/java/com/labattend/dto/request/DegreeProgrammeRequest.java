@@ -13,7 +13,6 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class DegreeProgrammeRequest {
 
-    @NotBlank(message = "Degree programme code is required")
     @Size(max = 50, message = "Programme code cannot exceed 50 characters")
     private String code;
 

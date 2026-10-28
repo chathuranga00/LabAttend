@@ -262,7 +262,7 @@ export default function ModulesPage() {
               <option value="">All Degree Programmes</option>
               {programmes.map((p) => (
                 <option key={p.id} value={p.id}>
-                  {p.code} - {p.name}
+                  {p.code ? `${p.code} - ` : ''}{p.name}
                 </option>
               ))}
             </select>
@@ -375,7 +375,7 @@ export default function ModulesPage() {
               <option value="">No specific programme</option>
               {programmes.map((p) => (
                 <option key={p.id} value={p.id}>
-                  {p.code} - {p.name}
+                  {p.code ? `${p.code} - ` : ''}{p.name}
                 </option>
               ))}
             </select>

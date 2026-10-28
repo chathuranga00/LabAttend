@@ -44,7 +44,7 @@ public class BatchService {
             String pattern = "%" + search.trim().toLowerCase() + "%";
             batchPage = batchRepository.searchBatches(programmeId, pattern, pageable);
         } else if (programmeId != null) {
-            batchPage = batchRepository.findByDegreeProgrammeId(programmeId, pageable);
+            batchPage = batchRepository.searchBatches(programmeId, null, pageable);
         } else {
             batchPage = batchRepository.findAll(pageable);
         }
@@ -61,12 +61,14 @@ public class BatchService {
 
     public BatchResponse createBatch(BatchRequest request) {
         String batchCode = request.getBatchCode().trim().toUpperCase();
-        if (batchRepository.existsByBatchCode(batchCode)) {
-            throw new BadRequestException("Batch code already exists: " + batchCode);
+        if (batchRepository.existsByBatchCodeIgnoreCase(batchCode)) {
+            throw new BadRequestException("Batch code '" + batchCode + "' already exists as a university-wide batch and is already available for all degree programmes.");
         }
 
-        DegreeProgramme programme = degreeProgrammeRepository.findById(request.getDegreeProgrammeId())
-                .orElseThrow(() -> new ResourceNotFoundException("DegreeProgramme", "id", request.getDegreeProgrammeId()));
+        DegreeProgramme programme = null;
+        if (request.getDegreeProgrammeId() != null) {
+            programme = degreeProgrammeRepository.findById(request.getDegreeProgrammeId()).orElse(null);
+        }
 
         Batch batch = Batch.builder()
                 .batchCode(batchCode)
@@ -88,12 +90,14 @@ public class BatchService {
                 .orElseThrow(() -> new ResourceNotFoundException("Batch", "id", id));
 
         String batchCode = request.getBatchCode().trim().toUpperCase();
-        if (batchRepository.existsByBatchCodeAndIdNot(batchCode, id)) {
-            throw new BadRequestException("Batch code already exists: " + batchCode);
+        if (batchRepository.existsByBatchCodeIgnoreCaseAndIdNot(batchCode, id)) {
+            throw new BadRequestException("Batch code '" + batchCode + "' already exists as a university-wide batch and is already available for all degree programmes.");
         }
 
-        DegreeProgramme programme = degreeProgrammeRepository.findById(request.getDegreeProgrammeId())
-                .orElseThrow(() -> new ResourceNotFoundException("DegreeProgramme", "id", request.getDegreeProgrammeId()));
+        DegreeProgramme programme = null;
+        if (request.getDegreeProgrammeId() != null) {
+            programme = degreeProgrammeRepository.findById(request.getDegreeProgrammeId()).orElse(null);
+        }
 
         BatchResponse previousState = mapToResponse(batch);
 

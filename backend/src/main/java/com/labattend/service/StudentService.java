@@ -70,12 +70,13 @@ public class StudentService {
 
     @Transactional(readOnly = true)
     public PageResponse<StudentResponse> getStudents(UUID programmeId, UUID batchId, UUID labGroupId, Boolean isActive,
-                                                    String search, int page, int size, String sortBy, String sortDir) {
+                                                    String offeredBy, String search, int page, int size, String sortBy, String sortDir) {
         Sort sort = sortDir.equalsIgnoreCase("desc") ? Sort.by(sortBy).descending() : Sort.by(sortBy).ascending();
         Pageable pageable = PageRequest.of(page, size, sort);
 
+        String cleanOfferedBy = (offeredBy != null && !offeredBy.isBlank()) ? offeredBy.trim().toLowerCase() : null;
         boolean noFilters = programmeId == null && batchId == null && labGroupId == null && isActive == null &&
-                (search == null || search.isBlank());
+                cleanOfferedBy == null && (search == null || search.isBlank());
 
         Page<Student> studentPage;
         if (noFilters) {
@@ -87,6 +88,7 @@ public class StudentService {
                     batchId,
                     labGroupId,
                     isActive,
+                    cleanOfferedBy,
                     searchPattern,
                     pageable
             );
@@ -108,8 +110,10 @@ public class StudentService {
             throw new BadRequestException("Student ID already exists: " + studentId);
         }
 
-        String email = request.getEmail().trim().toLowerCase();
-        if (studentRepository.existsByEmail(email)) {
+        String email = (request.getEmail() != null && !request.getEmail().isBlank())
+                ? request.getEmail().trim().toLowerCase()
+                : null;
+        if (email != null && studentRepository.existsByEmail(email)) {
             throw new BadRequestException("Email already exists: " + email);
         }
 
@@ -119,16 +123,22 @@ public class StudentService {
         Batch batch = batchRepository.findById(request.getBatchId())
                 .orElseThrow(() -> new ResourceNotFoundException("Batch", "id", request.getBatchId()));
 
-        if (!batch.getDegreeProgramme().getId().equals(programme.getId())) {
+        if (batch.getDegreeProgramme() != null && !batch.getDegreeProgramme().getId().equals(programme.getId())) {
             throw new BadRequestException("Selected batch does not belong to the selected degree programme");
         }
 
         LabGroup labGroup = resolveLabGroup(request, batch);
 
+        String offeredBy = (request.getOfferedBy() != null && !request.getOfferedBy().isBlank())
+                ? request.getOfferedBy().trim()
+                : null;
+
         Student student = Student.builder()
                 .studentId(studentId)
+                .title(request.getTitle() != null && !request.getTitle().isBlank() ? request.getTitle().trim() : null)
                 .fullName(request.getFullName().trim())
                 .email(email)
+                .offeredBy(offeredBy)
                 .degreeProgramme(programme)
                 .batch(batch)
                 .labGroup(labGroup)
@@ -157,8 +167,10 @@ public class StudentService {
             throw new BadRequestException("Student ID already exists: " + studentId);
         }
 
-        String email = request.getEmail().trim().toLowerCase();
-        if (studentRepository.existsByEmailAndIdNot(email, id)) {
+        String email = (request.getEmail() != null && !request.getEmail().isBlank())
+                ? request.getEmail().trim().toLowerCase()
+                : null;
+        if (email != null && studentRepository.existsByEmailAndIdNot(email, id)) {
             throw new BadRequestException("Email already exists: " + email);
         }
 
@@ -168,7 +180,7 @@ public class StudentService {
         Batch batch = batchRepository.findById(request.getBatchId())
                 .orElseThrow(() -> new ResourceNotFoundException("Batch", "id", request.getBatchId()));
 
-        if (!batch.getDegreeProgramme().getId().equals(programme.getId())) {
+        if (batch.getDegreeProgramme() != null && !batch.getDegreeProgramme().getId().equals(programme.getId())) {
             throw new BadRequestException("Selected batch does not belong to the selected degree programme");
         }
 
@@ -186,8 +198,10 @@ public class StudentService {
         StudentResponse previousState = mapToResponse(student);
 
         student.setStudentId(studentId);
+        student.setTitle(request.getTitle() != null && !request.getTitle().isBlank() ? request.getTitle().trim() : null);
         student.setFullName(request.getFullName().trim());
         student.setEmail(email);
+        student.setOfferedBy(request.getOfferedBy() != null && !request.getOfferedBy().isBlank() ? request.getOfferedBy().trim() : null);
         student.setDegreeProgramme(programme);
         // NOTE: Changing the student's batch or lab group updates only the student record.
         // It strictly preserves historical session_students and attendance_records!
@@ -217,6 +231,27 @@ public class StudentService {
         auditLogService.logAction("Student", updated.getId(), action, previousState, newState);
 
         return newState;
+    }
+
+    @Transactional
+    public void deleteStudent(UUID id) {
+        Student student = studentRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Student", "id", id));
+
+        StudentResponse previousState = mapToResponse(student);
+        studentRepository.delete(student);
+
+        auditLogService.logAction("Student", id, "DELETE", previousState, null);
+    }
+
+    @Transactional
+    public void deleteStudentsBulk(List<UUID> ids) {
+        if (ids == null || ids.isEmpty()) {
+            return;
+        }
+        for (UUID id : ids) {
+            deleteStudent(id);
+        }
     }
 
     @Transactional(readOnly = true)
@@ -335,22 +370,30 @@ public class StudentService {
                 throw new BadRequestException("CSV file is empty");
             }
 
-            String[] headers = headerLine.split(",");
+            String[] headers = parseCsvLine(headerLine);
             Map<String, Integer> colIndex = new HashMap<>();
             for (int i = 0; i < headers.length; i++) {
                 colIndex.put(headers[i].trim().toLowerCase().replaceAll("[_\\-\\s]", ""), i);
             }
 
-            Integer studentIdIdx = findColumn(colIndex, "studentid", "id", "regno");
-            Integer fullNameIdx = findColumn(colIndex, "fullname", "name", "studentname");
-            Integer emailIdx = findColumn(colIndex, "email");
-            Integer progIdx = findColumn(colIndex, "degreeprogrammecode", "programmecode", "programme", "degree");
-            Integer batchIdx = findColumn(colIndex, "batchcode", "batch");
+            Integer studentIdIdx = findColumn(colIndex, "studentid", "id", "regno", "student_id", "registrationno", "student");
+            Integer fullNameIdx = findColumn(colIndex, "fullname", "name", "studentname", "nameinfull", "fulllegalname");
+            Integer nameWithInitialsIdx = findColumn(colIndex, "namewithinitials", "initialsname", "shortname");
+            Integer titleIdx = findColumn(colIndex, "title", "salutation", "prefix");
+            Integer offeredByIdx = findColumn(colIndex, "offeredby", "offered_by", "awardinguniversity", "university", "institute", "partneruniversity");
+            Integer emailIdx = findColumn(colIndex, "email", "emailaddress", "studentemail");
+            Integer progIdx = findColumn(colIndex, "degreeprogrammecode", "degreeprogrammename", "degreeprogramme", "programmecode", "programmename", "programme", "degree", "degreename", "course");
+            Integer batchIdx = findColumn(colIndex, "batchcode", "batch", "cohort", "academicbatch");
+            Integer facultyIdx = findColumn(colIndex, "faculty", "department", "school");
             Integer qrIdx = findColumn(colIndex, "qrtoken", "qridentifier", "qr", "token");
             Integer groupIdx = findColumn(colIndex, "group", "labgroup", "groupname", "labgroupname");
 
-            if (studentIdIdx == null || fullNameIdx == null || emailIdx == null || progIdx == null || batchIdx == null) {
-                throw new BadRequestException("CSV must contain columns: student_id, full_name, email, degree_programme_code, batch_code");
+            if (fullNameIdx == null && nameWithInitialsIdx != null) {
+                fullNameIdx = nameWithInitialsIdx;
+            }
+
+            if (studentIdIdx == null || fullNameIdx == null || progIdx == null || batchIdx == null) {
+                throw new BadRequestException("CSV must contain columns: student_id, name (or name_in_full), degree, batch (email is optional)");
             }
 
             Map<String, LabGroup> groupCache = new HashMap<>();
@@ -361,12 +404,18 @@ public class StudentService {
                 if (line.trim().isEmpty()) continue;
                 totalRows++;
 
-                String[] values = line.split(",", -1);
+                String[] values = parseCsvLine(line);
                 String rowStudentId = getVal(values, studentIdIdx);
                 String rowFullName = getVal(values, fullNameIdx);
+                if ((rowFullName == null || rowFullName.isBlank()) && nameWithInitialsIdx != null) {
+                    rowFullName = getVal(values, nameWithInitialsIdx);
+                }
+                String rowTitle = titleIdx != null ? getVal(values, titleIdx) : null;
+                String rowOfferedBy = offeredByIdx != null ? getVal(values, offeredByIdx) : null;
                 String rowEmail = getVal(values, emailIdx);
                 String rowProgCode = getVal(values, progIdx);
                 String rowBatchCode = getVal(values, batchIdx);
+                String rowFaculty = facultyIdx != null ? getVal(values, facultyIdx) : null;
                 String rowQr = qrIdx != null ? getVal(values, qrIdx) : null;
                 String rowGroupName = groupIdx != null ? getVal(values, groupIdx) : null;
 
@@ -381,33 +430,50 @@ public class StudentService {
                     continue;
                 }
 
-                if (rowEmail == null || rowEmail.isBlank() || !rowEmail.contains("@")) {
-                    errors.add(new StudentCsvImportResponse.CsvRowError(rowNumber, upperStudentId, "Invalid or missing email"));
-                    continue;
-                }
-                String lowerEmail = rowEmail.toLowerCase();
-
                 if (seenStudentIds.contains(upperStudentId) || studentRepository.existsByStudentId(upperStudentId)) {
                     errors.add(new StudentCsvImportResponse.CsvRowError(rowNumber, upperStudentId, "Duplicate student ID: already exists"));
                     continue;
                 }
 
-                if (seenEmails.contains(lowerEmail) || studentRepository.existsByEmail(lowerEmail)) {
-                    errors.add(new StudentCsvImportResponse.CsvRowError(rowNumber, upperStudentId, "Duplicate email: already in use"));
-                    continue;
+                String lowerEmail = null;
+                if (rowEmail != null && !rowEmail.isBlank()) {
+                    if (!rowEmail.contains("@")) {
+                        errors.add(new StudentCsvImportResponse.CsvRowError(rowNumber, upperStudentId, "Invalid email format"));
+                        continue;
+                    }
+                    lowerEmail = rowEmail.trim().toLowerCase();
+                    if (seenEmails.contains(lowerEmail) || studentRepository.existsByEmail(lowerEmail)) {
+                        errors.add(new StudentCsvImportResponse.CsvRowError(rowNumber, upperStudentId, "Duplicate email: already in use"));
+                        continue;
+                    }
+                    seenEmails.add(lowerEmail);
                 }
 
                 if (rowProgCode == null || rowProgCode.isBlank()) {
-                    errors.add(new StudentCsvImportResponse.CsvRowError(rowNumber, upperStudentId, "Missing degree programme code"));
+                    errors.add(new StudentCsvImportResponse.CsvRowError(rowNumber, upperStudentId, "Missing degree programme"));
                     continue;
                 }
-                String upperProgCode = rowProgCode.toUpperCase();
+                String rawProg = rowProgCode.trim();
+                String upperProgCode = rawProg.toUpperCase();
 
-                DegreeProgramme programme = programmeCache.computeIfAbsent(upperProgCode, code ->
-                        degreeProgrammeRepository.findByCode(code).orElse(null)
-                );
+                DegreeProgramme programme = programmeCache.computeIfAbsent(upperProgCode, k -> {
+                    return degreeProgrammeRepository.findByCode(rawProg)
+                            .or(() -> degreeProgrammeRepository.findByCodeIgnoreCase(rawProg))
+                            .or(() -> degreeProgrammeRepository.findByNameIgnoreCase(rawProg))
+                            .orElseGet(() -> {
+                                return degreeProgrammeRepository.save(
+                                        DegreeProgramme.builder()
+                                                .code(null)
+                                                .name(rawProg)
+                                                .department(rowFaculty != null && !rowFaculty.isBlank() ? rowFaculty.trim() : "Faculty of Computing")
+                                                .isActive(true)
+                                                .build()
+                                );
+                            });
+                });
+
                 if (programme == null) {
-                    errors.add(new StudentCsvImportResponse.CsvRowError(rowNumber, upperStudentId, "Degree programme not found: " + upperProgCode));
+                    errors.add(new StudentCsvImportResponse.CsvRowError(rowNumber, upperStudentId, "Degree programme not found: " + rawProg));
                     continue;
                 }
 
@@ -415,19 +481,32 @@ public class StudentService {
                     errors.add(new StudentCsvImportResponse.CsvRowError(rowNumber, upperStudentId, "Missing batch code"));
                     continue;
                 }
-                String upperBatchCode = rowBatchCode.toUpperCase();
+                String rawBatch = rowBatchCode.trim();
+                String upperBatchCode = rawBatch.toUpperCase();
+                String batchCacheKey = upperBatchCode;
 
-                Batch batch = batchCache.computeIfAbsent(upperBatchCode, code ->
-                        batchRepository.findByBatchCode(code).orElse(null)
-                );
+                Batch batch = batchCache.computeIfAbsent(batchCacheKey, k -> {
+                    return batchRepository.findByBatchCode(rawBatch)
+                            .or(() -> batchRepository.findByBatchCodeIgnoreCase(rawBatch))
+                            .orElseGet(() -> {
+                                String academicYear = "2026";
+                                java.util.regex.Matcher m = java.util.regex.Pattern.compile("(\\d{4})").matcher(rawBatch);
+                                if (m.find()) {
+                                    academicYear = m.group(1);
+                                }
+                                return batchRepository.save(
+                                        Batch.builder()
+                                                .batchCode(rawBatch)
+                                                .academicYear(academicYear)
+                                                .degreeProgramme(null)
+                                                .isActive(true)
+                                                .build()
+                                );
+                            });
+                });
+
                 if (batch == null) {
-                    errors.add(new StudentCsvImportResponse.CsvRowError(rowNumber, upperStudentId, "Batch not found: " + upperBatchCode));
-                    continue;
-                }
-
-                if (!batch.getDegreeProgramme().getId().equals(programme.getId())) {
-                    errors.add(new StudentCsvImportResponse.CsvRowError(rowNumber, upperStudentId,
-                            "Batch " + upperBatchCode + " does not belong to programme " + upperProgCode));
+                    errors.add(new StudentCsvImportResponse.CsvRowError(rowNumber, upperStudentId, "Batch not found: " + rawBatch));
                     continue;
                 }
 
@@ -452,8 +531,10 @@ public class StudentService {
 
                 Student student = Student.builder()
                         .studentId(upperStudentId)
+                        .title(rowTitle != null && !rowTitle.isBlank() ? rowTitle.trim() : null)
                         .fullName(rowFullName)
                         .email(lowerEmail)
+                        .offeredBy(rowOfferedBy != null && !rowOfferedBy.isBlank() ? rowOfferedBy.trim() : null)
                         .degreeProgramme(programme)
                         .batch(batch)
                         .labGroup(assignedGroup)
@@ -489,6 +570,28 @@ public class StudentService {
                 .failureCount(errors.size())
                 .errors(errors)
                 .build();
+    }
+
+    private String[] parseCsvLine(String line) {
+        if (line == null) return new String[0];
+        List<String> tokens = new ArrayList<>();
+        StringBuilder sb = new StringBuilder();
+        boolean inQuotes = false;
+        char delimiter = line.contains("\t") && !line.contains(",") ? '\t' : (line.contains(";") && !line.contains(",") ? ';' : ',');
+
+        for (int i = 0; i < line.length(); i++) {
+            char c = line.charAt(i);
+            if (c == '\"') {
+                inQuotes = !inQuotes;
+            } else if (c == delimiter && !inQuotes) {
+                tokens.add(sb.toString().trim());
+                sb.setLength(0);
+            } else {
+                sb.append(c);
+            }
+        }
+        tokens.add(sb.toString().trim());
+        return tokens.toArray(new String[0]);
     }
 
     private Integer findColumn(Map<String, Integer> map, String... candidates) {
@@ -539,8 +642,10 @@ public class StudentService {
         return StudentResponse.builder()
                 .id(s.getId())
                 .studentId(s.getStudentId())
+                .title(s.getTitle())
                 .fullName(s.getFullName())
                 .email(s.getEmail())
+                .offeredBy(s.getOfferedBy())
                 .degreeProgrammeId(s.getDegreeProgramme() != null ? s.getDegreeProgramme().getId() : null)
                 .degreeProgrammeCode(s.getDegreeProgramme() != null ? s.getDegreeProgramme().getCode() : null)
                 .degreeProgrammeName(s.getDegreeProgramme() != null ? s.getDegreeProgramme().getName() : null)

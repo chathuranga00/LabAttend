@@ -4,7 +4,7 @@ import jakarta.persistence.*;
 import lombok.*;
 
 @Entity
-@Table(name = "batches")
+@Table(name = "batches", uniqueConstraints = @UniqueConstraint(columnNames = {"batch_code"}))
 @Getter
 @Setter
 @NoArgsConstructor
@@ -12,14 +12,14 @@ import lombok.*;
 @Builder
 public class Batch extends BaseEntity {
 
-    @Column(name = "batch_code", nullable = false, unique = true, length = 50)
+    @Column(name = "batch_code", nullable = false, length = 50)
     private String batchCode;
 
     @Column(name = "academic_year", nullable = false, length = 50)
     private String academicYear;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "degree_programme_id", nullable = false)
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "degree_programme_id")
     private DegreeProgramme degreeProgramme;
 
     @Builder.Default

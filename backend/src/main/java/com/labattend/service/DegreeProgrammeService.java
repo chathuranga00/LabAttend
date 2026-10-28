@@ -53,15 +53,17 @@ public class DegreeProgrammeService {
     }
 
     public DegreeProgrammeResponse createProgramme(DegreeProgrammeRequest request) {
-        String code = request.getCode().trim().toUpperCase();
-        if (degreeProgrammeRepository.existsByCode(code)) {
+        String code = (request.getCode() != null && !request.getCode().isBlank())
+                ? request.getCode().trim().toUpperCase()
+                : null;
+        if (code != null && degreeProgrammeRepository.existsByCode(code)) {
             throw new BadRequestException("Degree programme code already exists: " + code);
         }
 
         DegreeProgramme programme = DegreeProgramme.builder()
                 .code(code)
                 .name(request.getName().trim())
-                .department(request.getDepartment() != null ? request.getDepartment().trim() : null)
+                .department(request.getDepartment() != null && !request.getDepartment().isBlank() ? request.getDepartment().trim() : null)
                 .isActive(true)
                 .build();
 
@@ -77,8 +79,10 @@ public class DegreeProgrammeService {
         DegreeProgramme programme = degreeProgrammeRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("DegreeProgramme", "id", id));
 
-        String code = request.getCode().trim().toUpperCase();
-        if (degreeProgrammeRepository.existsByCodeAndIdNot(code, id)) {
+        String code = (request.getCode() != null && !request.getCode().isBlank())
+                ? request.getCode().trim().toUpperCase()
+                : null;
+        if (code != null && degreeProgrammeRepository.existsByCodeAndIdNot(code, id)) {
             throw new BadRequestException("Degree programme code already exists: " + code);
         }
 
@@ -86,7 +90,7 @@ public class DegreeProgrammeService {
 
         programme.setCode(code);
         programme.setName(request.getName().trim());
-        programme.setDepartment(request.getDepartment() != null ? request.getDepartment().trim() : null);
+        programme.setDepartment(request.getDepartment() != null && !request.getDepartment().isBlank() ? request.getDepartment().trim() : null);
 
         DegreeProgramme updated = degreeProgrammeRepository.save(programme);
         DegreeProgrammeResponse newState = mapToResponse(updated);

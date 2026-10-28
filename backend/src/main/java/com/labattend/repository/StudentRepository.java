@@ -36,18 +36,20 @@ public interface StudentRepository extends JpaRepository<Student, UUID> {
 
     @Query("SELECT s FROM Student s " +
            "LEFT JOIN s.labGroup lg WHERE " +
-           "(:programmeId IS NULL OR s.degreeProgramme.id = :programmeId) AND " +
-           "(:batchId IS NULL OR s.batch.id = :batchId) AND " +
-           "(:labGroupId IS NULL OR lg.id = :labGroupId) AND " +
+           "(cast(:programmeId as string) IS NULL OR s.degreeProgramme.id = :programmeId) AND " +
+           "(cast(:batchId as string) IS NULL OR s.batch.id = :batchId) AND " +
+           "(cast(:labGroupId as string) IS NULL OR lg.id = :labGroupId) AND " +
            "(:isActive IS NULL OR s.isActive = :isActive) AND " +
-           "(:search IS NULL OR LOWER(s.studentId) LIKE :search OR " +
+           "(cast(:offeredBy as string) IS NULL OR LOWER(s.offeredBy) = :offeredBy) AND " +
+           "(cast(:search as string) IS NULL OR LOWER(s.studentId) LIKE :search OR " +
            "LOWER(s.fullName) LIKE :search OR " +
-           "LOWER(s.email) LIKE :search)")
+           "(s.email IS NOT NULL AND LOWER(s.email) LIKE :search))")
     Page<Student> searchStudents(
             @Param("programmeId") UUID programmeId,
             @Param("batchId") UUID batchId,
             @Param("labGroupId") UUID labGroupId,
             @Param("isActive") Boolean isActive,
+            @Param("offeredBy") String offeredBy,
             @Param("search") String search,
             Pageable pageable
     );

@@ -41,6 +41,7 @@ public class AdminStudentController {
             @RequestParam(required = false) UUID batchId,
             @RequestParam(required = false) UUID labGroupId,
             @RequestParam(required = false) Boolean isActive,
+            @RequestParam(required = false) String offeredBy,
             @RequestParam(required = false) String search,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size,
@@ -48,7 +49,7 @@ public class AdminStudentController {
             @RequestParam(defaultValue = "asc") String sortDir
     ) {
         PageResponse<StudentResponse> result = studentService.getStudents(
-                programmeId, batchId, labGroupId, isActive, search, page, size, sortBy, sortDir
+                programmeId, batchId, labGroupId, isActive, offeredBy, search, page, size, sortBy, sortDir
         );
         return ResponseEntity.ok(ApiResponse.success(result));
     }
@@ -82,6 +83,18 @@ public class AdminStudentController {
         StudentResponse result = studentService.toggleStatus(id);
         String msg = result.getIsActive() ? "Student activated successfully" : "Student deactivated successfully";
         return ResponseEntity.ok(ApiResponse.success(msg, result));
+    }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<ApiResponse<Void>> deleteStudent(@PathVariable UUID id) {
+        studentService.deleteStudent(id);
+        return ResponseEntity.ok(ApiResponse.message("Student deleted successfully"));
+    }
+
+    @DeleteMapping("/bulk")
+    public ResponseEntity<ApiResponse<Void>> deleteStudentsBulk(@RequestBody List<UUID> studentIds) {
+        studentService.deleteStudentsBulk(studentIds);
+        return ResponseEntity.ok(ApiResponse.message(studentIds.size() + " student records deleted successfully"));
     }
 
     @GetMapping("/{id}/attendance")

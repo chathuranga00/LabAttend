@@ -24,6 +24,5 @@ public class BatchRequest {
     @Size(max = 50, message = "Academic year cannot exceed 50 characters")
     private String academicYear;
 
-    @NotNull(message = "Degree programme ID is required")
     private UUID degreeProgrammeId;
 }

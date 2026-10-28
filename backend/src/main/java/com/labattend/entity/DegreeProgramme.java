@@ -14,7 +14,7 @@ import lombok.*;
 @Builder
 public class DegreeProgramme extends BaseEntity {
 
-    @Column(name = "code", nullable = false, unique = true, length = 50)
+    @Column(name = "code", unique = true, length = 50)
     private String code;
 
     @Column(name = "name", nullable = false)
