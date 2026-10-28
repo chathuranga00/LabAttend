@@ -17,11 +17,17 @@ public class Student extends BaseEntity {
     @Column(name = "student_id", nullable = false, unique = true, length = 50)
     private String studentId;
 
+    @Column(name = "title", length = 20)
+    private String title;
+
     @Column(name = "full_name", nullable = false)
     private String fullName;
 
-    @Column(name = "email", nullable = false, unique = true)
+    @Column(name = "email", unique = true)
     private String email;
+
+    @Column(name = "offered_by", length = 100)
+    private String offeredBy;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "degree_programme_id", nullable = false)

@@ -385,8 +385,10 @@ public class QrCodeService {
         return StudentResponse.builder()
                 .id(s.getId())
                 .studentId(s.getStudentId())
+                .title(s.getTitle())
                 .fullName(s.getFullName())
                 .email(s.getEmail())
+                .offeredBy(s.getOfferedBy())
                 .degreeProgrammeId(s.getDegreeProgramme() != null ? s.getDegreeProgramme().getId() : null)
                 .degreeProgrammeCode(s.getDegreeProgramme() != null ? s.getDegreeProgramme().getCode() : null)
                 .degreeProgrammeName(s.getDegreeProgramme() != null ? s.getDegreeProgramme().getName() : null)
@@ -450,9 +452,10 @@ public class QrCodeService {
             zos.finish();
 
             // Audit log bulk download
+            UUID auditEntityId = batchId != null ? batchId : (groupId != null ? groupId : null);
             auditLogService.logAction(
                     "Student",
-                    null,
+                    auditEntityId,
                     "QR_BULK_DOWNLOAD",
                     null,
                     Map.of(
@@ -545,9 +548,10 @@ public class QrCodeService {
             document.close();
 
             // Audit log bulk download
+            UUID auditEntityId = batchId != null ? batchId : (groupId != null ? groupId : null);
             auditLogService.logAction(
                     "Student",
-                    null,
+                    auditEntityId,
                     "QR_BULK_DOWNLOAD",
                     null,
                     Map.of(

@@ -15,8 +15,10 @@ import java.util.UUID;
 public class StudentResponse {
     private UUID id;
     private String studentId;
+    private String title;
     private String fullName;
     private String email;
+    private String offeredBy;
     private UUID degreeProgrammeId;
     private String degreeProgrammeCode;
     private String degreeProgrammeName;

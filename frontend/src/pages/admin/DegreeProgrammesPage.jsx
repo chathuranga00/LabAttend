@@ -78,7 +78,6 @@ export default function DegreeProgrammesPage() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     const errors = {};
-    if (!formData.code.trim()) errors.code = 'Programme code is required';
     if (!formData.name.trim()) errors.name = 'Programme name is required';
 
     if (Object.keys(errors).length > 0) {
@@ -108,10 +107,12 @@ export default function DegreeProgrammesPage() {
     {
       key: 'code',
       header: 'Programme Code',
-      render: (row) => (
+      render: (row) => row.code ? (
         <span className="font-mono font-semibold text-indigo-400 bg-indigo-950/40 px-2.5 py-1 rounded-md border border-indigo-900/40">
           {row.code}
         </span>
+      ) : (
+        <span className="text-slate-500 font-mono text-xs">—</span>
       ),
     },
     {
@@ -233,12 +234,12 @@ export default function DegreeProgrammesPage() {
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         title={editingItem ? 'Edit Degree Programme' : 'Add Degree Programme'}
-        subtitle={editingItem ? `Updating ${editingItem.code}` : 'Register a new institutional degree programme'}
+        subtitle={editingItem ? `Updating ${editingItem.code || editingItem.name}` : 'Register a new institutional degree programme'}
       >
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1.5">
-              Programme Code <span className="text-rose-400">*</span>
+              Programme Code <span className="text-slate-500 font-normal lowercase">(optional)</span>
             </label>
             <input
               type="text"

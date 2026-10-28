@@ -21,14 +21,19 @@ public class StudentRequest {
     @Size(max = 50, message = "Student ID cannot exceed 50 characters")
     private String studentId;
 
+    @Size(max = 20, message = "Title cannot exceed 20 characters")
+    private String title;
+
     @NotBlank(message = "Full name is required")
     @Size(max = 255, message = "Full name cannot exceed 255 characters")
     private String fullName;
 
-    @NotBlank(message = "Email is required")
     @Email(message = "Invalid email format")
     @Size(max = 255, message = "Email cannot exceed 255 characters")
     private String email;
+
+    @Size(max = 100, message = "Offered By cannot exceed 100 characters")
+    private String offeredBy;
 
     @NotNull(message = "Degree programme ID is required")
     private UUID degreeProgrammeId;

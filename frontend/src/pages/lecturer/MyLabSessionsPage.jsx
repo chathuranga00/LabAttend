@@ -315,9 +315,11 @@ export default function MyLabSessionsPage() {
         />
 
         <Pagination
+          pageNumber={page}
           currentPage={page}
           totalPages={totalPages}
           totalElements={totalElements}
+          pageSize={10}
           onPageChange={(p) => setPage(p)}
         />
       </div>

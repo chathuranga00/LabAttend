@@ -60,6 +60,8 @@ export const studentService = {
   getStudentById: (id) => api.get(`/admin/students/${id}`),
   createStudent: (data) => api.post('/admin/students', data),
   updateStudent: (id, data) => api.put(`/admin/students/${id}`, data),
+  deleteStudent: (id) => api.delete(`/admin/students/${id}`),
+  deleteStudentsBulk: (ids) => api.delete('/admin/students/bulk', { data: ids }),
   toggleStatus: (id) => api.patch(`/admin/students/${id}/toggle-status`),
   getAttendanceHistory: (id) => api.get(`/admin/students/${id}/attendance`),
   getQrCode: (id, layout = 'standard') =>

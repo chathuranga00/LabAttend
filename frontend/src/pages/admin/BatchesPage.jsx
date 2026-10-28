@@ -96,7 +96,7 @@ export default function BatchesPage() {
     setFormData({
       batchCode: '',
       academicYear: new Date().getFullYear().toString(),
-      degreeProgrammeId: programmes[0]?.id || '',
+      degreeProgrammeId: '',
     });
     setFormErrors({});
     setIsModalOpen(true);
@@ -128,7 +128,6 @@ export default function BatchesPage() {
     const errors = {};
     if (!formData.batchCode.trim()) errors.batchCode = 'Batch code is required';
     if (!formData.academicYear.trim()) errors.academicYear = 'Academic year is required';
-    if (!formData.degreeProgrammeId) errors.degreeProgrammeId = 'Degree programme is required';
 
     if (Object.keys(errors).length > 0) {
       setFormErrors(errors);
@@ -292,11 +291,21 @@ export default function BatchesPage() {
     },
     {
       key: 'degreeProgramme',
-      header: 'Degree Programme',
+      header: 'Scope / Programme',
       render: (row) => (
         <div>
-          <span className="font-medium text-slate-100">{row.degreeProgrammeCode}</span>
-          <p className="text-xs text-slate-400">{row.degreeProgrammeName}</p>
+          {row.degreeProgrammeName ? (
+            <>
+              {row.degreeProgrammeCode && (
+                <span className="font-medium text-slate-100">{row.degreeProgrammeCode} - </span>
+              )}
+              <span className="text-xs text-slate-300">{row.degreeProgrammeName}</span>
+            </>
+          ) : (
+            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-emerald-950/60 text-emerald-400 border border-emerald-800/60">
+              University-Wide (All Degrees)
+            </span>
+          )}
         </div>
       ),
     },
@@ -390,7 +399,7 @@ export default function BatchesPage() {
               <option value="">All Degree Programmes</option>
               {programmes.map((p) => (
                 <option key={p.id} value={p.id}>
-                  {p.code} - {p.name}
+                  {p.code ? `${p.code} - ` : ''}{p.name}
                 </option>
               ))}
             </select>
@@ -450,30 +459,27 @@ export default function BatchesPage() {
         subtitle={editingItem ? `Updating ${editingItem.batchCode}` : 'Create a cohort for a specific degree programme'}
       >
         <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="p-3 bg-emerald-950/40 border border-emerald-800/40 rounded-xl text-xs text-emerald-300 leading-relaxed">
+            <span className="font-semibold">💡 University-Wide Cohort: </span>
+            <span>Batches without a degree programme are university-wide cohorts. A batch code like <strong className="text-white">2026.3</strong> is already active university-wide and is automatically available to all degree programmes (including Data Science).</span>
+          </div>
           <div>
             <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1.5">
-              Degree Programme <span className="text-rose-400">*</span>
+              Degree Programme <span className="text-slate-500 font-normal lowercase">(optional - leave blank for university-wide batch)</span>
             </label>
             <select
               value={formData.degreeProgrammeId}
               onChange={(e) => setFormData({ ...formData, degreeProgrammeId: e.target.value })}
               disabled={submitting}
-              className={`w-full px-3.5 py-2.5 bg-slate-950/70 border rounded-xl text-sm text-slate-100 focus:outline-none focus:ring-2 transition-all ${
-                formErrors.degreeProgrammeId
-                  ? 'border-rose-500/50 focus:ring-rose-500/20'
-                  : 'border-slate-800 focus:ring-indigo-500/20 focus:border-indigo-500'
-              }`}
+              className="w-full px-3.5 py-2.5 bg-slate-950/70 border border-slate-800 rounded-xl text-sm text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
             >
-              <option value="">Select a programme</option>
+              <option value="">University-Wide (All Degree Programmes)</option>
               {programmes.map((p) => (
                 <option key={p.id} value={p.id}>
-                  {p.code} - {p.name}
+                  {p.code ? `${p.code} - ` : ''}{p.name}
                 </option>
               ))}
             </select>
-            {formErrors.degreeProgrammeId && (
-              <p className="text-xs text-rose-400 mt-1">{formErrors.degreeProgrammeId}</p>
-            )}
           </div>
 
           <div>
@@ -483,7 +489,10 @@ export default function BatchesPage() {
             <input
               type="text"
               value={formData.batchCode}
-              onChange={(e) => setFormData({ ...formData, batchCode: e.target.value.toUpperCase() })}
+              onChange={(e) => {
+                setFormData({ ...formData, batchCode: e.target.value.toUpperCase() });
+                if (formErrors.batchCode) setFormErrors((prev) => ({ ...prev, batchCode: null }));
+              }}
               placeholder="e.g. Y3S1-CS-2024"
               disabled={submitting}
               className={`w-full px-3.5 py-2.5 bg-slate-950/70 border rounded-xl text-sm font-mono text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 transition-all ${
@@ -502,7 +511,10 @@ export default function BatchesPage() {
             <input
               type="text"
               value={formData.academicYear}
-              onChange={(e) => setFormData({ ...formData, academicYear: e.target.value })}
+              onChange={(e) => {
+                setFormData({ ...formData, academicYear: e.target.value });
+                if (formErrors.academicYear) setFormErrors((prev) => ({ ...prev, academicYear: null }));
+              }}
               placeholder="e.g. 2024"
               disabled={submitting}
               className={`w-full px-3.5 py-2.5 bg-slate-950/70 border rounded-xl text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 transition-all ${

@@ -15,7 +15,8 @@ import {
   Download,
   RefreshCw,
   Printer,
-  ShieldAlert
+  ShieldAlert,
+  Building2
 } from 'lucide-react';
 import { studentService, triggerBlobDownload } from '../../services/academicService';
 import { useToast } from '../../context/ToastContext';
@@ -189,7 +190,10 @@ export default function StudentDetailsPage() {
             </div>
             <div>
               <div className="flex items-center gap-3">
-                <h1 className="text-2xl font-bold text-white tracking-tight">{student.fullName}</h1>
+                <h1 className="text-2xl font-bold text-white tracking-tight">
+                  {student.title ? <span className="text-emerald-400 font-semibold mr-2">{student.title}</span> : null}
+                  {student.fullName}
+                </h1>
                 <span className="font-mono font-bold text-emerald-400 bg-emerald-950/60 border border-emerald-800/60 px-2.5 py-0.5 rounded text-xs">
                   {student.studentId}
                 </span>
@@ -203,12 +207,18 @@ export default function StudentDetailsPage() {
                   {student.isActive ? 'Active Student' : 'Inactive'}
                 </span>
               </div>
-              <p className="text-sm text-slate-400 mt-1">{student.email}</p>
+              <p className="text-sm text-slate-400 mt-1">{student.email || <span className="text-slate-500 italic">No email registered</span>}</p>
               <div className="flex flex-wrap items-center gap-4 mt-3 text-xs text-slate-300">
                 <span className="flex items-center gap-1.5 bg-slate-800/70 px-2.5 py-1 rounded-lg">
                   <GraduationCap className="h-3.5 w-3.5 text-cyan-400" />
-                  {student.degreeProgrammeCode} — {student.degreeProgrammeName}
+                  {student.degreeProgrammeCode ? `${student.degreeProgrammeCode} — ` : ''}{student.degreeProgrammeName}
                 </span>
+                {student.offeredBy && (
+                  <span className="flex items-center gap-1.5 bg-teal-950/60 border border-teal-800/50 text-teal-300 px-2.5 py-1 rounded-lg font-medium">
+                    <Building2 className="h-3.5 w-3.5 text-teal-400" />
+                    Offered By: {student.offeredBy}
+                  </span>
+                )}
                 <span className="flex items-center gap-1.5 bg-slate-800/70 px-2.5 py-1 rounded-lg">
                   <Calendar className="h-3.5 w-3.5 text-teal-400" />
                   Cohort: {student.batchCode} ({student.batchAcademicYear || 'Current'})

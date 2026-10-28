@@ -15,14 +15,20 @@ import java.util.UUID;
 @Repository
 public interface BatchRepository extends JpaRepository<Batch, UUID> {
     Optional<Batch> findByBatchCode(String batchCode);
+    Optional<Batch> findByBatchCodeIgnoreCase(String batchCode);
+    Optional<Batch> findByDegreeProgrammeIdAndBatchCodeIgnoreCase(UUID degreeProgrammeId, String batchCode);
     boolean existsByBatchCode(String batchCode);
+    boolean existsByBatchCodeIgnoreCase(String batchCode);
     boolean existsByBatchCodeAndIdNot(String batchCode, UUID id);
+    boolean existsByBatchCodeIgnoreCaseAndIdNot(String batchCode, UUID id);
+    boolean existsByDegreeProgrammeIdAndBatchCodeIgnoreCase(UUID degreeProgrammeId, String batchCode);
+    boolean existsByDegreeProgrammeIdAndBatchCodeIgnoreCaseAndIdNot(UUID degreeProgrammeId, String batchCode, UUID id);
     List<Batch> findByDegreeProgrammeId(UUID degreeProgrammeId);
     List<Batch> findByIsActiveTrueOrderByBatchCodeAsc();
 
     @Query("SELECT b FROM Batch b WHERE " +
-           "(:programmeId IS NULL OR b.degreeProgramme.id = :programmeId) AND " +
-           "(LOWER(b.batchCode) LIKE :search OR LOWER(b.academicYear) LIKE :search)")
+           "(cast(:programmeId as string) IS NULL OR b.degreeProgramme IS NULL OR b.degreeProgramme.id = :programmeId) AND " +
+           "(cast(:search as string) IS NULL OR LOWER(b.batchCode) LIKE :search OR LOWER(b.academicYear) LIKE :search)")
     Page<Batch> searchBatches(@Param("programmeId") UUID programmeId, @Param("search") String search, Pageable pageable);
 
     Page<Batch> findByDegreeProgrammeId(UUID degreeProgrammeId, Pageable pageable);

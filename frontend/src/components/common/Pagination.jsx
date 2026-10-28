@@ -2,7 +2,8 @@ import React from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 
 export default function Pagination({
-  pageNumber = 0,
+  currentPage,
+  pageNumber,
   totalPages = 0,
   totalElements = 0,
   pageSize = 10,
@@ -10,8 +11,9 @@ export default function Pagination({
 }) {
   if (totalElements === 0) return null;
 
-  const startRecord = pageNumber * pageSize + 1;
-  const endRecord = Math.min((pageNumber + 1) * pageSize, totalElements);
+  const activePage = pageNumber ?? currentPage ?? 0;
+  const startRecord = activePage * pageSize + 1;
+  const endRecord = Math.min((activePage + 1) * pageSize, totalElements);
 
   return (
     <div className="flex flex-col sm:flex-row items-center justify-between gap-4 px-6 py-4 border-t border-slate-800 text-sm text-slate-400">
@@ -24,8 +26,8 @@ export default function Pagination({
       <div className="flex items-center gap-2">
         <button
           type="button"
-          onClick={() => onPageChange(pageNumber - 1)}
-          disabled={pageNumber === 0}
+          onClick={() => onPageChange(Math.max(0, activePage - 1))}
+          disabled={activePage <= 0}
           className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-slate-800 bg-slate-900/60 text-slate-300 hover:bg-slate-800 hover:text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
         >
           <ChevronLeft className="w-4 h-4" />
@@ -33,13 +35,13 @@ export default function Pagination({
         </button>
 
         <span className="px-2 text-xs font-medium text-slate-500">
-          Page {pageNumber + 1} of {Math.max(1, totalPages)}
+          Page {activePage + 1} of {Math.max(1, totalPages)}
         </span>
 
         <button
           type="button"
-          onClick={() => onPageChange(pageNumber + 1)}
-          disabled={pageNumber >= totalPages - 1}
+          onClick={() => onPageChange(Math.min(totalPages - 1, activePage + 1))}
+          disabled={activePage >= totalPages - 1}
           className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-slate-800 bg-slate-900/60 text-slate-300 hover:bg-slate-800 hover:text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
         >
           <span>Next</span>
