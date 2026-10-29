@@ -1,18 +1,18 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { 
-  Bell, 
-  BellRing, 
-  Check, 
-  CheckCheck, 
-  Trash2, 
-  X, 
-  AlertTriangle, 
-  CheckCircle2, 
-  Info, 
-  CalendarClock, 
-  Users, 
-  ShieldCheck, 
+import {
+  Bell,
+  BellRing,
+  Check,
+  CheckCheck,
+  Trash2,
+  X,
+  AlertTriangle,
+  CheckCircle2,
+  Info,
+  CalendarClock,
+  Users,
+  ShieldCheck,
   Sparkles,
   ExternalLink
 } from 'lucide-react';
@@ -245,11 +245,10 @@ export default function NotificationBell() {
                 key={tab.id}
                 type="button"
                 onClick={() => setActiveTab(tab.id)}
-                className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold whitespace-nowrap transition ${
-                  activeTab === tab.id
+                className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold whitespace-nowrap transition ${activeTab === tab.id
                     ? 'bg-slate-800 text-teal-400 border border-slate-700 shadow-sm'
                     : 'text-slate-400 hover:text-slate-200'
-                }`}
+                  }`}
               >
                 {tab.label}
               </button>
@@ -271,11 +270,10 @@ export default function NotificationBell() {
                 <div
                   key={n.id}
                   onClick={() => handleNotificationClick(n)}
-                  className={`group relative p-3 rounded-xl transition cursor-pointer flex items-start gap-3 ${
-                    !n.read
+                  className={`group relative p-3 rounded-xl transition cursor-pointer flex items-start gap-3 ${!n.read
                       ? 'bg-slate-800/40 hover:bg-slate-800/70'
                       : 'hover:bg-slate-850/50 opacity-80'
-                  }`}
+                    }`}
                 >
                   <div className="mt-0.5 p-1.5 rounded-lg bg-slate-950/80 border border-slate-800">
                     {getNotificationIcon(n.type, n.category)}
@@ -345,3 +343,4 @@ export default function NotificationBell() {
     </div>
   );
 }
+
