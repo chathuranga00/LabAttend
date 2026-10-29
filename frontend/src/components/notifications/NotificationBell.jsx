@@ -151,7 +151,7 @@ export default function NotificationBell() {
         onClick={() => setIsOpen((prev) => !prev)}
         aria-label="View notifications"
         aria-expanded={isOpen}
-        className="min-h-[44px] min-w-[44px] sm:min-w-0 relative inline-flex items-center justify-center p-2 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 text-slate-300 border border-slate-700/50 transition-colors focus:outline-none focus:ring-2 focus:ring-teal-500/50"
+        className="h-10 w-10 min-h-[40px] min-w-[40px] relative inline-flex items-center justify-center p-2 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 text-slate-300 border border-slate-700/50 transition-colors focus:outline-none focus:ring-2 focus:ring-teal-500/50 shrink-0"
       >
         <Bell className="h-4 w-4" />
         {unreadCount > 0 && (
@@ -173,7 +173,7 @@ export default function NotificationBell() {
       {isOpen && (
         <div
           ref={panelRef}
-          className="fixed sm:absolute inset-x-3 bottom-3 sm:bottom-auto sm:inset-x-auto sm:right-0 sm:top-full sm:mt-2 w-auto sm:w-96 max-h-[85vh] sm:max-h-[560px] bg-slate-900 border border-slate-800 rounded-2xl sm:rounded-3xl shadow-2xl z-50 flex flex-col overflow-hidden animate-in fade-in slide-in-from-bottom-4 sm:slide-in-from-top-2 duration-200"
+          className="fixed sm:absolute inset-x-3 top-16 sm:top-full sm:inset-x-auto sm:right-0 sm:mt-2 w-auto sm:w-96 max-h-[calc(100dvh-5.5rem)] sm:max-h-[560px] bg-slate-900 border border-slate-800 rounded-2xl sm:rounded-3xl shadow-2xl z-50 flex flex-col overflow-hidden animate-in fade-in slide-in-from-top-3 duration-200"
         >
           {/* Header */}
           <div className="p-4 border-b border-slate-800/80 flex items-center justify-between shrink-0 bg-slate-900/90 backdrop-blur-md">
