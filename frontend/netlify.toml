@@ -2,6 +2,11 @@
   publish = "dist"
   command = "npm run build"
 
+[build.environment]
+  # VITE_API_BASE_URL is the public backend URL that Vite inlines into the
+  # client bundle by design; it is not a secret, so skip it in secrets scanning.
+  SECRETS_SCAN_OMIT_KEYS = "VITE_API_BASE_URL"
+
 # SPA Fallback rewrite
 [[redirects]]
   from = "/*"
