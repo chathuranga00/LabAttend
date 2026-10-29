@@ -495,3 +495,20 @@ html.light .recharts-default-tooltip {
 html.light .recharts-tooltip-item {
   color: #0f172a !important;
 }
+
+
+/* 15. Hide Netlify Deploy Feedback & Floating Badges */
+#netlify-badge,
+.netlify-badge,
+netlify-drawer,
+[data-netlify-badge],
+iframe[src*="netlify"],
+div[data-netlify-deployed-preview],
+div[style*="z-index: 2147483647"],
+div:has(> a[href*="netlify.com"]),
+div:has(> svg + a[href*="netlify.com"]) {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
