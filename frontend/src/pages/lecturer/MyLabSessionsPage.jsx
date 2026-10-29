@@ -12,11 +12,15 @@ import {
   Building, 
   Users,
   CheckCircle2,
-  AlertCircle
+  AlertCircle,
+  Pencil,
+  Trash2,
+  AlertTriangle,
+  Loader2
 } from 'lucide-react';
 import { sessionService } from '../../services/sessionService';
 import { useToast } from '../../context/ToastContext';
-import { DataTable, Pagination, SearchBar } from '../../components/common';
+import { DataTable, Pagination, SearchBar, Modal } from '../../components/common';
 
 export default function MyLabSessionsPage() {
   const navigate = useNavigate();
@@ -35,6 +39,26 @@ export default function MyLabSessionsPage() {
   const [page, setPage] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
   const [totalElements, setTotalElements] = useState(0);
+
+  // Form options (for editing halls)
+  const [halls, setHalls] = useState([]);
+  const [hallsLoading, setHallsLoading] = useState(false);
+
+  // Edit Modal State
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [editingSession, setEditingSession] = useState(null);
+  const [editForm, setEditForm] = useState({
+    hallId: '',
+    sessionDate: '',
+    startTime: '',
+    endTime: '',
+  });
+  const [editLoading, setEditLoading] = useState(false);
+
+  // Delete Modal State
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [deletingSession, setDeletingSession] = useState(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
 
   const fetchSessions = useCallback(async () => {
     try {
@@ -66,6 +90,21 @@ export default function MyLabSessionsPage() {
     fetchSessions();
   }, [fetchSessions]);
 
+  const loadHalls = async () => {
+    if (halls.length > 0) return;
+    try {
+      setHallsLoading(true);
+      const res = await sessionService.getFormOptions();
+      if (res.success && res.data && res.data.halls) {
+        setHalls(res.data.halls);
+      }
+    } catch (err) {
+      console.error('Failed to load halls', err);
+    } finally {
+      setHallsLoading(false);
+    }
+  };
+
   const handleStartSession = async (sessionId) => {
     try {
       const res = await sessionService.startSession(sessionId);
@@ -73,6 +112,83 @@ export default function MyLabSessionsPage() {
       fetchSessions();
     } catch (err) {
       showToast(err.message || 'Failed to start session', 'error');
+    }
+  };
+
+  // Open Edit Dialog
+  const openEditModal = async (session) => {
+    setEditingSession(session);
+    setEditForm({
+      hallId: session.hallId || '',
+      sessionDate: session.sessionDate || '',
+      startTime: session.startTime ? session.startTime.substring(0, 5) : '',
+      endTime: session.endTime ? session.endTime.substring(0, 5) : '',
+    });
+    setEditModalOpen(true);
+    await loadHalls();
+  };
+
+  // Save Edit
+  const handleSaveEdit = async (e) => {
+    e.preventDefault();
+    if (!editForm.hallId) {
+      showToast('Please select a laboratory hall', 'error');
+      return;
+    }
+    if (!editForm.sessionDate) {
+      showToast('Session date is required', 'error');
+      return;
+    }
+    if (!editForm.startTime || !editForm.endTime) {
+      showToast('Start and end times are required', 'error');
+      return;
+    }
+    if (editForm.endTime <= editForm.startTime) {
+      showToast('End time must be strictly after start time', 'error');
+      return;
+    }
+
+    try {
+      setEditLoading(true);
+      const payload = {
+        hallId: editForm.hallId,
+        sessionDate: editForm.sessionDate,
+        startTime: editForm.startTime.length === 5 ? `${editForm.startTime}:00` : editForm.startTime,
+        endTime: editForm.endTime.length === 5 ? `${editForm.endTime}:00` : editForm.endTime,
+      };
+
+      const res = await sessionService.updateSession(editingSession.id, payload);
+      showToast(res.message || 'Session updated successfully', 'success');
+      setEditModalOpen(false);
+      setEditingSession(null);
+      fetchSessions();
+    } catch (err) {
+      showToast(err.message || 'Failed to update session', 'error');
+    } finally {
+      setEditLoading(false);
+    }
+  };
+
+  // Open Delete Dialog
+  const openDeleteModal = (session) => {
+    setDeletingSession(session);
+    setDeleteModalOpen(true);
+  };
+
+  // Confirm Delete
+  const handleConfirmDelete = async () => {
+    if (!deletingSession) return;
+    try {
+      setDeleteLoading(true);
+      const res = await sessionService.deleteSession(deletingSession.id);
+      showToast(res.message || 'Session deleted successfully', 'success');
+      setDeleteModalOpen(false);
+      setDeletingSession(null);
+      fetchSessions();
+    } catch (err) {
+      showToast(err.message || 'Failed to delete session', 'error');
+    } finally {
+      setDeleteLoading(false);
     }
   };
 
@@ -174,13 +290,14 @@ export default function MyLabSessionsPage() {
       render: (item) => {
         const isDraft = item.status === 'DRAFT' || item.status === 'SCHEDULED';
         const isActive = item.status === 'ACTIVE';
+        const isFinalized = item.status === 'FINALIZED' || item.status === 'CLOSED';
 
         return (
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1.5 flex-wrap">
             {isDraft && (
               <button
                 onClick={() => handleStartSession(item.id)}
-                className="p-1.5 rounded-lg bg-emerald-950/50 hover:bg-emerald-900/60 text-emerald-400 border border-emerald-800/60 transition"
+                className="min-w-[36px] min-h-[36px] p-2 rounded-lg bg-emerald-950/50 hover:bg-emerald-900/60 text-emerald-400 border border-emerald-800/60 transition flex items-center justify-center"
                 title="Start Session (DRAFT -> ACTIVE)"
               >
                 <Play className="h-4 w-4 fill-current" />
@@ -190,16 +307,36 @@ export default function MyLabSessionsPage() {
             {isActive && (
               <Link
                 to={`/lecturer/scanner?sessionId=${item.id}`}
-                className="p-1.5 rounded-lg bg-cyan-950/50 hover:bg-cyan-900/60 text-cyan-400 border border-cyan-800/60 transition"
+                className="min-w-[36px] min-h-[36px] p-2 rounded-lg bg-cyan-950/50 hover:bg-cyan-900/60 text-cyan-400 border border-cyan-800/60 transition flex items-center justify-center"
                 title="Launch Live QR Scanner"
               >
                 <QrCode className="h-4 w-4" />
               </Link>
             )}
 
+            {!isFinalized && (
+              <button
+                onClick={() => openEditModal(item)}
+                className="min-w-[36px] min-h-[36px] p-2 rounded-lg bg-amber-950/50 hover:bg-amber-900/60 text-amber-400 border border-amber-800/60 transition flex items-center justify-center"
+                title="Edit Session (Hall, Schedule)"
+              >
+                <Pencil className="h-4 w-4" />
+              </button>
+            )}
+
+            {!isFinalized && (
+              <button
+                onClick={() => openDeleteModal(item)}
+                className="min-w-[36px] min-h-[36px] p-2 rounded-lg bg-rose-950/50 hover:bg-rose-900/60 text-rose-400 border border-rose-800/60 transition flex items-center justify-center"
+                title="Delete Session"
+              >
+                <Trash2 className="h-4 w-4" />
+              </button>
+            )}
+
             <button
               onClick={() => navigate(`/lecturer/sessions/${item.id}`)}
-              className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition"
+              className="min-w-[36px] min-h-[36px] p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition flex items-center justify-center"
               title="View Session Details & Roster"
             >
               <Eye className="h-4 w-4" />
@@ -211,7 +348,7 @@ export default function MyLabSessionsPage() {
   ];
 
   return (
-    <div className="p-8 space-y-6">
+    <div className="p-4 sm:p-6 md:p-8 space-y-6">
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
@@ -323,6 +460,191 @@ export default function MyLabSessionsPage() {
           onPageChange={(p) => setPage(p)}
         />
       </div>
+
+      {/* EDIT SESSION MODAL */}
+      <Modal
+        isOpen={editModalOpen}
+        onClose={() => {
+          if (!editLoading) {
+            setEditModalOpen(false);
+            setEditingSession(null);
+          }
+        }}
+        title="Edit Lab Session"
+        subtitle={editingSession ? `${editingSession.sessionCode} • ${editingSession.moduleCode} (${editingSession.moduleName})` : ''}
+      >
+        {editingSession && (
+          <form onSubmit={handleSaveEdit} className="space-y-4">
+            {/* Status note */}
+            <div className="flex items-center justify-between p-3 rounded-xl bg-slate-950/60 border border-slate-800 text-xs">
+              <span className="text-slate-400">Current Session State:</span>
+              <span className="font-bold text-teal-400 px-2 py-0.5 rounded bg-teal-950/60 border border-teal-800/40">
+                {editingSession.status}
+              </span>
+            </div>
+
+            {/* Hall Selector */}
+            <div>
+              <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                Laboratory Hall *
+              </label>
+              <select
+                value={editForm.hallId}
+                onChange={(e) => setEditForm({ ...editForm, hallId: e.target.value })}
+                required
+                disabled={hallsLoading}
+                className="w-full px-3 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-sm text-slate-100 focus:outline-none focus:border-teal-500 font-mono"
+              >
+                <option value="">Select Laboratory Hall</option>
+                {halls.map((h) => (
+                  <option key={h.id} value={h.id}>
+                    {h.hallCode} — {h.name} (Capacity: {h.capacity})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Date */}
+            <div>
+              <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                Session Date *
+              </label>
+              <input
+                type="date"
+                value={editForm.sessionDate}
+                onChange={(e) => setEditForm({ ...editForm, sessionDate: e.target.value })}
+                required
+                className="w-full px-3 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-sm text-slate-100 focus:outline-none focus:border-teal-500 font-mono"
+              />
+            </div>
+
+            {/* Timing Slots */}
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                  Start Time *
+                </label>
+                <input
+                  type="time"
+                  value={editForm.startTime}
+                  onChange={(e) => setEditForm({ ...editForm, startTime: e.target.value })}
+                  required
+                  className="w-full px-3 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-sm text-slate-100 focus:outline-none focus:border-teal-500 font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                  End Time *
+                </label>
+                <input
+                  type="time"
+                  value={editForm.endTime}
+                  onChange={(e) => setEditForm({ ...editForm, endTime: e.target.value })}
+                  required
+                  className="w-full px-3 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-sm text-slate-100 focus:outline-none focus:border-teal-500 font-mono"
+                />
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-800">
+              <button
+                type="button"
+                onClick={() => {
+                  setEditModalOpen(false);
+                  setEditingSession(null);
+                }}
+                disabled={editLoading}
+                className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={editLoading}
+                className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-teal-500 to-cyan-500 hover:from-teal-600 hover:to-cyan-600 text-slate-950 text-xs font-bold shadow-lg shadow-teal-500/20 transition disabled:opacity-50"
+              >
+                {editLoading && <Loader2 className="w-4 h-4 animate-spin" />}
+                <span>{editLoading ? 'Saving...' : 'Save Changes'}</span>
+              </button>
+            </div>
+          </form>
+        )}
+      </Modal>
+
+      {/* DELETE SESSION MODAL */}
+      <Modal
+        isOpen={deleteModalOpen}
+        onClose={() => {
+          if (!deleteLoading) {
+            setDeleteModalOpen(false);
+            setDeletingSession(null);
+          }
+        }}
+        title="Delete Lab Session"
+        subtitle="Permanent ledger removal"
+      >
+        {deletingSession && (
+          <div className="space-y-4">
+            <div className="p-4 rounded-xl bg-rose-950/40 border border-rose-800/60 text-rose-300 flex items-start gap-3">
+              <AlertTriangle className="w-5 h-5 flex-shrink-0 mt-0.5 text-rose-400" />
+              <div className="text-xs leading-relaxed">
+                <p className="font-bold text-rose-200 mb-1">Are you sure you want to delete this session?</p>
+                <p>
+                  You are about to permanently remove session{' '}
+                  <strong className="text-white font-mono">{deletingSession.sessionCode}</strong>. 
+                  All roster setup and pending attendance allocations for this session will be deleted. This action cannot be undone.
+                </p>
+              </div>
+            </div>
+
+            <div className="p-3 bg-slate-950 rounded-xl border border-slate-800 text-xs space-y-1.5 font-mono">
+              <div className="flex justify-between text-slate-400">
+                <span>Module:</span>
+                <span className="text-slate-200">{deletingSession.moduleCode} — {deletingSession.moduleName}</span>
+              </div>
+              <div className="flex justify-between text-slate-400">
+                <span>Batch / Group:</span>
+                <span className="text-slate-200">
+                  {deletingSession.batchCode} {deletingSession.labGroupName ? `(Group ${deletingSession.labGroupName})` : '(Whole Batch)'}
+                </span>
+              </div>
+              <div className="flex justify-between text-slate-400">
+                <span>Date & Time:</span>
+                <span className="text-slate-200">{deletingSession.sessionDate} • {deletingSession.startTime} - {deletingSession.endTime}</span>
+              </div>
+              <div className="flex justify-between text-slate-400">
+                <span>Status:</span>
+                <span className="text-amber-400 font-bold">{deletingSession.status}</span>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-800">
+              <button
+                type="button"
+                onClick={() => {
+                  setDeleteModalOpen(false);
+                  setDeletingSession(null);
+                }}
+                disabled={deleteLoading}
+                className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDelete}
+                disabled={deleteLoading}
+                className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-lg shadow-rose-600/20 transition disabled:opacity-50"
+              >
+                {deleteLoading && <Loader2 className="w-4 h-4 animate-spin" />}
+                <span>{deleteLoading ? 'Deleting...' : 'Delete Session'}</span>
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }

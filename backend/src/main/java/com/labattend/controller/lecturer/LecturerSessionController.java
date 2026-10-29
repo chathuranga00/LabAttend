@@ -3,6 +3,7 @@ package com.labattend.controller.lecturer;
 import com.labattend.dto.request.AttendanceScanRequest;
 import com.labattend.dto.request.LabSessionCancelRequest;
 import com.labattend.dto.request.LabSessionCreateRequest;
+import com.labattend.dto.request.LabSessionUpdateRequest;
 import com.labattend.dto.request.ManualAttendanceRequest;
 import com.labattend.dto.response.*;
 import com.labattend.entity.enums.SessionStatus;
@@ -72,6 +73,25 @@ public class LecturerSessionController {
     ) {
         LabSessionResponse result = labSessionService.getLecturerSessionById(userDetails.getId(), id);
         return ResponseEntity.ok(ApiResponse.success(result));
+    }
+
+    @PutMapping("/{id}")
+    public ResponseEntity<ApiResponse<LabSessionResponse>> updateSession(
+            @PathVariable UUID id,
+            @Valid @RequestBody LabSessionUpdateRequest request,
+            @AuthenticationPrincipal CustomUserDetails userDetails
+    ) {
+        LabSessionResponse result = labSessionService.updateSession(userDetails.getId(), id, request);
+        return ResponseEntity.ok(ApiResponse.success("Lab session updated successfully", result));
+    }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<ApiResponse<Void>> deleteSession(
+            @PathVariable UUID id,
+            @AuthenticationPrincipal CustomUserDetails userDetails
+    ) {
+        labSessionService.deleteSession(userDetails.getId(), id);
+        return ResponseEntity.ok(ApiResponse.success("Lab session deleted successfully", null));
     }
 
     @PostMapping("/{id}/start")

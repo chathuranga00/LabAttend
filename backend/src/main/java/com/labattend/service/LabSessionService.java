@@ -2,6 +2,7 @@ package com.labattend.service;
 
 import com.labattend.dto.request.LabSessionCancelRequest;
 import com.labattend.dto.request.LabSessionCreateRequest;
+import com.labattend.dto.request.LabSessionUpdateRequest;
 import com.labattend.dto.request.SessionFinalizeRequest;
 import com.labattend.dto.response.LabSessionResponse;
 import com.labattend.dto.response.LecturerDashboardResponse;
@@ -340,8 +341,130 @@ public class LabSessionService {
         return response;
     }
 
+
     // =========================================================================
-    // 4b. FINALIZE LAB SESSION (ACTIVE -> FINALIZED with Pessimistic Lock)
+    // 4a. UPDATE LAB SESSION (DRAFT/SCHEDULED/ACTIVE only)
+    // =========================================================================
+    public LabSessionResponse updateSession(UUID userId, UUID sessionId, LabSessionUpdateRequest request) {
+        Lecturer lecturer = getLecturerByUserId(userId);
+        LabSession session = labSessionRepository.findById(sessionId)
+                .orElseThrow(() -> new ResourceNotFoundException("LabSession", "id", sessionId));
+
+        if (!session.getLecturer().getId().equals(lecturer.getId())) {
+            throw new BadRequestException("Access denied. You can only update your own lab sessions.");
+        }
+
+        if (session.getStatus() == SessionStatus.FINALIZED || session.getStatus() == SessionStatus.CLOSED) {
+            throw new BadRequestException("Cannot edit a finalized session. Historical attendance records are immutable.");
+        }
+
+        if (session.getStatus() == SessionStatus.CANCELLED) {
+            throw new BadRequestException("Cannot edit a cancelled session.");
+        }
+
+        LaboratoryHall hall = laboratoryHallRepository.findById(request.getHallId())
+                .orElseThrow(() -> new ResourceNotFoundException("LaboratoryHall", "id", request.getHallId()));
+
+        if (!Boolean.TRUE.equals(hall.getIsActive())) {
+            throw new BadRequestException("Selected laboratory hall is inactive: " + hall.getHallCode());
+        }
+
+        if (!request.getEndTime().isAfter(request.getStartTime())) {
+            throw new BadRequestException("End time must be strictly after start time");
+        }
+
+        if (session.getStatus() != SessionStatus.ACTIVE) {
+            LocalDate todayColombo = LocalDate.now(COLOMBO_ZONE);
+            if (request.getSessionDate().isBefore(todayColombo)) {
+                throw new BadRequestException("Session date cannot be in the past (" + request.getSessionDate() + ")");
+            }
+        }
+
+        // Conflicting hall session check
+        List<LabSession> hallConflicts = labSessionRepository.findConflictingHallSessions(
+                hall.getId(), request.getSessionDate(), request.getStartTime(), request.getEndTime(), session.getId()
+        );
+        if (!hallConflicts.isEmpty()) {
+            LabSession conflict = hallConflicts.get(0);
+            throw new BadRequestException(String.format(
+                    "Hall conflict: '%s' is already occupied by session '%s' (%s - %s)",
+                    hall.getHallCode(), conflict.getSessionCode(), conflict.getStartTime(), conflict.getEndTime()
+            ));
+        }
+
+        // Conflicting lecturer schedule check
+        List<LabSession> lecturerConflicts = labSessionRepository.findConflictingLecturerSessions(
+                lecturer.getId(), request.getSessionDate(), request.getStartTime(), request.getEndTime(), session.getId()
+        );
+        if (!lecturerConflicts.isEmpty()) {
+            LabSession conflict = lecturerConflicts.get(0);
+            throw new BadRequestException(String.format(
+                    "Lecturer schedule conflict: You already have session '%s' scheduled from %s to %s",
+                    conflict.getSessionCode(), conflict.getStartTime(), conflict.getEndTime()
+            ));
+        }
+
+        // Conflicting batch/group schedule check
+        List<LabSession> batchConflicts = labSessionRepository.findConflictingBatchOrGroupSessions(
+                session.getBatch().getId(), session.getLabGroup() != null ? session.getLabGroup().getId() : null,
+                request.getSessionDate(), request.getStartTime(), request.getEndTime(), session.getId()
+        );
+        if (!batchConflicts.isEmpty()) {
+            LabSession conflict = batchConflicts.get(0);
+            String scope = conflict.getLabGroup() != null ? "Group " + conflict.getLabGroup().getGroupName() : "Whole Batch";
+            throw new BadRequestException(String.format(
+                    "Schedule conflict: Batch '%s' (%s) already has session '%s' scheduled from %s to %s",
+                    session.getBatch().getBatchCode(), scope, conflict.getSessionCode(), conflict.getStartTime(), conflict.getEndTime()
+            ));
+        }
+
+        session.setHall(hall);
+        session.setSessionDate(request.getSessionDate());
+        session.setStartTime(request.getStartTime());
+        session.setEndTime(request.getEndTime());
+
+        LabSession updated = labSessionRepository.save(session);
+        LabSessionResponse response = enrichSessionResponse(updated);
+
+        auditLogService.logAction("LabSession", sessionId, "UPDATE_SESSION", null, response);
+        return response;
+    }
+
+    // =========================================================================
+    // 4b. DELETE LAB SESSION (DRAFT/SCHEDULED/ACTIVE/CANCELLED only)
+    // =========================================================================
+    public void deleteSession(UUID userId, UUID sessionId) {
+        Lecturer lecturer = getLecturerByUserId(userId);
+        LabSession session = labSessionRepository.findById(sessionId)
+                .orElseThrow(() -> new ResourceNotFoundException("LabSession", "id", sessionId));
+
+        if (!session.getLecturer().getId().equals(lecturer.getId())) {
+            throw new BadRequestException("Access denied. You can only delete your own lab sessions.");
+        }
+
+        if (session.getStatus() == SessionStatus.FINALIZED || session.getStatus() == SessionStatus.CLOSED) {
+            throw new BadRequestException("Cannot delete a finalized session. Historical attendance records are immutable.");
+        }
+
+        String sessionCode = session.getSessionCode();
+
+        List<AttendanceRecord> records = attendanceRecordRepository.findBySessionId(sessionId);
+        if (!records.isEmpty()) {
+            attendanceRecordRepository.deleteAll(records);
+        }
+
+        List<SessionStudent> sessionStudents = sessionStudentRepository.findBySessionId(sessionId);
+        if (!sessionStudents.isEmpty()) {
+            sessionStudentRepository.deleteAll(sessionStudents);
+        }
+
+        labSessionRepository.delete(session);
+
+        auditLogService.logAction("LabSession", sessionId, "DELETE_SESSION", sessionCode, null);
+    }
+
+    // =========================================================================
+    // 4c. FINALIZE LAB SESSION (ACTIVE -> FINALIZED with Pessimistic Lock)
     // =========================================================================
     public SessionSummaryResponse finalizeSession(UUID userId, UUID sessionId, SessionFinalizeRequest request) {
         Lecturer lecturer = getLecturerByUserId(userId);
