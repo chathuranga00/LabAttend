@@ -149,6 +149,22 @@ Detailed, step-by-step instructions for deploying to cloud hosts are available i
 
 ---
 
+## Progressive Web App (PWA): Install on Your Phone
+
+LabAttend is a certified Progressive Web App (PWA) with native-like mobile execution, responsive camera layout, and offline app shell caching.
+
+### How to Install
+- **Android (Chrome / Edge)**: Visit the deployed HTTPS site. Tap the **"Install LabAttend"** prompt banner at the bottom or open browser menu (`⋮`) -> **"Install app"** / **"Add to Home screen"**.
+- **iPhone & iPad (Safari)**: Open the site in Safari, tap the **Share** button (`[↑]`) -> scroll down and tap **"Add to Home Screen"** -> tap **Add**.
+- **Desktop (Chrome / Edge)**: Click the **Install** icon in the browser address bar omnibar or select **"Install LabAttend"** from the user menu.
+
+### Troubleshooting
+- **Camera Blocked**: In Android Chrome, tap the lock/tune icon left of the address bar -> Permissions -> Camera -> Allow. In iOS Safari, open Settings -> Safari -> Camera -> Allow, or tap `aA` in the URL bar -> Website Settings -> Camera -> Allow.
+- **Old Version Cached**: When a new version deploys, tap **"Refresh Now"** on the update prompt toast. To force-clear, unregister the service worker in Chrome DevTools -> Application -> Service Workers.
+- **Install Button Not Showing**: The install button is hidden if already running in standalone mode or served over insecure HTTP. iOS Safari does not support `beforeinstallprompt` (use Share -> Add to Home Screen).
+
+---
+
 ## Post-Deployment Verification Checklist
 
 Execute this checklist immediately after deploying to your live production URLs:

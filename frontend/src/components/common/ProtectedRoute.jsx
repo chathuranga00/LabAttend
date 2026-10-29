@@ -9,7 +9,7 @@ export default function ProtectedRoute({ allowedRoles, children }) {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-slate-300">
+      <div className="min-h-[100dvh] bg-slate-950 flex flex-col items-center justify-center text-slate-300 p-4 text-center">
         <RefreshCw className="h-8 w-8 text-emerald-400 animate-spin mb-4" />
         <p className="text-sm tracking-wide">Validating authentication credentials...</p>
       </div>

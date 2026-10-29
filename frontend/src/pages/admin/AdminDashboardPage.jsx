@@ -658,8 +658,10 @@ export default function AdminDashboardPage() {
                   <XAxis 
                     dataKey="sessionDate" 
                     stroke="#64748b" 
-                    fontSize={11} 
-                    tickLine={false} 
+                    fontSize={10} 
+                    tickLine={false}
+                    interval="preserveStartEnd"
+                    minTickGap={20}
                   />
                   <YAxis 
                     domain={[0, 100]} 
@@ -717,7 +719,7 @@ export default function AdminDashboardPage() {
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={slotData} margin={{ top: 20, right: 10, left: -20, bottom: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
-                    <XAxis dataKey="name" stroke="#64748b" fontSize={11} tickLine={false} />
+                    <XAxis dataKey="name" stroke="#64748b" fontSize={10} tickLine={false} interval="preserveStartEnd" minTickGap={15} />
                     <YAxis stroke="#64748b" fontSize={11} tickLine={false} />
                     <Tooltip 
                       contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '0.5rem', fontSize: '12px' }}
@@ -805,7 +807,7 @@ export default function AdminDashboardPage() {
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={batchStats} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
-                  <XAxis dataKey="batchCode" stroke="#64748b" fontSize={11} tickLine={false} />
+                  <XAxis dataKey="batchCode" stroke="#64748b" fontSize={10} tickLine={false} interval="preserveStartEnd" minTickGap={15} />
                   <YAxis domain={[0, 100]} stroke="#64748b" fontSize={11} tickFormatter={(v) => `${v}%`} tickLine={false} />
                   <Tooltip 
                     contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '0.5rem', fontSize: '12px' }}
@@ -840,8 +842,52 @@ export default function AdminDashboardPage() {
               No recent sessions found.
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
+            <div>
+              {/* Mobile Stacked Cards (< 768px) */}
+              <div className="md:hidden divide-y divide-slate-800/80">
+                {recentSessions.map((s) => (
+                  <div key={s.sessionId} className="py-3 space-y-2">
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <span className="font-mono font-bold text-emerald-400 text-xs">{s.sessionCode}</span>
+                        <div className="font-semibold text-white text-xs mt-0.5">{s.moduleCode} - {s.batchCode || '—'}</div>
+                      </div>
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold ${
+                        s.status === 'FINALIZED'
+                          ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                          : s.status === 'ACTIVE'
+                          ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                          : s.status === 'CANCELLED'
+                          ? 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
+                          : 'bg-slate-700/30 text-slate-400 border border-slate-700/40'
+                      }`}>
+                        {s.status}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between text-xs text-slate-400 pt-1 border-t border-slate-800/40">
+                      <span>{s.lecturerName || '—'} &bull; {s.sessionDate}</span>
+                      <span className="font-semibold">
+                        {s.status === 'FINALIZED' ? (
+                          <span className={s.percentageNumeric >= 75 ? 'text-emerald-400' : 'text-amber-400'}>
+                            {s.attendancePercentage} ({s.presentCount}/{s.expectedStudentCount})
+                          </span>
+                        ) : s.status === 'ACTIVE' ? (
+                          <span className="text-amber-400 font-normal italic">
+                            Provisional ({s.presentCount}/{s.expectedStudentCount})
+                          </span>
+                        ) : (
+                          <span className="text-slate-500">Excluded</span>
+                        )}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Desktop Table (>= 768px) */}
+              <div className="hidden md:block overflow-x-auto">
+                <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="border-b border-slate-800 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
                     <th className="pb-3 px-2">Session Code</th>
@@ -894,6 +940,7 @@ export default function AdminDashboardPage() {
                   ))}
                 </tbody>
               </table>
+            </div>
             </div>
           )}
         </div>

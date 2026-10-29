@@ -359,8 +359,46 @@ export default function LecturerStudentAttendancePage() {
                     No session attendance records found in this range.
                   </div>
                 ) : (
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-left text-xs">
+                  <div>
+                    {/* Mobile Stacked Cards (< 768px) */}
+                    <div className="md:hidden divide-y divide-slate-800/80">
+                      {studentDetails.history.map((item) => (
+                        <div key={item.sessionId} className="py-3.5 space-y-2">
+                          <div className="flex items-start justify-between gap-2">
+                            <div>
+                              <span className="font-mono font-bold text-teal-400 text-xs">{item.sessionCode}</span>
+                              <p className="text-xs font-semibold text-white mt-0.5">{item.moduleCode} - {item.batchCode || 'Cohort'}</p>
+                            </div>
+                            <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold ${
+                              item.attendanceStatus === 'PRESENT'
+                                ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                                : item.attendanceStatus === 'LATE'
+                                ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                                : item.attendanceStatus === 'ABSENT'
+                                ? 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
+                                : 'bg-slate-700/30 text-slate-400 border border-slate-700/40'
+                            }`}>
+                              {item.attendanceStatus}
+                            </span>
+                          </div>
+
+                          {item.isCrossGroup && (
+                            <div className="p-2 rounded-lg bg-amber-950/20 border border-amber-900/30 text-[11px] text-amber-300">
+                              Cross-Group Attendance (Host: Group {item.sessionGroupName || '—'})
+                            </div>
+                          )}
+
+                          <div className="flex items-center justify-between text-xs text-slate-400 pt-1 border-t border-slate-800/40">
+                            <span>{item.sessionDate}</span>
+                            <span className="font-mono text-[11px] text-slate-300">{item.attendanceMethod || 'QR_SCAN'}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Desktop Table (>= 768px) */}
+                    <div className="hidden md:block overflow-x-auto">
+                      <table className="w-full text-left text-xs">
                       <thead>
                         <tr className="border-b border-slate-800 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
                           <th className="pb-3 px-3">Session Code</th>
@@ -451,6 +489,7 @@ export default function LecturerStudentAttendancePage() {
                         ))}
                       </tbody>
                     </table>
+                  </div>
                   </div>
                 )}
               </div>
