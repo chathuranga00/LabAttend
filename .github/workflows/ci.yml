@@ -47,7 +47,7 @@ jobs:
         run: test -f target/labattend-backend-*.jar
 
   # ============================================================================
-  # Frontend CI: Node.js 20, Vitest Unit Tests, Vite Production Bundle
+  # Frontend CI: Node.js 22 LTS, Vitest Unit Tests, Vite Production Bundle
   # ============================================================================
   frontend-test-and-build:
     name: Frontend CI (React & Vite)
@@ -72,6 +72,8 @@ jobs:
 
       - name: Run Frontend Unit Test Suite (Vitest)
         run: npm test
+        env:
+          NODE_OPTIONS: "--require ./src/test/setup-env.cjs"
 
       - name: Build Production Web Bundle (Vite)
         run: npm run build
