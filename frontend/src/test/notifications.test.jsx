@@ -131,3 +131,4 @@ describe('Notification System Tests', () => {
     expect(screen.getByText(/no notifications found/i)).toBeInTheDocument();
   });
 });
+
