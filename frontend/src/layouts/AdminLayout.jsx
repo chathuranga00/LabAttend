@@ -26,6 +26,7 @@ import {
 import ThemeToggle from '../components/common/ThemeToggle';
 import ConnectionBanner from '../components/pwa/ConnectionBanner';
 import InstallButton from '../components/pwa/InstallButton';
+import NotificationBell from '../components/notifications/NotificationBell';
 
 const navItems = [
   { name: 'Dashboard', path: '/admin/dashboard', icon: LayoutDashboard },
@@ -338,6 +339,7 @@ export default function AdminLayout() {
           {/* Right Header Actions */}
           <div className="flex items-center gap-2 sm:gap-3 text-xs text-slate-400 shrink-0">
             <InstallButton variant="header" />
+            <NotificationBell />
             <ThemeToggle />
             <NavLink
               to="/health"

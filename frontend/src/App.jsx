@@ -4,6 +4,7 @@ import { ThemeProvider } from './context/ThemeContext';
 import { AuthProvider } from './context/AuthContext';
 import { ToastProvider } from './context/ToastContext';
 import { PwaProvider, usePwa } from './context/PwaContext';
+import { NotificationProvider } from './context/NotificationContext';
 import ReloadPrompt from './components/pwa/ReloadPrompt';
 import OfflineFallback from './components/pwa/OfflineFallback';
 import { AppRoutes } from './routes';
@@ -33,9 +34,11 @@ export default function App() {
         <ThemeProvider>
           <ToastProvider>
             <AuthProvider>
-              <ErrorBoundary>
-                <AppShell />
-              </ErrorBoundary>
+              <NotificationProvider>
+                <ErrorBoundary>
+                  <AppShell />
+                </ErrorBoundary>
+              </NotificationProvider>
             </AuthProvider>
           </ToastProvider>
         </ThemeProvider>
