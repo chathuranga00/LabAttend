@@ -32,6 +32,7 @@ import { attendanceService } from '../../services/attendanceService';
 import { sessionService } from '../../services/sessionService';
 import { useToast } from '../../context/ToastContext';
 import { usePwa } from '../../context/PwaContext';
+import { useNotifications } from '../../context/NotificationContext';
 import { Modal } from '../../components/common';
 import EndSessionModal from '../../components/session/EndSessionModal';
 
@@ -141,6 +142,7 @@ export default function QRScannerPage() {
   const navigate = useNavigate();
   const { showToast } = useToast();
   const { isOnline } = usePwa();
+  const { addNotification } = useNotifications();
 
   const querySessionId = searchParams.get('sessionId');
 
@@ -418,6 +420,14 @@ export default function QRScannerPage() {
           playScanSound('CROSS_GROUP_MARKED', isMuted);
           triggerVibration('CROSS_GROUP_MARKED');
           showToast(`Cross-Group: ${data.studentName} (Group ${homeGroup} -> Group ${sessGroup})`, 'warning');
+          addNotification({
+            title: 'Cross-Group Attendee Recorded',
+            message: `${data.studentName} (${data.studentId}) from Group ${homeGroup} attended session ${session?.moduleCode || ''}.`,
+            type: 'warning',
+            category: 'attendance',
+            link: `/lecturer/sessions/${selectedSessionId}/summary`,
+            playSound: false,
+          });
         } else if (data.result === 'SUCCESS') {
           setLastScanResult({
             type: 'SUCCESS',
@@ -851,6 +861,13 @@ export default function QRScannerPage() {
       }
       const res = await sessionService.finalizeSession(selectedSessionId, { notes });
       if (res.success) {
+        addNotification({
+          title: 'Session Finalized',
+          message: `Session ${session?.moduleCode || ''} finalized successfully. Absentee records sealed.`,
+          type: 'success',
+          category: 'session',
+          link: `/lecturer/sessions/${selectedSessionId}/summary`,
+        });
         showToast('Session finalized successfully! Absentee records generated.', 'success');
         setIsEndSessionModalOpen(false);
         navigate(`/lecturer/sessions/${selectedSessionId}/summary`);

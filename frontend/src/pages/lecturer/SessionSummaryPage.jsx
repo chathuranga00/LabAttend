@@ -25,6 +25,7 @@ import { sessionService } from '../../services/sessionService';
 import { attendanceService } from '../../services/attendanceService';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
+import { useNotifications } from '../../context/NotificationContext';
 import AttendanceCorrectionModal from '../../components/attendance/AttendanceCorrectionModal';
 
 export default function SessionSummaryPage() {
@@ -32,6 +33,7 @@ export default function SessionSummaryPage() {
   const navigate = useNavigate();
   const { user, role } = useAuth();
   const { showToast } = useToast();
+  const { addNotification } = useNotifications();
 
   const isAdmin = role === 'ADMIN';
 
@@ -135,6 +137,12 @@ export default function SessionSummaryPage() {
         : await attendanceService.correctAttendance(id, recordId, data);
 
       if (res.success) {
+        addNotification({
+          title: 'Attendance Record Audited',
+          message: `Correction recorded with compliance reason in Session ${summary?.sessionCode || ''}.`,
+          type: 'info',
+          category: 'attendance',
+        });
         showToast('Attendance record corrected and audited successfully.', 'success');
         setIsCorrectionModalOpen(false);
         setSelectedRecordForCorrection(null);
