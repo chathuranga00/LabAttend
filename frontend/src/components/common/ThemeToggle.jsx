@@ -9,7 +9,7 @@ export default function ThemeToggle({ showLabel = true, className = '' }) {
     <button
       onClick={toggleTheme}
       type="button"
-      className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs font-semibold transition-all duration-200 select-none ${
+      className={`inline-flex items-center justify-center gap-2 h-10 px-2.5 sm:px-3 py-1.5 rounded-xl border text-xs font-semibold transition-all duration-200 select-none ${
         isDark
           ? 'bg-slate-900/80 hover:bg-slate-800 text-amber-300 border-slate-700/80 hover:border-amber-400/40 shadow-sm shadow-black/20'
           : 'bg-white hover:bg-emerald-50/80 text-emerald-800 border-emerald-200/80 hover:border-emerald-400 shadow-sm shadow-emerald-950/5'
@@ -17,7 +17,7 @@ export default function ThemeToggle({ showLabel = true, className = '' }) {
       title={`Switch to ${isDark ? 'Light' : 'Dark'} mode`}
       aria-label={`Toggle light and dark mode, current mode: ${theme}`}
     >
-      <div className="relative flex items-center justify-center">
+      <div className="relative flex items-center justify-center shrink-0">
         {isDark ? (
           <Sun className="h-4 w-4 text-amber-400 animate-in spin-in-180 duration-300" />
         ) : (
@@ -25,7 +25,7 @@ export default function ThemeToggle({ showLabel = true, className = '' }) {
         )}
       </div>
       {showLabel && (
-        <span className="font-medium tracking-wide">
+        <span className="font-medium tracking-wide hidden sm:inline">
           {isDark ? 'Light Mode' : 'Dark Mode'}
         </span>
       )}

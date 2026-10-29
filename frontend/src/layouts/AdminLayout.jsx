@@ -327,7 +327,7 @@ export default function AdminLayout() {
               </div>
             </div>
 
-            <span className="text-[10px] sm:text-xs px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-bold shrink-0">
+            <span className="hidden md:inline-flex text-[10px] sm:text-xs px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-bold shrink-0">
               ADMIN
             </span>
 
@@ -337,14 +337,14 @@ export default function AdminLayout() {
           </div>
 
           {/* Right Header Actions */}
-          <div className="flex items-center gap-2 sm:gap-3 text-xs text-slate-400 shrink-0">
+          <div className="flex items-center gap-1.5 sm:gap-3 text-xs text-slate-400 shrink-0">
             <InstallButton variant="header" />
             <NotificationBell />
             <ThemeToggle />
             <NavLink
               to="/health"
               aria-label="System Health Probe"
-              className="min-h-[44px] min-w-[44px] sm:min-w-0 inline-flex items-center justify-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 text-slate-300 border border-slate-700/50 transition-colors"
+              className="hidden sm:inline-flex min-h-[40px] min-w-[40px] items-center justify-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 text-slate-300 border border-slate-700/50 transition-colors"
             >
               <Activity className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
               <span className="hidden sm:inline">Health</span>
