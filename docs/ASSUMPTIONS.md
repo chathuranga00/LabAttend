@@ -171,3 +171,17 @@ For **LabAttend**, we employ the standard `Authorization: Bearer <jwt_token>` he
   - Visiting students (`is_expected = false`) retain their `PRESENT` attendance record and are never converted to absent.
 - **Audit Logging**:
   - Every cross-group check-in (via QR scan or manual entry) is written to `audit_logs` with action `"CROSS_GROUP_ATTENDANCE"`.
+
+---
+
+## 9. Progressive Web App (PWA) & Service Worker Cache Boundary [Updated 2026-10 - Step 17]
+
+### Cache & Offline Invariants
+1. **Static App Shell Only**:
+   - The service worker caches ONLY the static app shell (HTML, JS, CSS, fonts, icons). It must never cache `/api/**` responses, student data, QR images or reports.
+2. **Zero Offline Attendance Queue & Strict Network-Only API Policy**:
+   - There is strictly **no offline attendance queue**. Attendance is only shown as saved when the backend confirms it.
+   - If network connectivity is lost during an active scanning session, attendance cannot be recorded locally or queued offline.
+3. **Controlled Service Worker Lifecycle**:
+   - Uses `registerType: 'prompt'` with an update prompt banner/toast.
+   - The service worker avoids silent forced reloads while a lecturer conducts an active lab scanning session.

@@ -54,7 +54,7 @@ export default function HealthCheck() {
   const isDbConnected = healthData?.database?.includes('CONNECTED');
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col justify-between selection:bg-emerald-500 selection:text-white">
+    <div className="min-h-[100dvh] bg-slate-950 text-slate-100 flex flex-col justify-between selection:bg-emerald-500 selection:text-white overflow-x-hidden pt-safe pb-safe">
       {/* Background ambient lighting */}
       <div className="fixed inset-0 overflow-hidden pointer-events-none">
         <div className="absolute -top-40 -left-40 w-96 h-96 bg-emerald-600/10 rounded-full blur-3xl"></div>

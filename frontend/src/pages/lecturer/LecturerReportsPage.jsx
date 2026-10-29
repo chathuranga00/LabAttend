@@ -861,7 +861,7 @@ export default function LecturerReportsPage() {
                         placeholder="Filter rows..."
                         value={tableFilter}
                         onChange={(e) => setTableFilter(e.target.value)}
-                        className="w-full bg-slate-800/80 border border-slate-700/80 rounded-xl pl-9 pr-3 py-1.5 text-xs text-slate-100 placeholder-slate-400 focus:outline-none focus:border-teal-500"
+                        className="w-full bg-slate-800/80 border border-slate-700/80 rounded-xl pl-9 pr-3 py-2 min-h-[44px] text-base sm:text-xs text-slate-100 placeholder-slate-400 focus:outline-none focus:border-teal-500"
                       />
                     </div>
                     <span className="text-xs text-slate-400 whitespace-nowrap">
@@ -870,7 +870,7 @@ export default function LecturerReportsPage() {
                   </div>
 
                   {/* Export Buttons */}
-                  <div className="flex items-center gap-2.5 w-full sm:w-auto justify-end">
+                  <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto justify-start sm:justify-end">
                     <button
                       onClick={() => handleExport('PDF')}
                       disabled={exportLoading.PDF}
@@ -1201,7 +1201,7 @@ export default function LecturerReportsPage() {
                       </linearGradient>
                     </defs>
                     <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
-                    <XAxis dataKey="sessionDate" stroke="#64748b" textAnchor="end" height={45} tick={{ fontSize: 10 }} />
+                    <XAxis dataKey="sessionDate" stroke="#64748b" textAnchor="end" height={45} tick={{ fontSize: 10 }} interval="preserveStartEnd" minTickGap={20} />
                     <YAxis domain={[0, 100]} stroke="#64748b" tick={{ fontSize: 10 }} />
                     <Tooltip
                       contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '0.75rem', fontSize: '11px' }}

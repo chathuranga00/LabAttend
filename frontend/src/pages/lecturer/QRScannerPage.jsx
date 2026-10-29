@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useSearchParams, useNavigate, Link } from 'react-router-dom';
-import { Html5Qrcode } from 'html5-qrcode';
 import { 
   Camera, 
   CameraOff, 
@@ -19,18 +18,129 @@ import {
   AlertCircle,
   FileEdit,
   ShieldAlert,
-  WifiOff
+  WifiOff,
+  Volume2,
+  VolumeX,
+  Flashlight,
+  RotateCcw,
+  Loader2,
+  Info,
+  ChevronDown,
+  ListFilter
 } from 'lucide-react';
 import { attendanceService } from '../../services/attendanceService';
 import { sessionService } from '../../services/sessionService';
 import { useToast } from '../../context/ToastContext';
+import { usePwa } from '../../context/PwaContext';
 import { Modal } from '../../components/common';
 import EndSessionModal from '../../components/session/EndSessionModal';
+
+/**
+ * Lazy loader for html5-qrcode to keep the main bundle lightweight.
+ * The library is imported only when the scanner route is active.
+ */
+let Html5QrcodeClass = null;
+async function getHtml5Qrcode() {
+  if (!Html5QrcodeClass) {
+    const mod = await import('html5-qrcode');
+    Html5QrcodeClass = mod.Html5Qrcode;
+  }
+  return Html5QrcodeClass;
+}
+
+/**
+ * Web Audio API synthesizer for instant audio feedback without external audio files.
+ */
+function playScanSound(type, isMuted) {
+  if (isMuted || typeof window === 'undefined') return;
+  try {
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtx) return;
+    const ctx = new AudioCtx();
+    if (ctx.state === 'suspended') {
+      ctx.resume().catch(() => {});
+    }
+
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+
+    if (type === 'SUCCESS') {
+      // Pleasant high double chime (C5 -> E5)
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(523.25, now);
+      osc.frequency.setValueAtTime(659.25, now + 0.08);
+      gain.gain.setValueAtTime(0.15, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.22);
+      osc.start(now);
+      osc.stop(now + 0.22);
+    } else if (type === 'CROSS_GROUP_MARKED') {
+      // Alert ascending chime (D5 -> G5)
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(587.33, now);
+      osc.frequency.setValueAtTime(783.99, now + 0.09);
+      gain.gain.setValueAtTime(0.2, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.26);
+      osc.start(now);
+      osc.stop(now + 0.26);
+    } else if (type === 'ALREADY_MARKED') {
+      // Soft double blip (440Hz -> 440Hz)
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(440, now);
+      gain.gain.setValueAtTime(0.12, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
+      gain.gain.setValueAtTime(0.12, now + 0.1);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
+      osc.start(now);
+      osc.stop(now + 0.18);
+    } else if (type === 'ERROR') {
+      // Low warning buzz (220Hz -> 160Hz)
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(220, now);
+      osc.frequency.linearRampToValueAtTime(160, now + 0.25);
+      gain.gain.setValueAtTime(0.2, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.28);
+      osc.start(now);
+      osc.stop(now + 0.28);
+    }
+
+    setTimeout(() => {
+      try {
+        ctx.close();
+      } catch (e) {}
+    }, 600);
+  } catch (err) {
+    // Non-fatal
+  }
+}
+
+/**
+ * Haptic vibration feedback using the Vibration API.
+ */
+function triggerVibration(type) {
+  if (typeof navigator === 'undefined' || !('vibrate' in navigator)) return;
+  try {
+    if (type === 'SUCCESS') {
+      navigator.vibrate(100);
+    } else if (type === 'CROSS_GROUP_MARKED') {
+      navigator.vibrate([150, 80, 150]);
+    } else if (type === 'ALREADY_MARKED') {
+      navigator.vibrate([80, 50, 80]);
+    } else if (type === 'ERROR') {
+      navigator.vibrate([250, 80, 250]);
+    }
+  } catch (err) {
+    // Non-fatal
+  }
+}
 
 export default function QRScannerPage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { showToast } = useToast();
+  const { isOnline } = usePwa();
 
   const querySessionId = searchParams.get('sessionId');
 
@@ -43,10 +153,42 @@ export default function QRScannerPage() {
   // Scanner state
   const [isScanning, setIsScanning] = useState(false);
   const [cameraError, setCameraError] = useState(null);
+  const [cameraErrorType, setCameraErrorType] = useState(null); // 'permission' | 'notFound' | 'inUse' | 'insecure' | 'unsupported' | 'other'
   const html5QrCodeRef = useRef(null);
   const scanLockRef = useRef(false);
   const lastScannedPayloadRef = useRef(null);
   const lastScannedTimeRef = useRef(0);
+
+  // Camera devices & hardware controls
+  const [availableCameras, setAvailableCameras] = useState([]);
+  const [selectedCameraId, setSelectedCameraId] = useState(() => {
+    try {
+      return localStorage.getItem('labattend_scanner_camera_id') || '';
+    } catch {
+      return '';
+    }
+  });
+  const [isTorchOn, setIsTorchOn] = useState(false);
+  const [hasTorchSupport, setHasTorchSupport] = useState(false);
+
+  // Sound mute state (persisted per device)
+  const [isMuted, setIsMuted] = useState(() => {
+    try {
+      return localStorage.getItem('labattend_scanner_muted') === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  // Sending state and network retry
+  const [isSending, setIsSending] = useState(false);
+  const [failedToken, setFailedToken] = useState(null);
+
+  // Screen Wake Lock reference
+  const wakeLockRef = useRef(null);
+
+  // Mobile Bottom Tab state: 'stream' | 'manual'
+  const [mobileTab, setMobileTab] = useState('stream');
 
   // Counters state (from backend)
   const [counters, setCounters] = useState({
@@ -57,7 +199,6 @@ export default function QRScannerPage() {
   });
 
   // Last scan feedback state
-  // type: 'SUCCESS' | 'CROSS_GROUP_MARKED' | 'ALREADY_MARKED' | 'ERROR' | null
   const [lastScanResult, setLastScanResult] = useState(null);
 
   // Attendance live list state
@@ -78,6 +219,39 @@ export default function QRScannerPage() {
   // End Session modal state
   const [isEndSessionModalOpen, setIsEndSessionModalOpen] = useState(false);
   const [finalizing, setFinalizing] = useState(false);
+
+  // Toggle Sound Mute
+  const toggleMute = () => {
+    const next = !isMuted;
+    setIsMuted(next);
+    try {
+      localStorage.setItem('labattend_scanner_muted', String(next));
+    } catch (e) {}
+    showToast(next ? 'Scanner sound muted' : 'Scanner sound unmuted', 'info');
+  };
+
+  // Screen Wake Lock API helpers
+  const requestWakeLock = useCallback(async () => {
+    if (typeof navigator !== 'undefined' && 'wakeLock' in navigator && navigator.wakeLock?.request) {
+      try {
+        wakeLockRef.current = await navigator.wakeLock.request('screen');
+        wakeLockRef.current.addEventListener('release', () => {
+          wakeLockRef.current = null;
+        });
+      } catch (err) {
+        // Silently fail if wake lock request denied (e.g. low battery)
+      }
+    }
+  }, []);
+
+  const releaseWakeLock = useCallback(async () => {
+    if (wakeLockRef.current) {
+      try {
+        await wakeLockRef.current.release();
+      } catch (err) {}
+      wakeLockRef.current = null;
+    }
+  }, []);
 
   // 1. Fetch lecturer's active sessions if no session or to populate selector
   const fetchActiveSessions = useCallback(async () => {
@@ -175,17 +349,32 @@ export default function QRScannerPage() {
   const handleScanPayload = useCallback(async (identifier) => {
     if (!identifier || !selectedSessionId) return;
 
+    // Check online status first: no offline queueing permitted
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      showToast('Cannot scan while offline. LabAttend requires a connection to verify attendance.', 'error');
+      setLastScanResult({
+        type: 'ERROR',
+        title: 'Offline',
+        message: 'Unable to connect to the server. Check your connection and try again.',
+        rawIdentifier: identifier.trim(),
+        time: new Date().toISOString(),
+        isNetwork: true,
+      });
+      return;
+    }
+
     const trimmed = identifier.trim();
     const now = Date.now();
 
-    // Debounce: prevent sending the identical code within 2 seconds
+    // Debounce: prevent sending the identical code within 2.5 seconds
     if (
       lastScannedPayloadRef.current === trimmed &&
-      now - lastScannedTimeRef.current < 2000
+      now - lastScannedTimeRef.current < 2500
     ) {
       return;
     }
 
+    // Parallel send lock: prevent duplicate concurrent API requests
     if (scanLockRef.current) {
       return;
     }
@@ -193,6 +382,8 @@ export default function QRScannerPage() {
     scanLockRef.current = true;
     lastScannedPayloadRef.current = trimmed;
     lastScannedTimeRef.current = now;
+    setIsSending(true);
+    setFailedToken(null);
 
     try {
       const res = await attendanceService.scanQr(selectedSessionId, trimmed);
@@ -224,7 +415,9 @@ export default function QRScannerPage() {
             time: data.scannedAt,
             method: data.method || 'QR_SCAN',
           });
-          showToast(`Cross-Group Marked: ${data.studentName} (Group ${homeGroup} -> Group ${sessGroup})`, 'warning');
+          playScanSound('CROSS_GROUP_MARKED', isMuted);
+          triggerVibration('CROSS_GROUP_MARKED');
+          showToast(`Cross-Group: ${data.studentName} (Group ${homeGroup} -> Group ${sessGroup})`, 'warning');
         } else if (data.result === 'SUCCESS') {
           setLastScanResult({
             type: 'SUCCESS',
@@ -236,6 +429,8 @@ export default function QRScannerPage() {
             time: data.scannedAt,
             method: data.method || 'QR_SCAN',
           });
+          playScanSound('SUCCESS', isMuted);
+          triggerVibration('SUCCESS');
           showToast(`Present: ${data.studentName} (${data.studentId})`, 'success');
         } else if (data.result === 'ALREADY_MARKED') {
           const isCross = data.isCrossGroup;
@@ -253,6 +448,8 @@ export default function QRScannerPage() {
             time: data.scannedAt,
             method: data.method || 'QR_SCAN',
           });
+          playScanSound('ALREADY_MARKED', isMuted);
+          triggerVibration('ALREADY_MARKED');
           showToast(`Already Marked: ${data.studentName} (${data.studentId})`, 'info');
         }
 
@@ -267,32 +464,124 @@ export default function QRScannerPage() {
           rawIdentifier: trimmed,
           time: new Date().toISOString(),
         });
+        playScanSound('ERROR', isMuted);
+        triggerVibration('ERROR');
       }
     } catch (err) {
-      const isNetwork = err.isNetworkError || err.status === 0;
-      const errorMsg = err.message || (isNetwork ? 'Unable to connect to the server. Check your connection and try again.' : 'Verification failed');
+      const isNetwork = err.isNetworkError || err.status === 0 || !navigator.onLine;
+      const errorMsg = isNetwork
+        ? 'Unable to connect to the server. Check your connection and try again.'
+        : (err.message || 'Verification failed');
 
+      setFailedToken(trimmed);
       setLastScanResult({
         type: 'ERROR',
         title: isNetwork ? 'Network Error' : (err.status === 400 || err.status === 404 ? 'Verification Denied' : 'Scan Rejected'),
         message: errorMsg,
         rawIdentifier: trimmed,
         time: new Date().toISOString(),
+        isNetwork,
       });
 
+      playScanSound('ERROR', isMuted);
+      triggerVibration('ERROR');
       showToast(errorMsg, 'error');
     } finally {
+      setIsSending(false);
       // Release lock after brief delay
       setTimeout(() => {
         scanLockRef.current = false;
-      }, 1000);
+      }, 800);
     }
-  }, [selectedSessionId, tableSearch, fetchAttendanceRecords, showToast]);
+  }, [selectedSessionId, tableSearch, crossGroupOnly, session, isMuted, fetchAttendanceRecords, showToast]);
+
+  // Check hardware capabilities like torch
+  const inspectTrackCapabilities = () => {
+    try {
+      const videoElem = document.querySelector('#qr-scanner-viewport video');
+      if (videoElem && videoElem.srcObject) {
+        const stream = videoElem.srcObject;
+        const track = stream.getVideoTracks()[0];
+        if (track && typeof track.getCapabilities === 'function') {
+          const cap = track.getCapabilities();
+          setHasTorchSupport(Boolean(cap && 'torch' in cap));
+          return;
+        }
+      }
+    } catch (e) {}
+    setHasTorchSupport(false);
+  };
+
+  // Toggle Torch/Flashlight
+  const toggleTorch = async () => {
+    if (!html5QrCodeRef.current || !isScanning) return;
+    const nextTorch = !isTorchOn;
+    try {
+      if (typeof html5QrCodeRef.current.applyVideoConstraints === 'function') {
+        await html5QrCodeRef.current.applyVideoConstraints({
+          advanced: [{ torch: nextTorch }],
+        });
+        setIsTorchOn(nextTorch);
+        return;
+      }
+      const videoElem = document.querySelector('#qr-scanner-viewport video');
+      if (videoElem && videoElem.srcObject) {
+        const track = videoElem.srcObject.getVideoTracks()[0];
+        if (track) {
+          await track.applyConstraints({
+            advanced: [{ torch: nextTorch }],
+          });
+          setIsTorchOn(nextTorch);
+        }
+      }
+    } catch (err) {
+      console.warn('Torch toggle failed or not supported:', err);
+      showToast('Torch/Flash is not supported on this camera', 'info');
+    }
+  };
 
   // 5. Start Camera
-  const startCamera = async () => {
+  const startCamera = async (targetCameraId = null) => {
     setCameraError(null);
+    setCameraErrorType(null);
+    setIsTorchOn(false);
+
+    // Pre-flight check: Insecure Context
+    if (typeof window !== 'undefined' && !window.isSecureContext && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+      setCameraError('Insecure Context — Mobile browsers require a secure HTTPS connection or localhost to access the camera API.');
+      setCameraErrorType('insecure');
+      return;
+    }
+
+    // Pre-flight check: Unsupported Browser
+    if (typeof navigator === 'undefined' || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      setCameraError('Unsupported Browser — Your browser does not support the MediaDevices / Camera API. Please use Google Chrome or Apple Safari.');
+      setCameraErrorType('unsupported');
+      return;
+    }
+
     try {
+      const Html5Qrcode = await getHtml5Qrcode();
+
+      // Enumerate available cameras if not yet done
+      try {
+        const devices = await Html5Qrcode.getCameras();
+        if (devices && devices.length > 0) {
+          setAvailableCameras(devices);
+          if (!selectedCameraId && !targetCameraId) {
+            // Prefer rear camera if labeled, otherwise first device
+            const rear = devices.find((d) => /back|rear|environment/i.test(d.label));
+            const chosen = rear ? rear.id : devices[0].id;
+            setSelectedCameraId(chosen);
+            try {
+              localStorage.setItem('labattend_scanner_camera_id', chosen);
+            } catch (e) {}
+          }
+        }
+      } catch (enumErr) {
+        console.warn('Camera enumeration error:', enumErr);
+      }
+
       if (!html5QrCodeRef.current) {
         html5QrCodeRef.current = new Html5Qrcode('qr-scanner-viewport');
       }
@@ -307,41 +596,60 @@ export default function QRScannerPage() {
       };
 
       const qrCodeErrorCallback = () => {
-        // Ignore continuous frame parse misses
+        // Continuous non-match frames ignored
       };
 
+      // Sensible scan rate & responsive qrbox sizing for phones
       const config = {
-        fps: 10,
-        qrbox: { width: 250, height: 250 },
+        fps: 12,
+        qrbox: (viewfinderWidth, viewfinderHeight) => {
+          const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
+          const boxSize = Math.max(180, Math.floor(minEdge * 0.72));
+          return { width: boxSize, height: boxSize };
+        },
         aspectRatio: 1.0,
       };
 
-      // Prefer rear camera on mobile devices
+      const camIdToUse = targetCameraId || selectedCameraId;
+      const cameraConfig = camIdToUse ? { deviceId: { exact: camIdToUse } } : { facingMode: 'environment' };
+
       await html5QrCodeRef.current.start(
-        { facingMode: 'environment' },
+        cameraConfig,
         config,
         qrCodeSuccessCallback,
         qrCodeErrorCallback
       );
 
       setIsScanning(true);
+      await requestWakeLock();
+
+      // Delay check for torch support to allow stream initialization
+      setTimeout(() => {
+        inspectTrackCapabilities();
+      }, 500);
     } catch (err) {
       console.error('Camera initialization error:', err);
       let userMsg = 'Unable to access camera. Please check your browser settings and try again.';
+      let errType = 'other';
 
       const name = err.name || '';
       const msg = err.message || '';
 
       if (name === 'NotAllowedError' || name === 'PermissionDeniedError' || msg.includes('Permission denied')) {
         userMsg = 'Camera Access Denied — Please grant camera permissions in your browser to scan badges.';
+        errType = 'permission';
       } else if (name === 'NotFoundError' || name === 'DevicesNotFoundError' || msg.includes('No device')) {
         userMsg = 'Camera Not Found — No compatible camera detected on this device. Use manual check-in instead.';
+        errType = 'notFound';
       } else if (name === 'NotReadableError' || name === 'TrackStartError') {
         userMsg = 'Camera In Use — The camera is currently being used by another application or tab.';
+        errType = 'inUse';
       }
 
       setCameraError(userMsg);
+      setCameraErrorType(errType);
       setIsScanning(false);
+      releaseWakeLock();
     }
   };
 
@@ -355,17 +663,72 @@ export default function QRScannerPage() {
       console.error('Error stopping camera:', err);
     } finally {
       setIsScanning(false);
+      setIsTorchOn(false);
+      releaseWakeLock();
     }
   };
 
-  // Lifecycle: cleanup camera on component unmount
+  // Switch camera when multiple video input devices are available
+  const handleSwitchCamera = async () => {
+    if (availableCameras.length <= 1) return;
+    const currentIndex = availableCameras.findIndex((c) => c.id === selectedCameraId);
+    const nextIndex = (currentIndex + 1) % availableCameras.length;
+    const nextCam = availableCameras[nextIndex];
+
+    setSelectedCameraId(nextCam.id);
+    try {
+      localStorage.setItem('labattend_scanner_camera_id', nextCam.id);
+    } catch (e) {}
+
+    if (isScanning) {
+      await stopCamera();
+      setTimeout(() => {
+        startCamera(nextCam.id);
+      }, 250);
+    }
+  };
+
+  // Lifecycle: tab visibility handling (stops stream if hidden > 30s to preserve battery; handles wake lock)
+  useEffect(() => {
+    let hiddenTimer = null;
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        releaseWakeLock();
+        // If hidden for more than 30 seconds, shut down stream
+        hiddenTimer = setTimeout(() => {
+          if (html5QrCodeRef.current && html5QrCodeRef.current.isScanning) {
+            stopCamera();
+          }
+        }, 30000);
+      } else if (document.visibilityState === 'visible') {
+        if (hiddenTimer) {
+          clearTimeout(hiddenTimer);
+          hiddenTimer = null;
+        }
+        if (isScanning) {
+          requestWakeLock();
+        }
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      if (hiddenTimer) clearTimeout(hiddenTimer);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      releaseWakeLock();
+    };
+  }, [isScanning, requestWakeLock, releaseWakeLock]);
+
+  // Lifecycle: cleanup camera and wake lock on component unmount
   useEffect(() => {
     return () => {
+      releaseWakeLock();
       if (html5QrCodeRef.current && html5QrCodeRef.current.isScanning) {
         html5QrCodeRef.current.stop().catch(() => {});
       }
     };
-  }, []);
+  }, [releaseWakeLock]);
 
   // 7. Manual Attendance Handler
   const handleOpenManualModal = async () => {
@@ -434,6 +797,8 @@ export default function QRScannerPage() {
             time: data.scannedAt,
             method: 'MANUAL',
           });
+          playScanSound('CROSS_GROUP_MARKED', isMuted);
+          triggerVibration('CROSS_GROUP_MARKED');
           showToast(`Cross-Group Recorded: ${data.studentName} (Group ${homeGroup} -> Group ${sessGroup})`, 'warning');
         } else if (data.result === 'SUCCESS') {
           setLastScanResult({
@@ -446,6 +811,8 @@ export default function QRScannerPage() {
             time: data.scannedAt,
             method: 'MANUAL',
           });
+          playScanSound('SUCCESS', isMuted);
+          triggerVibration('SUCCESS');
           showToast(`Recorded: ${data.studentName}`, 'success');
         } else {
           setLastScanResult({
@@ -458,10 +825,14 @@ export default function QRScannerPage() {
             time: data.scannedAt,
             method: data.method,
           });
+          playScanSound('ALREADY_MARKED', isMuted);
+          triggerVibration('ALREADY_MARKED');
           showToast(`Student already present`, 'info');
         }
 
         setIsManualModalOpen(false);
+        setSelectedStudentForManual(null);
+        setManualReason('');
         fetchAttendanceRecords(selectedSessionId, tableSearch, crossGroupOnly);
       }
     } catch (err) {
@@ -496,36 +867,39 @@ export default function QRScannerPage() {
     : '0.0';
 
   return (
-    <div className="p-8 space-y-6 max-w-7xl mx-auto">
-      {/* Top Breadcrumb & Navigation */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
+    <div className="p-4 sm:p-6 lg:p-8 space-y-4 sm:space-y-6 max-w-7xl mx-auto pb-safe">
+      {/* Top Breadcrumb & Actions Bar */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
           <Link
             to="/lecturer/sessions"
-            className="inline-flex items-center gap-2 text-sm text-slate-400 hover:text-white transition"
+            className="inline-flex items-center gap-1.5 text-xs sm:text-sm text-slate-400 hover:text-white transition"
           >
-            <ArrowLeft className="h-4 w-4" />
+            <ArrowLeft className="h-4 w-4 shrink-0" />
             <span>My Lab Sessions</span>
           </Link>
           <span className="text-slate-600">/</span>
-          <span className="text-sm font-semibold text-teal-400">Badge Scanner Terminal</span>
+          <span className="text-xs sm:text-sm font-semibold text-teal-400">Badge Scanner Terminal</span>
         </div>
 
-        {/* End Session Button */}
+        {/* Top End Session Quick Action (if active) */}
         {session && session.status === 'ACTIVE' && (
-          <button
-            onClick={() => setIsEndSessionModalOpen(true)}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-semibold shadow-sm transition"
-          >
-            <Clock className="h-4 w-4 text-amber-400" />
-            <span>End Attendance Session</span>
-          </button>
+          <div className="flex items-center gap-2 self-end sm:self-auto">
+            <button
+              onClick={() => setIsEndSessionModalOpen(true)}
+              className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-gradient-to-r from-amber-600 to-rose-600 hover:from-amber-500 hover:to-rose-500 text-white text-xs font-bold shadow-md shadow-rose-950/40 transition min-h-[44px]"
+              aria-label="End Attendance Session"
+            >
+              <Clock className="h-4 w-4" />
+              <span>End Session</span>
+            </button>
+          </div>
         )}
       </div>
 
       {/* Active Session Picker Bar (if multiple active or changing) */}
       {activeSessions.length > 1 && (
-        <div className="bg-slate-900/60 border border-slate-800 p-3 rounded-xl flex items-center justify-between text-xs">
+        <div className="bg-slate-900/60 border border-slate-800 p-3 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
           <span className="text-slate-400 font-medium">Switch Active Lab Session:</span>
           <select
             value={selectedSessionId}
@@ -533,7 +907,7 @@ export default function QRScannerPage() {
               setSelectedSessionId(e.target.value);
               setLastScanResult(null);
             }}
-            className="bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-slate-200 font-semibold focus:outline-none focus:border-teal-500"
+            className="bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-slate-200 font-semibold focus:outline-none focus:border-teal-500 min-h-[44px]"
           >
             {activeSessions.map((s) => (
               <option key={s.id} value={s.id}>
@@ -548,7 +922,7 @@ export default function QRScannerPage() {
       {!loadingSession && (!session || session.status !== 'ACTIVE') && (
         <div className="p-6 bg-amber-950/30 border border-amber-800/60 rounded-2xl text-center space-y-3">
           <AlertTriangle className="h-10 w-10 text-amber-400 mx-auto" />
-          <h2 className="text-lg font-bold text-white">No Active Attendance Session Selected</h2>
+          <h2 className="text-base sm:text-lg font-bold text-white">No Active Attendance Session Selected</h2>
           <p className="text-xs text-slate-300 max-w-md mx-auto">
             {session && session.status !== 'ACTIVE'
               ? `Session ${session.sessionCode} is currently ${session.status}. Attendance scanning is only permitted on ACTIVE sessions.`
@@ -557,7 +931,7 @@ export default function QRScannerPage() {
           <div className="pt-2">
             <Link
               to="/lecturer/sessions"
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-teal-500 hover:bg-teal-600 text-slate-950 font-bold text-xs transition"
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-teal-500 hover:bg-teal-600 text-slate-950 font-bold text-xs transition min-h-[44px]"
             >
               <span>View Sessions & Start Lab</span>
             </Link>
@@ -565,24 +939,24 @@ export default function QRScannerPage() {
         </div>
       )}
 
-      {/* Session Info Header */}
+      {/* Session Info Header (Desktop & Tablet) */}
       {session && (
-        <div className="bg-slate-900/80 border border-slate-800/80 rounded-2xl p-6 shadow-xl relative overflow-hidden">
-          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+        <div className="bg-slate-900/80 border border-slate-800/80 rounded-2xl p-4 sm:p-6 shadow-xl relative overflow-hidden">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 sm:gap-6">
             <div>
-              <div className="flex flex-wrap items-center gap-2.5">
-                <span className="font-mono font-bold text-teal-400 bg-teal-950/60 border border-teal-800/60 px-3 py-1 rounded text-xs">
+              <div className="flex flex-wrap items-center gap-2 sm:gap-2.5">
+                <span className="font-mono font-bold text-teal-400 bg-teal-950/60 border border-teal-800/60 px-2.5 py-1 rounded text-xs">
                   {session.sessionCode}
                 </span>
-                <span className="px-3 py-1 rounded-full text-xs font-bold bg-emerald-950/60 text-emerald-400 border border-emerald-800/60 flex items-center gap-1.5">
+                <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-950/60 text-emerald-400 border border-emerald-800/60 flex items-center gap-1.5">
                   <span className="h-2 w-2 rounded-full bg-emerald-400 animate-ping" />
                   {session.status}
                 </span>
               </div>
-              <h1 className="text-2xl font-bold text-white tracking-tight mt-2.5">
+              <h1 className="text-xl sm:text-2xl font-bold text-white tracking-tight mt-2">
                 {session.moduleCode} — {session.moduleName}
               </h1>
-              <div className="flex flex-wrap items-center gap-4 mt-3 text-xs text-slate-300">
+              <div className="flex flex-wrap items-center gap-2 sm:gap-4 mt-2.5 text-xs text-slate-300">
                 <span className="flex items-center gap-1.5 bg-slate-800/70 px-2.5 py-1 rounded-lg">
                   <Users className="h-3.5 w-3.5 text-teal-400" />
                   <span>Cohort: <strong>{session.batchName}</strong></span>
@@ -607,12 +981,12 @@ export default function QRScannerPage() {
               </div>
             </div>
 
-            {/* Actions */}
-            <div className="flex flex-wrap items-center gap-3">
+            {/* Quick Action Buttons */}
+            <div className="hidden sm:flex flex-wrap items-center gap-3">
               <button
                 onClick={handleOpenManualModal}
                 disabled={session.status !== 'ACTIVE'}
-                className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-semibold text-xs transition disabled:opacity-50"
+                className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-semibold text-xs transition disabled:opacity-50 min-h-[44px]"
               >
                 <FileEdit className="h-4 w-4 text-cyan-400" />
                 <span>Manual Student Entry</span>
@@ -621,292 +995,326 @@ export default function QRScannerPage() {
               {session.status === 'ACTIVE' && (
                 <button
                   onClick={() => setIsEndSessionModalOpen(true)}
-                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-amber-600 to-rose-600 hover:from-amber-500 hover:to-rose-500 text-white font-bold text-xs shadow-lg shadow-rose-950/40 transition"
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-amber-600 to-rose-600 hover:from-amber-500 hover:to-rose-500 text-white font-bold text-xs shadow-lg shadow-rose-950/40 transition min-h-[44px]"
                 >
                   <CheckCircle2 className="h-4 w-4" />
                   <span>End Attendance Session</span>
                 </button>
-              )}
-
-              {session.status === 'FINALIZED' && (
-                <Link
-                  to={`/lecturer/sessions/${session.id}/summary`}
-                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-500 text-white font-bold text-xs shadow-lg shadow-teal-950/40 transition"
-                >
-                  <CheckCircle2 className="h-4 w-4" />
-                  <span>View Session Summary</span>
-                </Link>
               )}
             </div>
           </div>
         </div>
       )}
 
-      {/* Live Counters Metric Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Expected */}
-        <div className="bg-slate-900/60 border border-slate-800/80 rounded-2xl p-5 shadow-lg">
-          <div className="flex items-center justify-between text-slate-400 mb-1">
-            <span className="text-xs font-semibold uppercase tracking-wider">Expected Roster</span>
-            <Users className="h-4 w-4 text-slate-400" />
-          </div>
-          <div className="text-3xl font-extrabold text-white">
-            {counters.expected}
-          </div>
-          <p className="text-[11px] text-slate-400 mt-1">Snapshot cohort assigned to lab</p>
-        </div>
-
-        {/* Present (Expected) */}
-        <div className="bg-slate-900/60 border border-emerald-900/40 rounded-2xl p-5 shadow-lg relative overflow-hidden">
-          <div className="flex items-center justify-between text-emerald-400 mb-1">
-            <span className="text-xs font-semibold uppercase tracking-wider">Present (Expected)</span>
-            <UserCheck className="h-4 w-4 text-emerald-400" />
-          </div>
-          <div className="text-3xl font-extrabold text-emerald-400">
-            {counters.present}
-          </div>
-          <div className="mt-2 flex items-center justify-between text-[11px] text-slate-400">
-            <span>Attendance Rate</span>
-            <span className="font-semibold text-emerald-400">{attendancePercent}%</span>
-          </div>
-          <div className="w-full bg-slate-800 h-1.5 rounded-full mt-1.5 overflow-hidden">
-            <div
-              className="bg-emerald-500 h-full rounded-full transition-all duration-500"
-              style={{ width: `${Math.min(100, parseFloat(attendancePercent))}%` }}
-            />
-          </div>
-        </div>
-
-        {/* Cross-Group Visitors */}
-        <div className="bg-slate-900/60 border border-amber-900/40 rounded-2xl p-5 shadow-lg relative overflow-hidden">
-          <div className="flex items-center justify-between text-amber-400 mb-1">
-            <span className="text-xs font-semibold uppercase tracking-wider">Visitors (Cross-Group)</span>
-            <Users className="h-4 w-4 text-amber-400" />
-          </div>
-          <div className="text-3xl font-extrabold text-amber-400">
-            {counters.visitors}
-          </div>
-          <p className="text-[11px] text-amber-300/70 mt-1">Visiting students from other groups</p>
-        </div>
-
-        {/* Remaining Unmarked */}
-        <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-5 shadow-lg">
-          <div className="flex items-center justify-between text-slate-400 mb-1">
-            <span className="text-xs font-semibold uppercase tracking-wider">Remaining Unchecked</span>
-            <UserX className="h-4 w-4 text-slate-400" />
-          </div>
-          <div className="text-3xl font-extrabold text-slate-200">
-            {counters.remaining}
-          </div>
-          <p className="text-[11px] text-slate-400 mt-1">Pending scan (not yet finalized)</p>
-        </div>
-      </div>
-
-      {/* Main Scanner Section Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Left Column: Camera Viewport & Last Scanned Student Card */}
-        <div className="lg:col-span-5 space-y-6">
-          {/* Camera Card */}
-          <div className="bg-slate-900/80 border border-slate-800/80 rounded-2xl p-5 shadow-xl">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-2.5">
-                <div className="h-8 w-8 rounded-lg bg-teal-500/10 text-teal-400 flex items-center justify-center">
+      {/* Main Grid: Mobile phone column order vs Desktop 2-column */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-6">
+        
+        {/* Left Column / Mobile Top: Viewfinder, Controls, Last Scan Card, Sticky Counters */}
+        <div className="lg:col-span-5 space-y-4">
+          
+          {/* Camera Viewfinder Card */}
+          <div className="bg-slate-900/80 border border-slate-800/80 rounded-2xl p-3 sm:p-5 shadow-xl relative">
+            
+            {/* Viewfinder Header Controls */}
+            <div className="flex items-center justify-between mb-3 gap-2">
+              <div className="flex items-center gap-2">
+                <div className="h-8 w-8 rounded-lg bg-teal-500/10 text-teal-400 flex items-center justify-center shrink-0">
                   <Camera className="h-4 w-4" />
                 </div>
                 <div>
-                  <h3 className="text-sm font-bold text-white">Camera Badge Scanner</h3>
-                  <p className="text-[11px] text-slate-400">Point device camera at student badge</p>
+                  <h3 className="text-xs sm:text-sm font-bold text-white">Camera Viewfinder</h3>
+                  <p className="text-[10px] sm:text-[11px] text-slate-400">Aim at student badge QR</p>
                 </div>
               </div>
 
-              {/* Start/Stop Camera Button */}
-              {isScanning ? (
+              {/* Hardware Quick Action Controls */}
+              <div className="flex items-center gap-1.5 sm:gap-2">
+                {/* Mute/Sound Toggle Button */}
                 <button
-                  onClick={stopCamera}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-950/60 hover:bg-rose-900/60 text-rose-400 border border-rose-800/60 text-xs font-semibold transition"
+                  onClick={toggleMute}
+                  aria-label={isMuted ? 'Unmute scanner sound' : 'Mute scanner sound'}
+                  className={`p-2 sm:px-2.5 sm:py-2 rounded-xl text-xs font-semibold border transition min-h-[40px] min-w-[40px] flex items-center justify-center ${
+                    isMuted
+                      ? 'bg-rose-950/60 border-rose-800/60 text-rose-300'
+                      : 'bg-slate-800/80 border-slate-700/80 text-teal-400'
+                  }`}
+                  title={isMuted ? 'Unmute audio feedback' : 'Mute audio feedback'}
                 >
-                  <CameraOff className="h-3.5 w-3.5" />
-                  <span>Stop Camera</span>
+                  {isMuted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
                 </button>
-              ) : (
-                <button
-                  onClick={startCamera}
-                  disabled={!session || session.status !== 'ACTIVE'}
-                  className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-teal-500 hover:bg-teal-600 text-slate-950 text-xs font-bold shadow-lg shadow-teal-500/20 transition disabled:opacity-50"
-                >
-                  <Camera className="h-3.5 w-3.5" />
-                  <span>Start Camera</span>
-                </button>
-              )}
+
+                {/* Torch / Flashlight Toggle (when supported) */}
+                {isScanning && hasTorchSupport && (
+                  <button
+                    onClick={toggleTorch}
+                    aria-label={isTorchOn ? 'Turn off camera torch' : 'Turn on camera torch'}
+                    className={`p-2 sm:px-2.5 sm:py-2 rounded-xl text-xs font-semibold border transition min-h-[40px] min-w-[40px] flex items-center justify-center ${
+                      isTorchOn
+                        ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-md shadow-amber-500/20'
+                        : 'bg-slate-800/80 border-slate-700/80 text-amber-300 hover:bg-slate-700'
+                    }`}
+                    title={isTorchOn ? 'Turn off torch' : 'Turn on torch'}
+                  >
+                    <Flashlight className="h-4 w-4" />
+                  </button>
+                )}
+
+                {/* Flip Camera Toggle (when multiple cameras detected) */}
+                {availableCameras.length > 1 && (
+                  <button
+                    onClick={handleSwitchCamera}
+                    aria-label="Switch camera"
+                    className="p-2 sm:px-2.5 sm:py-2 rounded-xl text-xs font-semibold border bg-slate-800/80 border-slate-700/80 text-slate-200 hover:bg-slate-700 transition min-h-[40px] min-w-[40px] flex items-center justify-center"
+                    title="Switch camera device"
+                  >
+                    <RotateCcw className="h-4 w-4" />
+                  </button>
+                )}
+
+                {/* Start/Stop Camera Button */}
+                {isScanning ? (
+                  <button
+                    onClick={stopCamera}
+                    aria-label="Stop Camera"
+                    className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-rose-950/60 hover:bg-rose-900/60 text-rose-300 border border-rose-800/60 text-xs font-semibold transition min-h-[40px]"
+                  >
+                    <CameraOff className="h-3.5 w-3.5" />
+                    <span className="hidden sm:inline">Stop Camera</span>
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => startCamera()}
+                    disabled={!session || session.status !== 'ACTIVE'}
+                    aria-label="Start Camera"
+                    className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-teal-500 hover:bg-teal-600 text-slate-950 text-xs font-bold shadow-lg shadow-teal-500/20 transition disabled:opacity-50 min-h-[40px]"
+                  >
+                    <Camera className="h-3.5 w-3.5" />
+                    <span>Start Camera</span>
+                  </button>
+                )}
+              </div>
             </div>
 
-            {/* Camera Viewport Container */}
-            <div className="relative w-full aspect-square bg-slate-950 rounded-xl border-2 border-dashed border-slate-800 overflow-hidden flex flex-col items-center justify-center">
+            {/* Viewport Frame */}
+            <div className="relative w-full aspect-[4/3] sm:aspect-square bg-slate-950 rounded-xl border-2 border-dashed border-slate-800 overflow-hidden flex flex-col items-center justify-center">
               {/* html5-qrcode video viewport mounting point */}
               <div id="qr-scanner-viewport" className="w-full h-full" />
 
-              {!isScanning && !cameraError && (
-                <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center bg-slate-950/90 pointer-events-none">
-                  <div className="h-16 w-16 rounded-2xl bg-slate-900 border border-slate-800 flex items-center justify-center mb-3 text-teal-400">
-                    <QrCode className="h-8 w-8" />
-                  </div>
-                  <h4 className="text-sm font-bold text-white mb-1">Camera Feed Inactive</h4>
-                  <p className="text-xs text-slate-400 max-w-xs">
-                    Click "Start Camera" above to activate device badge scanning.
+              {/* Offline Overlay State */}
+              {!isOnline && (
+                <div className="absolute inset-0 z-10 flex flex-col items-center justify-center p-6 text-center bg-slate-950/95 space-y-2">
+                  <WifiOff className="h-10 w-10 text-amber-400 animate-pulse" />
+                  <h4 className="text-sm font-bold text-white">Scanning Paused — Offline</h4>
+                  <p className="text-xs text-amber-300 max-w-xs">
+                    LabAttend requires an active internet connection to record attendance. Scanning will resume once connection returns.
                   </p>
                 </div>
               )}
 
-              {/* Camera Error Message */}
-              {cameraError && (
-                <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center bg-slate-950/95 space-y-3">
-                  <AlertCircle className="h-10 w-10 text-rose-400" />
-                  <p className="text-xs text-rose-300 font-medium px-4">
+              {/* Inactive Camera State */}
+              {!isScanning && !cameraError && isOnline && (
+                <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center bg-slate-950/90 pointer-events-none">
+                  <div className="h-14 w-14 rounded-2xl bg-slate-900 border border-slate-800 flex items-center justify-center mb-3 text-teal-400">
+                    <QrCode className="h-7 w-7" />
+                  </div>
+                  <h4 className="text-sm font-bold text-white mb-1">Camera Feed Inactive</h4>
+                  <p className="text-xs text-slate-400 max-w-xs">
+                    Tap "Start Camera" to begin scanning student badges.
+                  </p>
+                </div>
+              )}
+
+              {/* Camera Error Message with Section 25 & Browser Permission Help */}
+              {cameraError && isOnline && (
+                <div className="absolute inset-0 flex flex-col items-center justify-center p-4 text-center bg-slate-950/95 space-y-2.5 overflow-y-auto">
+                  <AlertCircle className="h-8 w-8 text-rose-400 shrink-0" />
+                  <p className="text-xs text-rose-300 font-semibold px-2 max-w-sm">
                     {cameraError}
                   </p>
-                  <button
-                    onClick={startCamera}
-                    className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition"
-                  >
-                    Try Again
-                  </button>
+
+                  {/* Browser Permission Help for Android Chrome & iOS Safari */}
+                  {cameraErrorType === 'permission' && (
+                    <div className="text-left bg-slate-900/90 border border-slate-700/80 rounded-xl p-3 text-[11px] text-slate-300 space-y-1.5 max-w-xs mx-auto">
+                      <p className="font-bold text-amber-400 flex items-center gap-1">
+                        <Info className="h-3 w-3" /> How to enable camera:
+                      </p>
+                      <p><strong>Android Chrome:</strong> Tap lock/tune icon near URL &gt; Permissions &gt; Camera &gt; Allow, then refresh.</p>
+                      <p><strong>iOS Safari:</strong> Tap 'aA' or lock in URL bar &gt; Website Settings &gt; Camera &gt; Allow, then refresh.</p>
+                    </div>
+                  )}
+
+                  <div className="flex items-center gap-2 pt-1">
+                    <button
+                      onClick={() => startCamera()}
+                      className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition min-h-[44px]"
+                    >
+                      Try Again
+                    </button>
+                    <button
+                      onClick={handleOpenManualModal}
+                      className="px-3.5 py-2 rounded-xl bg-teal-500 hover:bg-teal-600 text-slate-950 text-xs font-bold transition min-h-[44px]"
+                    >
+                      Use Manual Check-In
+                    </button>
+                  </div>
                 </div>
               )}
 
               {/* Scanning Active Overlay Crosshairs */}
-              {isScanning && (
-                <div className="absolute inset-0 pointer-events-none flex flex-col items-center justify-between p-4">
-                  <div className="w-full flex justify-between items-center text-[10px] text-teal-400 bg-slate-900/80 px-2.5 py-1 rounded-md backdrop-blur border border-teal-500/20">
+              {isScanning && isOnline && (
+                <div className="absolute inset-0 pointer-events-none flex flex-col items-center justify-between p-3">
+                  <div className="w-full flex justify-between items-center text-[10px] text-teal-400 bg-slate-900/85 px-2.5 py-1 rounded-md backdrop-blur border border-teal-500/20">
                     <span className="flex items-center gap-1.5 font-bold">
                       <span className="h-2 w-2 rounded-full bg-teal-400 animate-pulse" />
-                      LIVE SCANNER
+                      LIVE BADGE SCANNER
                     </span>
-                    <span>Align QR Code in target box</span>
+                    <span>Align QR code in center</span>
                   </div>
                 </div>
               )}
             </div>
           </div>
 
-          {/* Last Scanned Student Feedback Card */}
-          <div className="bg-slate-900/80 border border-slate-800/80 rounded-2xl p-5 shadow-xl">
-            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">
-              Last Scanned Badge Status
-            </h3>
+          {/* Last Scanned Student Feedback Card (Visual Confirmation) */}
+          <div 
+            className="bg-slate-900/80 border border-slate-800/80 rounded-2xl p-4 sm:p-5 shadow-xl transition-all"
+            aria-live="assertive"
+          >
+            <div className="flex items-center justify-between mb-2.5">
+              <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+                Last Scanned Badge Status
+              </h3>
+              {isSending && (
+                <span className="inline-flex items-center gap-1.5 text-xs text-teal-400 font-semibold animate-pulse">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  <span>Verifying scan...</span>
+                </span>
+              )}
+            </div>
 
+            {/* Empty State */}
             {!lastScanResult && (
-              <div className="p-5 text-center text-slate-400 text-xs border border-dashed border-slate-800 rounded-xl">
-                Ready to scan. Student check-in details will appear here instantly.
+              <div className="p-4 sm:p-5 text-center text-slate-400 text-xs border border-dashed border-slate-800 rounded-xl space-y-1">
+                <p className="font-semibold text-slate-300">Ready to scan badges</p>
+                <p className="text-[11px] text-slate-500">Hold student badge QR code within the frame for real-time visual confirmation.</p>
               </div>
             )}
 
+            {/* Success Card: Regular Present */}
             {lastScanResult && lastScanResult.type === 'SUCCESS' && (
-              <div className="p-4 bg-emerald-950/40 border border-emerald-500/50 rounded-xl space-y-2">
+              <div className="p-4 bg-emerald-950/50 border border-emerald-500/60 rounded-xl space-y-2 shadow-lg shadow-emerald-950/20">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2 text-emerald-400 font-bold text-sm">
                     <CheckCircle2 className="h-5 w-5 shrink-0" />
                     <span>{lastScanResult.title}</span>
                   </div>
-                  <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300">
+                  <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
                     {lastScanResult.method}
                   </span>
                 </div>
-                <div className="flex items-center justify-between">
-                  <div className="text-lg font-bold text-white">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="text-lg sm:text-xl font-bold text-white tracking-tight">
                     {lastScanResult.studentName}
                   </div>
                   {lastScanResult.labGroupName ? (
-                    <span className="font-mono text-xs font-bold text-indigo-300 bg-indigo-950/70 border border-indigo-700/60 px-2.5 py-0.5 rounded-full">
+                    <span className="font-mono text-xs font-bold text-emerald-300 bg-emerald-900/60 border border-emerald-700/60 px-2.5 py-0.5 rounded-full shrink-0">
                       Group {lastScanResult.labGroupName}
                     </span>
                   ) : (
-                    <span className="text-xs text-slate-400">No Group</span>
+                    <span className="text-xs text-slate-400 shrink-0">No Group</span>
                   )}
                 </div>
-                <div className="flex items-center justify-between text-xs text-emerald-200">
-                  <span className="font-mono bg-emerald-900/50 px-2 py-0.5 rounded border border-emerald-800/50">
+                <div className="flex items-center justify-between text-xs text-emerald-200 pt-1 border-t border-emerald-800/40">
+                  <span className="font-mono bg-emerald-900/70 px-2 py-0.5 rounded border border-emerald-700/50 font-bold">
                     {lastScanResult.studentId}
                   </span>
-                  <span>{new Date(lastScanResult.time).toLocaleTimeString()}</span>
+                  <span className="text-[11px] text-emerald-300/80">
+                    {lastScanResult.time ? new Date(lastScanResult.time).toLocaleTimeString() : ''}
+                  </span>
                 </div>
               </div>
             )}
 
+            {/* Cross-Group Card: Amber alert */}
             {lastScanResult && lastScanResult.type === 'CROSS_GROUP_MARKED' && (
-              <div className="p-4 bg-amber-950/40 border border-amber-500/60 rounded-xl space-y-2">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2 text-amber-400 font-bold text-sm">
-                    <CheckCircle2 className="h-5 w-5 shrink-0" />
-                    <span>{lastScanResult.title}</span>
-                  </div>
-                  <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-amber-500/20 text-amber-300">
-                    {lastScanResult.method}
-                  </span>
-                </div>
-                {lastScanResult.badge && (
-                  <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-amber-500/20 border border-amber-500/40 text-amber-300 text-xs font-semibold">
-                    <span>{lastScanResult.badge}</span>
-                  </div>
-                )}
-                <div className="flex items-center justify-between">
-                  <div className="text-lg font-bold text-white">
-                    {lastScanResult.studentName}
-                  </div>
-                  <span className="font-mono text-xs font-bold text-amber-300 bg-amber-950/70 border border-amber-700/60 px-2.5 py-0.5 rounded-full">
-                    Own: Group {lastScanResult.homeLabGroupName || lastScanResult.labGroupName || '—'}
-                  </span>
-                </div>
-                <p className="text-xs text-amber-200/90">
-                  {lastScanResult.message}
-                </p>
-                <div className="flex items-center justify-between text-xs text-amber-200">
-                  <span className="font-mono bg-amber-900/50 px-2 py-0.5 rounded border border-amber-800/50">
-                    {lastScanResult.studentId}
-                  </span>
-                  <span>{new Date(lastScanResult.time).toLocaleTimeString()}</span>
-                </div>
-              </div>
-            )}
-
-            {lastScanResult && lastScanResult.type === 'ALREADY_MARKED' && (
-              <div className="p-4 bg-amber-950/40 border border-amber-500/50 rounded-xl space-y-2">
+              <div className="p-4 bg-amber-950/50 border border-amber-500/70 rounded-xl space-y-2.5 shadow-lg shadow-amber-950/20">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2 text-amber-400 font-bold text-sm">
                     <AlertTriangle className="h-5 w-5 shrink-0" />
                     <span>{lastScanResult.title}</span>
                   </div>
-                  <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-amber-500/20 text-amber-300">
-                    DUPLICATE
+                  <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                    {lastScanResult.method}
                   </span>
                 </div>
                 {lastScanResult.badge && (
-                  <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] font-semibold bg-amber-500/20 border border-amber-500/40 text-amber-300">
+                  <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-amber-500/25 border border-amber-500/50 text-amber-200 text-xs font-bold">
                     <span>{lastScanResult.badge}</span>
                   </div>
                 )}
-                <div className="flex items-center justify-between">
-                  <div className="text-lg font-bold text-white">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="text-lg sm:text-xl font-bold text-white tracking-tight">
                     {lastScanResult.studentName}
                   </div>
-                  {lastScanResult.homeLabGroupName || lastScanResult.labGroupName ? (
-                    <span className="font-mono text-xs font-bold text-indigo-300 bg-indigo-950/70 border border-indigo-700/60 px-2.5 py-0.5 rounded-full">
-                      Group {lastScanResult.homeLabGroupName || lastScanResult.labGroupName}
-                    </span>
-                  ) : (
-                    <span className="text-xs text-slate-400">No Group</span>
-                  )}
+                  <span className="font-mono text-xs font-bold text-amber-300 bg-amber-900/70 border border-amber-600/70 px-2.5 py-0.5 rounded-full shrink-0">
+                    Own: Group {lastScanResult.homeLabGroupName || lastScanResult.labGroupName || '—'}
+                  </span>
                 </div>
-                <div className="flex items-center justify-between text-xs text-amber-200">
-                  <span className="font-mono bg-amber-900/50 px-2 py-0.5 rounded border border-amber-800/50">
+                <p className="text-xs text-amber-200/90 font-medium">
+                  {lastScanResult.message}
+                </p>
+                <div className="flex items-center justify-between text-xs text-amber-200 pt-1 border-t border-amber-800/40">
+                  <span className="font-mono bg-amber-900/70 px-2 py-0.5 rounded border border-amber-700/60 font-bold">
                     {lastScanResult.studentId}
                   </span>
-                  <span>{lastScanResult.message}</span>
+                  <span className="text-[11px] text-amber-300/80">
+                    {lastScanResult.time ? new Date(lastScanResult.time).toLocaleTimeString() : ''}
+                  </span>
                 </div>
               </div>
             )}
 
+            {/* Already Marked Card: Blue warning */}
+            {lastScanResult && lastScanResult.type === 'ALREADY_MARKED' && (
+              <div className="p-4 bg-sky-950/50 border border-sky-500/60 rounded-xl space-y-2 shadow-lg shadow-sky-950/20">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-sky-400 font-bold text-sm">
+                    <AlertCircle className="h-5 w-5 shrink-0" />
+                    <span>{lastScanResult.title}</span>
+                  </div>
+                  <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-sky-500/20 text-sky-300 border border-sky-500/40">
+                    DUPLICATE
+                  </span>
+                </div>
+                {lastScanResult.badge && (
+                  <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] font-semibold bg-sky-500/20 border border-sky-500/40 text-sky-300">
+                    <span>{lastScanResult.badge}</span>
+                  </div>
+                )}
+                <div className="flex items-center justify-between gap-2">
+                  <div className="text-lg sm:text-xl font-bold text-white tracking-tight">
+                    {lastScanResult.studentName}
+                  </div>
+                  {lastScanResult.homeLabGroupName || lastScanResult.labGroupName ? (
+                    <span className="font-mono text-xs font-bold text-sky-300 bg-sky-900/60 border border-sky-700/60 px-2.5 py-0.5 rounded-full shrink-0">
+                      Group {lastScanResult.homeLabGroupName || lastScanResult.labGroupName}
+                    </span>
+                  ) : (
+                    <span className="text-xs text-slate-400 shrink-0">No Group</span>
+                  )}
+                </div>
+                <div className="flex items-center justify-between text-xs text-sky-200 pt-1 border-t border-sky-800/40">
+                  <span className="font-mono bg-sky-900/70 px-2 py-0.5 rounded border border-sky-700/60 font-bold">
+                    {lastScanResult.studentId}
+                  </span>
+                  <span className="text-xs text-sky-300">{lastScanResult.message}</span>
+                </div>
+              </div>
+            )}
+
+            {/* Error Card: Red rejection */}
             {lastScanResult && lastScanResult.type === 'ERROR' && (
-              <div className="p-4 bg-rose-950/40 border border-rose-500/50 rounded-xl space-y-2">
+              <div className="p-4 bg-rose-950/50 border border-rose-500/60 rounded-xl space-y-2 shadow-lg shadow-rose-950/20">
                 <div className="flex items-center gap-2 text-rose-400 font-bold text-sm">
                   <XCircle className="h-5 w-5 shrink-0" />
                   <span>{lastScanResult.title}</span>
@@ -915,135 +1323,366 @@ export default function QRScannerPage() {
                   {lastScanResult.message}
                 </p>
                 {lastScanResult.rawIdentifier && (
-                  <div className="text-[11px] font-mono text-rose-400 bg-rose-900/30 px-2 py-1 rounded">
+                  <div className="text-[11px] font-mono text-rose-400 bg-rose-900/40 px-2 py-1 rounded border border-rose-800/50">
                     Scanned: {lastScanResult.rawIdentifier}
                   </div>
+                )}
+
+                {/* Retry Button on Network Error */}
+                {lastScanResult.isNetwork && failedToken && (
+                  <button
+                    onClick={() => handleScanPayload(failedToken)}
+                    disabled={isSending || !isOnline}
+                    className="w-full mt-2 py-2.5 px-4 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-rose-950/40 transition disabled:opacity-50 min-h-[44px]"
+                  >
+                    <RotateCcw className={`h-4 w-4 ${isSending ? 'animate-spin' : ''}`} />
+                    <span>{isSending ? 'Retrying verification...' : 'Retry Scan'}</span>
+                  </button>
                 )}
               </div>
             )}
           </div>
+
+          {/* Sticky Counters Strip */}
+          <div className="sticky top-14 z-20 bg-slate-950/95 backdrop-blur-md py-2 px-3 rounded-2xl border border-slate-800 shadow-xl">
+            <div className="grid grid-cols-4 gap-2 text-center">
+              {/* Expected */}
+              <div className="p-2 rounded-xl bg-slate-900/80 border border-slate-800">
+                <span className="text-[10px] uppercase font-bold text-slate-400 block tracking-wider">Expected</span>
+                <span className="text-base sm:text-xl font-extrabold text-white">{counters.expected}</span>
+              </div>
+              {/* Present */}
+              <div className="p-2 rounded-xl bg-emerald-950/40 border border-emerald-900/50">
+                <span className="text-[10px] uppercase font-bold text-emerald-400 block tracking-wider">Present</span>
+                <span className="text-base sm:text-xl font-extrabold text-emerald-400">{counters.present}</span>
+              </div>
+              {/* Visitors */}
+              <div className="p-2 rounded-xl bg-amber-950/40 border border-amber-900/50">
+                <span className="text-[10px] uppercase font-bold text-amber-400 block tracking-wider">Visitors</span>
+                <span className="text-base sm:text-xl font-extrabold text-amber-400">{counters.visitors}</span>
+              </div>
+              {/* Remaining */}
+              <div className="p-2 rounded-xl bg-slate-900/80 border border-slate-800">
+                <span className="text-[10px] uppercase font-bold text-slate-400 block tracking-wider">Remaining</span>
+                <span className="text-base sm:text-xl font-extrabold text-slate-300">{counters.remaining}</span>
+              </div>
+            </div>
+          </div>
         </div>
 
-        {/* Right Column: Live Attendance Record Table */}
-        <div className="lg:col-span-7 bg-slate-900/80 border border-slate-800/80 rounded-2xl p-6 shadow-xl flex flex-col justify-between">
+        {/* Right Column / Mobile Bottom: Tabbed Layout (Live Attendance Stream / Manual Check-In) */}
+        <div className="lg:col-span-7 bg-slate-900/80 border border-slate-800/80 rounded-2xl p-4 sm:p-6 shadow-xl flex flex-col justify-between space-y-4">
           <div>
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
-              <div>
-                <h3 className="text-base font-bold text-white">Live Attendance Stream</h3>
-                <p className="text-xs text-slate-400">Real-time check-in records for this laboratory session</p>
-              </div>
-
-              <div className="flex flex-wrap items-center gap-2">
-                {/* Cross-Group Only Filter Toggle */}
+            {/* Tab Navigation Header on Small Screens & Desktop Header */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-800">
+              
+              {/* Tab Switcher Buttons */}
+              <div className="flex items-center gap-1.5 p-1 bg-slate-950 rounded-xl border border-slate-800">
                 <button
-                  onClick={() => setCrossGroupOnly(!crossGroupOnly)}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition ${
-                    crossGroupOnly
-                      ? 'bg-amber-500 text-slate-950 border-amber-400 font-bold shadow-sm'
-                      : 'bg-slate-950 hover:bg-slate-800 text-slate-300 border-slate-800'
+                  onClick={() => setMobileTab('stream')}
+                  className={`px-3.5 py-2 rounded-lg text-xs font-bold transition flex items-center gap-1.5 min-h-[40px] ${
+                    mobileTab === 'stream'
+                      ? 'bg-teal-500 text-slate-950 shadow-md'
+                      : 'text-slate-400 hover:text-white'
                   }`}
-                  title="Filter to show only cross-group attendees"
                 >
-                  Cross-group only
+                  <Users className="h-3.5 w-3.5" />
+                  <span>Live Stream ({attendanceRecords.length})</span>
                 </button>
 
-                {/* Search */}
+                <button
+                  onClick={() => {
+                    setMobileTab('manual');
+                    fetchExpectedStudents('');
+                  }}
+                  className={`px-3.5 py-2 rounded-lg text-xs font-bold transition flex items-center gap-1.5 min-h-[40px] ${
+                    mobileTab === 'manual'
+                      ? 'bg-teal-500 text-slate-950 shadow-md'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  <FileEdit className="h-3.5 w-3.5" />
+                  <span>Manual Fallback</span>
+                </button>
+              </div>
+
+              {/* End Session Button for Mobile */}
+              {session && session.status === 'ACTIVE' && (
+                <button
+                  onClick={() => setIsEndSessionModalOpen(true)}
+                  className="sm:hidden w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-amber-600 to-rose-600 hover:from-amber-500 hover:to-rose-500 text-white font-bold text-xs shadow-md shadow-rose-950/40 transition flex items-center justify-center gap-2 min-h-[44px]"
+                >
+                  <CheckCircle2 className="h-4 w-4" />
+                  <span>End Attendance Session</span>
+                </button>
+              )}
+            </div>
+
+            {/* TAB 1: Live Attendance Stream */}
+            {mobileTab === 'stream' && (
+              <div className="space-y-3 pt-3">
+                {/* Search & Filter Bar */}
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 flex-1 min-w-[200px]">
+                    <div className="relative flex-1">
+                      <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                      <input
+                        type="text"
+                        value={tableSearch}
+                        onChange={(e) => setTableSearch(e.target.value)}
+                        placeholder="Search attendee by ID or name..."
+                        className="w-full pl-9 pr-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-teal-500 min-h-[44px]"
+                      />
+                    </div>
+
+                    {/* Cross-Group Only Filter Toggle */}
+                    <button
+                      onClick={() => setCrossGroupOnly(!crossGroupOnly)}
+                      className={`px-3 py-2 rounded-xl text-xs font-semibold border transition shrink-0 min-h-[44px] flex items-center gap-1.5 ${
+                        crossGroupOnly
+                          ? 'bg-amber-500 text-slate-950 border-amber-400 font-bold shadow-sm'
+                          : 'bg-slate-950 hover:bg-slate-800 text-slate-300 border-slate-800'
+                      }`}
+                      title="Filter to show only cross-group attendees"
+                    >
+                      <ListFilter className="h-3.5 w-3.5" />
+                      <span className="hidden sm:inline">Cross-group</span>
+                    </button>
+
+                    {/* Refresh Button */}
+                    <button
+                      onClick={() => fetchAttendanceRecords(selectedSessionId, tableSearch, crossGroupOnly)}
+                      aria-label="Refresh attendance records"
+                      className="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition shrink-0 min-h-[44px] min-w-[44px] flex items-center justify-center"
+                      title="Refresh attendance records"
+                    >
+                      <RefreshCw className={`h-4 w-4 ${loadingRecords ? 'animate-spin' : ''}`} />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Table & Mobile Stacked Cards */}
+                <div className="rounded-xl border border-slate-800 overflow-hidden">
+                  {/* Mobile Stacked Cards (< 768px) */}
+                  <div className="md:hidden divide-y divide-slate-800/80 max-h-[380px] overflow-y-auto">
+                    {attendanceRecords.length === 0 ? (
+                      <div className="py-8 text-center text-slate-500 text-xs">
+                        {loadingRecords ? 'Loading attendance stream...' : 'No attendance recorded for this session yet.'}
+                      </div>
+                    ) : (
+                      attendanceRecords.map((rec) => (
+                        <div key={rec.id} className="p-3.5 space-y-2 bg-slate-900/40">
+                          <div className="flex items-start justify-between gap-2">
+                            <div>
+                              <span className="font-mono font-bold text-teal-400 text-xs">{rec.studentId}</span>
+                              <p className="text-xs font-semibold text-slate-200 mt-0.5">{rec.studentName}</p>
+                            </div>
+                            <span
+                              className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                                rec.method === 'QR_SCAN'
+                                  ? 'bg-teal-950 text-teal-400 border border-teal-800/50'
+                                  : 'bg-indigo-950 text-indigo-400 border border-indigo-800/50'
+                              }`}
+                            >
+                              {rec.method}
+                            </span>
+                          </div>
+
+                          <div className="flex items-center justify-between text-xs text-slate-400 pt-1 border-t border-slate-800/40">
+                            <div>
+                              {rec.isCrossGroup ? (
+                                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-950 text-amber-300 border border-amber-700/60 inline-flex items-center gap-1">
+                                  <span>Cross-Group</span>
+                                  <span className="text-amber-400 font-normal">({rec.homeLabGroupName ? `Group ${rec.homeLabGroupName}` : 'Other'})</span>
+                                </span>
+                              ) : (
+                                <span className="text-slate-300 font-mono text-[11px]">
+                                  {rec.homeLabGroupName || rec.labGroupName || (session?.labGroupName ? `Group ${session.labGroupName}` : 'Whole Batch')}
+                                </span>
+                              )}
+                            </div>
+                            <span className="text-[10px] text-slate-400 font-mono">
+                              {rec.markedAt ? new Date(rec.markedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '—'}
+                            </span>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+
+                  {/* Desktop Table (>= 768px) */}
+                  <div className="hidden md:block overflow-x-auto max-h-[420px] overflow-y-auto">
+                    <table className="w-full text-left text-xs">
+                      <thead className="bg-slate-950 text-slate-400 border-b border-slate-800 font-semibold uppercase text-[10px] tracking-wider sticky top-0 z-10">
+                        <tr>
+                          <th className="py-3 px-4">Student ID</th>
+                          <th className="py-3 px-4">Student Name</th>
+                          <th className="py-3 px-4">Home Group</th>
+                          <th className="py-3 px-4">Type</th>
+                          <th className="py-3 px-4">Method</th>
+                          <th className="py-3 px-4">Time</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-800">
+                        {attendanceRecords.length === 0 ? (
+                          <tr>
+                            <td colSpan="6" className="py-8 text-center text-slate-500">
+                              {loadingRecords ? 'Loading attendance stream...' : 'No attendance recorded for this session yet.'}
+                            </td>
+                          </tr>
+                        ) : (
+                          attendanceRecords.map((rec) => (
+                            <tr key={rec.id} className="hover:bg-slate-800/40 transition">
+                              <td className="py-3 px-4 font-mono font-semibold text-teal-400">
+                                {rec.studentId}
+                              </td>
+                              <td className="py-3 px-4 text-slate-200 font-medium">
+                                {rec.studentName}
+                              </td>
+                              <td className="py-3 px-4 text-slate-400">
+                                {rec.homeLabGroupName || rec.labGroupName || (session?.labGroupName ? `Group ${session.labGroupName}` : 'Whole Batch')}
+                              </td>
+                              <td className="py-3 px-4">
+                                {rec.isCrossGroup ? (
+                                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-950 text-amber-400 border border-amber-800/60 inline-flex items-center gap-1">
+                                    <span>Cross-Group</span>
+                                  </span>
+                                ) : (
+                                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-800 text-slate-300">
+                                    Regular
+                                  </span>
+                                )}
+                              </td>
+                              <td className="py-3 px-4">
+                                <span
+                                  className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                                    rec.method === 'QR_SCAN'
+                                      ? 'bg-teal-950 text-teal-400 border border-teal-800/50'
+                                      : 'bg-indigo-950 text-indigo-400 border border-indigo-800/50'
+                                  }`}
+                                >
+                                  {rec.method}
+                                </span>
+                              </td>
+                              <td className="py-3 px-4 text-slate-400 font-mono text-[11px]">
+                                {rec.markedAt ? new Date(rec.markedAt).toLocaleTimeString() : '—'}
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                <div className="pt-2 text-right text-[11px] text-slate-500">
+                  Showing {attendanceRecords.length} recorded attendances
+                </div>
+              </div>
+            )}
+
+            {/* TAB 2: Manual Fallback Search */}
+            {mobileTab === 'manual' && (
+              <div className="space-y-3 pt-3">
+                <div className="p-3 bg-slate-950 rounded-xl border border-slate-800 text-xs text-slate-400">
+                  Search the enrolled roster to manually record attendance with a required justification reason.
+                </div>
+
+                {/* Search Bar */}
                 <div className="relative">
-                  <Search className="h-3.5 w-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                   <input
                     type="text"
-                    value={tableSearch}
-                    onChange={(e) => setTableSearch(e.target.value)}
-                    placeholder="Search attendee..."
-                    className="pl-8 pr-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-teal-500 w-36 sm:w-44"
+                    value={manualSearchQuery}
+                    onChange={(e) => {
+                      setManualSearchQuery(e.target.value);
+                      fetchExpectedStudents(e.target.value);
+                    }}
+                    placeholder="Search expected student (ID or name)..."
+                    className="w-full pl-9 pr-3 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-teal-500 min-h-[44px]"
                   />
                 </div>
 
-                {/* Refresh */}
-                <button
-                  onClick={() => fetchAttendanceRecords(selectedSessionId, tableSearch, crossGroupOnly)}
-                  className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition"
-                  title="Refresh attendance records"
-                >
-                  <RefreshCw className={`h-3.5 w-3.5 ${loadingRecords ? 'animate-spin' : ''}`} />
-                </button>
-              </div>
-            </div>
-
-            {/* Table */}
-            <div className="overflow-x-auto rounded-xl border border-slate-800">
-              <table className="w-full text-left text-xs">
-                <thead className="bg-slate-950 text-slate-400 border-b border-slate-800 font-semibold uppercase text-[10px] tracking-wider">
-                  <tr>
-                    <th className="py-3 px-4">Student ID</th>
-                    <th className="py-3 px-4">Student Name</th>
-                    <th className="py-3 px-4">Group</th>
-                    <th className="py-3 px-4">Method</th>
-                    <th className="py-3 px-4">Checked In At</th>
-                    <th className="py-3 px-4">Notes</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-800/60 bg-slate-900/40">
-                  {attendanceRecords.length === 0 ? (
-                    <tr>
-                      <td colSpan="6" className="py-8 text-center text-slate-500">
-                        {loadingRecords ? 'Loading attendance stream...' : 'No attendance recorded for this session yet.'}
-                      </td>
-                    </tr>
+                {/* Expected Student Pick List (Big touch targets >= 44px) */}
+                <div className="max-h-52 overflow-y-auto rounded-xl border border-slate-800 divide-y divide-slate-800 bg-slate-950/60">
+                  {loadingStudents ? (
+                    <div className="p-4 text-center text-xs text-slate-400">Searching roster...</div>
+                  ) : expectedStudents.length === 0 ? (
+                    <div className="p-4 text-center text-xs text-slate-400">No matching enrolled students found.</div>
                   ) : (
-                    attendanceRecords.map((rec) => (
-                      <tr key={rec.id} className="hover:bg-slate-800/40 transition">
-                        <td className="py-3 px-4 font-mono font-semibold text-teal-400">
-                          {rec.studentId}
-                        </td>
-                        <td className="py-3 px-4 font-medium text-slate-200">
-                          {rec.studentName}
-                        </td>
-                        <td className="py-3 px-4">
-                          {rec.isCrossGroup ? (
-                            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-950 text-amber-300 border border-amber-700/60 inline-flex items-center gap-1">
-                              <span>Cross-Group</span>
-                              <span className="text-amber-400 font-normal">({rec.homeLabGroupName ? `Group ${rec.homeLabGroupName}` : 'Other'})</span>
+                    expectedStudents.map((st) => (
+                      <div
+                        key={st.studentUuid}
+                        onClick={() => !st.isAttended && setSelectedStudentForManual(st)}
+                        className={`p-3 min-h-[44px] flex items-center justify-between text-xs transition cursor-pointer ${
+                          st.isAttended
+                            ? 'bg-slate-900/30 opacity-60 cursor-not-allowed'
+                            : selectedStudentForManual?.studentUuid === st.studentUuid
+                            ? 'bg-teal-500/15 border-l-4 border-teal-400 text-teal-200'
+                            : 'hover:bg-slate-800/60 text-slate-300'
+                        }`}
+                      >
+                        <div>
+                          <span className="font-mono font-bold text-white mr-2">{st.studentId}</span>
+                          <span>{st.studentName}</span>
+                        </div>
+                        <div>
+                          {st.isAttended ? (
+                            <span className="text-[10px] font-bold text-emerald-400 bg-emerald-950/60 border border-emerald-800/60 px-2 py-0.5 rounded">
+                              ALREADY PRESENT
                             </span>
                           ) : (
-                            <span className="text-slate-300 font-mono text-[11px]">
-                              {rec.homeLabGroupName || rec.labGroupName || (session?.labGroupName ? `Group ${session.labGroupName}` : 'Whole Batch')}
+                            <span className="text-[10px] font-bold text-teal-400 bg-teal-950/40 border border-teal-800/40 px-2.5 py-1 rounded">
+                              Select
                             </span>
                           )}
-                        </td>
-                        <td className="py-3 px-4">
-                          <span
-                            className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                              rec.method === 'QR_SCAN'
-                                ? 'bg-teal-950 text-teal-400 border border-teal-800/50'
-                                : 'bg-indigo-950 text-indigo-400 border border-indigo-800/50'
-                            }`}
-                          >
-                            {rec.method}
-                          </span>
-                        </td>
-                        <td className="py-3 px-4 text-slate-300 font-mono text-[11px]">
-                          {rec.markedAt ? new Date(rec.markedAt).toLocaleTimeString() : '—'}
-                        </td>
-                        <td className="py-3 px-4 text-slate-400 truncate max-w-xs text-[11px]">
-                          {rec.justificationNotes || rec.crossGroupNote || '—'}
-                        </td>
-                      </tr>
+                        </div>
+                      </div>
                     ))
                   )}
-                </tbody>
-              </table>
-            </div>
-          </div>
+                </div>
 
-          <div className="pt-4 text-right text-[11px] text-slate-500">
-            Showing {attendanceRecords.length} recorded attendances
+                {/* Selected Student Display */}
+                {selectedStudentForManual && (
+                  <div className="p-3 bg-teal-950/40 border border-teal-500/40 rounded-xl text-xs">
+                    <span className="text-teal-400 font-semibold block">Selected for Check-in:</span>
+                    <span className="text-white font-bold text-sm">{selectedStudentForManual.studentName}</span>{' '}
+                    <span className="font-mono text-teal-300">({selectedStudentForManual.studentId})</span>
+                  </div>
+                )}
+
+                {/* Mandatory Justification Reason */}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">
+                    Justification Reason <span className="text-rose-400">*</span>
+                  </label>
+                  <textarea
+                    value={manualReason}
+                    onChange={(e) => setManualReason(e.target.value)}
+                    placeholder="e.g. Student badge unreadable / camera glare"
+                    rows="2"
+                    className="w-full p-3 bg-slate-950 border border-slate-700 rounded-xl text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-teal-500 resize-none min-h-[44px]"
+                  />
+                </div>
+
+                {/* Action Button */}
+                <div className="pt-1">
+                  <button
+                    onClick={submitManualAttendance}
+                    disabled={submittingManual || !selectedStudentForManual || !manualReason.trim()}
+                    className="w-full py-3 px-4 rounded-xl bg-teal-500 hover:bg-teal-600 text-slate-950 font-bold text-xs shadow-lg shadow-teal-500/20 transition disabled:opacity-50 min-h-[44px] flex items-center justify-center gap-2"
+                  >
+                    {submittingManual ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+                    <span>{submittingManual ? 'Recording attendance...' : 'Record Manual Attendance'}</span>
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
 
-
-      {/* Manual Attendance Modal */}
+      {/* Manual Attendance Modal (Also available from header button) */}
       <Modal
         isOpen={isManualModalOpen}
         onClose={() => setIsManualModalOpen(false)}
@@ -1069,7 +1708,7 @@ export default function QRScannerPage() {
                   fetchExpectedStudents(e.target.value);
                 }}
                 placeholder="e.g. IT21001234 or Kasun"
-                className="w-full pl-9 pr-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-teal-500"
+                className="w-full pl-9 pr-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-teal-500 min-h-[44px]"
               />
             </div>
           </div>
@@ -1085,7 +1724,7 @@ export default function QRScannerPage() {
                 <div
                   key={st.studentUuid}
                   onClick={() => !st.isAttended && setSelectedStudentForManual(st)}
-                  className={`p-3 flex items-center justify-between text-xs transition cursor-pointer ${
+                  className={`p-3 min-h-[44px] flex items-center justify-between text-xs transition cursor-pointer ${
                     st.isAttended
                       ? 'bg-slate-900/30 opacity-60 cursor-not-allowed'
                       : selectedStudentForManual?.studentUuid === st.studentUuid
@@ -1130,7 +1769,7 @@ export default function QRScannerPage() {
               onChange={(e) => setManualReason(e.target.value)}
               placeholder="e.g. Student badge QR unreadable / phone battery dead"
               rows="3"
-              className="w-full p-3 bg-slate-950 border border-slate-700 rounded-xl text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-teal-500 resize-none"
+              className="w-full p-3 bg-slate-950 border border-slate-700 rounded-xl text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-teal-500 resize-none min-h-[44px]"
             />
           </div>
 
@@ -1138,14 +1777,14 @@ export default function QRScannerPage() {
           <div className="flex justify-end gap-3 pt-2">
             <button
               onClick={() => setIsManualModalOpen(false)}
-              className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white transition"
+              className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white transition min-h-[44px]"
             >
               Cancel
             </button>
             <button
               onClick={submitManualAttendance}
               disabled={submittingManual || !selectedStudentForManual || !manualReason.trim()}
-              className="px-4 py-2 rounded-xl bg-teal-500 hover:bg-teal-600 text-slate-950 font-bold text-xs shadow-lg shadow-teal-500/20 transition disabled:opacity-50"
+              className="px-4 py-2 rounded-xl bg-teal-500 hover:bg-teal-600 text-slate-950 font-bold text-xs shadow-lg shadow-teal-500/20 transition disabled:opacity-50 min-h-[44px]"
             >
               {submittingManual ? 'Recording...' : 'Record Attendance'}
             </button>

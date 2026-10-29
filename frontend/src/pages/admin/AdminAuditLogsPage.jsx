@@ -166,7 +166,7 @@ export default function AdminAuditLogsPage() {
                 setSearch(e.target.value);
                 setPage(0);
               }}
-              className="w-full pl-10 pr-4 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+              className="w-full pl-10 pr-4 py-2.5 min-h-[44px] bg-slate-950 border border-slate-800 rounded-xl text-base sm:text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
             />
           </div>
 
@@ -178,7 +178,7 @@ export default function AdminAuditLogsPage() {
                 setSelectedAction(e.target.value);
                 setPage(0);
               }}
-              className="w-full px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+              className="w-full px-3.5 py-2.5 min-h-[44px] bg-slate-950 border border-slate-800 rounded-xl text-base sm:text-xs text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
             >
               <option value="ALL">All Actions</option>
               {ACTION_OPTIONS.filter((a) => a !== 'ALL').map((act) => (
@@ -197,7 +197,7 @@ export default function AdminAuditLogsPage() {
                 setSelectedEntity(e.target.value);
                 setPage(0);
               }}
-              className="w-full px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+              className="w-full px-3.5 py-2.5 min-h-[44px] bg-slate-950 border border-slate-800 rounded-xl text-base sm:text-xs text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
             >
               <option value="ALL">All Entities</option>
               {ENTITY_OPTIONS.filter((e) => e !== 'ALL').map((ent) => (
@@ -210,9 +210,97 @@ export default function AdminAuditLogsPage() {
         </div>
       </div>
 
-      {/* Audit Log Table */}
+      {/* Audit Log Table & Mobile Stacked Cards */}
       <div className="bg-slate-900/80 border border-slate-800/80 rounded-2xl shadow-xl overflow-hidden">
-        <div className="overflow-x-auto">
+        {/* Mobile Stacked Cards (< 768px) */}
+        <div className="md:hidden divide-y divide-slate-800/80">
+          {loading ? (
+            <div className="py-12 text-center text-slate-400">
+              <RefreshCw className="h-6 w-6 animate-spin mx-auto text-indigo-400 mb-2" />
+              <span>Querying immutable audit logs...</span>
+            </div>
+          ) : logs.length === 0 ? (
+            <div className="py-12 text-center text-slate-500">
+              <AlertCircle className="h-6 w-6 mx-auto mb-2 text-slate-600" />
+              <span>No audit records match the current filter criteria.</span>
+            </div>
+          ) : (
+            logs.map((log) => {
+              const isExpanded = expandedRows.has(log.id);
+              let detailsParsed = null;
+              try {
+                detailsParsed = log.details ? JSON.parse(log.details) : null;
+              } catch (e) {
+                detailsParsed = log.details;
+              }
+
+              return (
+                <div key={log.id} className="p-4 space-y-2.5 bg-slate-900/40">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <span className="font-mono text-emerald-400 font-bold text-xs">{log.action}</span>
+                      <p className="text-xs text-slate-300 font-medium mt-0.5">{log.actorEmail || 'System Actor'}</p>
+                    </div>
+                    <span
+                      className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold ${
+                        log.actorRole === 'ADMIN'
+                          ? 'bg-purple-500/10 text-purple-400 border border-purple-500/30'
+                          : log.actorRole === 'LECTURER'
+                          ? 'bg-teal-500/10 text-teal-400 border border-teal-500/30'
+                          : 'bg-slate-800 text-slate-400 border border-slate-700'
+                      }`}
+                    >
+                      {log.actorRole}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 text-xs pt-1 border-t border-slate-800/40 text-slate-400">
+                    <div>
+                      <span className="text-[10px] uppercase font-bold text-slate-500 block">Target Entity</span>
+                      <span className="text-white font-mono text-xs">{log.entityName || log.entityType}</span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] uppercase font-bold text-slate-500 block">Timestamp</span>
+                      <span className="text-slate-300 font-mono text-[11px]">
+                        {log.timestamp ? new Date(log.timestamp).toLocaleString() : '—'}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Collapsible Details */}
+                  <div className="pt-2">
+                    <button
+                      type="button"
+                      onClick={() => toggleExpandRow(log.id)}
+                      className="min-h-[44px] w-full flex items-center justify-between px-3 py-2 rounded-xl bg-slate-950/60 border border-slate-800 text-slate-300 text-xs font-semibold hover:bg-slate-800/80 transition"
+                    >
+                      <span>Audit Payload Details</span>
+                      <ChevronDown className={`h-4 w-4 transition-transform ${isExpanded ? 'rotate-180 text-indigo-400' : ''}`} />
+                    </button>
+
+                    {isExpanded && (
+                      <div className="mt-2 p-3 rounded-xl bg-slate-950 border border-slate-800/80 overflow-x-auto text-[11px] font-mono text-slate-300">
+                        {detailsParsed && typeof detailsParsed === 'object' ? (
+                          <pre className="whitespace-pre-wrap">{JSON.stringify(detailsParsed, null, 2)}</pre>
+                        ) : (
+                          <span>{log.details || 'No payload details provided.'}</span>
+                        )}
+                        {log.ipAddress && (
+                          <p className="mt-2 pt-2 border-t border-slate-800/60 text-[10px] text-slate-500">
+                            Client IP: {log.ipAddress}
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+
+        {/* Desktop & Tablet Table (>= 768px) */}
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="border-b border-slate-800 bg-slate-950/60 text-slate-400 text-[11px] font-semibold uppercase tracking-wider">
@@ -338,14 +426,14 @@ export default function AdminAuditLogsPage() {
               <button
                 onClick={() => setPage((p) => Math.max(0, p - 1))}
                 disabled={page === 0}
-                className="p-2 rounded-xl bg-slate-950 border border-slate-800 text-slate-300 hover:bg-slate-800 disabled:opacity-50 transition"
+                className="min-h-[44px] min-w-[44px] flex items-center justify-center p-2 rounded-xl bg-slate-950 border border-slate-800 text-slate-300 hover:bg-slate-800 disabled:opacity-50 transition"
               >
                 <ChevronLeft className="h-4 w-4" />
               </button>
               <button
                 onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
                 disabled={page >= totalPages - 1}
-                className="p-2 rounded-xl bg-slate-950 border border-slate-800 text-slate-300 hover:bg-slate-800 disabled:opacity-50 transition"
+                className="min-h-[44px] min-w-[44px] flex items-center justify-center p-2 rounded-xl bg-slate-950 border border-slate-800 text-slate-300 hover:bg-slate-800 disabled:opacity-50 transition"
               >
                 <ChevronRight className="h-4 w-4" />
               </button>

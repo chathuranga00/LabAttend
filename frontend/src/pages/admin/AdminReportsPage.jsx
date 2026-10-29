@@ -706,7 +706,7 @@ export default function AdminReportsPage() {
                     placeholder="Filter preview rows..."
                     value={tableFilter}
                     onChange={(e) => setTableFilter(e.target.value)}
-                    className="w-full bg-slate-800/80 border border-slate-700/80 rounded-xl pl-9 pr-3 py-1.5 text-xs text-slate-100 placeholder-slate-400 focus:outline-none focus:border-emerald-500"
+                    className="w-full bg-slate-800/80 border border-slate-700/80 rounded-xl pl-9 pr-3 py-2 min-h-[44px] text-base sm:text-xs text-slate-100 placeholder-slate-400 focus:outline-none focus:border-emerald-500"
                   />
                 </div>
                 <span className="text-xs text-slate-400 whitespace-nowrap">
@@ -715,12 +715,12 @@ export default function AdminReportsPage() {
               </div>
 
               {/* 3 Export Download Buttons */}
-              <div className="flex items-center gap-2.5 w-full sm:w-auto justify-end">
+              <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto justify-start sm:justify-end">
                 {/* PDF Export */}
                 <button
                   onClick={() => handleExport('PDF')}
                   disabled={exportLoading.PDF}
-                  className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 text-xs font-semibold shadow-sm transition-all disabled:opacity-50 cursor-pointer"
+                  className="min-h-[44px] flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 text-xs font-semibold shadow-sm transition-all disabled:opacity-50 cursor-pointer"
                 >
                   {exportLoading.PDF ? (
                     <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -734,7 +734,7 @@ export default function AdminReportsPage() {
                 <button
                   onClick={() => handleExport('EXCEL')}
                   disabled={exportLoading.EXCEL}
-                  className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-xs font-semibold shadow-sm transition-all disabled:opacity-50 cursor-pointer"
+                  className="min-h-[44px] flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-xs font-semibold shadow-sm transition-all disabled:opacity-50 cursor-pointer"
                 >
                   {exportLoading.EXCEL ? (
                     <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -748,7 +748,7 @@ export default function AdminReportsPage() {
                 <button
                   onClick={() => handleExport('CSV')}
                   disabled={exportLoading.CSV}
-                  className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 text-xs font-semibold shadow-sm transition-all disabled:opacity-50 cursor-pointer"
+                  className="min-h-[44px] flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 text-xs font-semibold shadow-sm transition-all disabled:opacity-50 cursor-pointer"
                 >
                   {exportLoading.CSV ? (
                     <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -762,6 +762,9 @@ export default function AdminReportsPage() {
 
             {/* Table Container */}
             <div className="overflow-x-auto">
+              <div className="sm:hidden px-3 py-1.5 bg-slate-950/80 text-[10px] text-slate-400 border-b border-slate-800 text-center font-medium">
+                &larr; Scroll horizontally to inspect full matrix &rarr;
+              </div>
               <table className="w-full text-left text-xs">
                 <thead className="bg-slate-800/60 text-slate-300 font-semibold uppercase text-[10px] tracking-wider border-b border-slate-700/60">
                   <tr>

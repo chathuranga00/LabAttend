@@ -236,7 +236,81 @@ To scan physical student badge QR codes using `html5-qrcode` in mobile browsers 
 
 ---
 
-## 7. Post-Deployment Verification Checklist
+## 7. PWA: Install on Your Phone & Desktop
+
+LabAttend is engineered as an installable Progressive Web Application (PWA) with full standalone support, offline app shell resilience, and zero local proxy attendance caching.
+
+### How to Install
+
+#### Option A: Android (Google Chrome / Edge / Samsung Internet)
+1. Open your deployed HTTPS URL in Chrome (e.g. `https://labattend.vercel.app`).
+2. A prominent **"Install LabAttend"** prompt banner will automatically appear at the bottom or login screen.
+3. Tap **"Install LabAttend"** (or tap the three-dot menu `⋮` in Chrome -> **"Install app"** or **"Add to Home screen"**).
+4. Tap **Install** in the system confirmation dialog.
+5. The LabAttend icon will appear on your home screen and app drawer. Tapping it opens LabAttend in full standalone mode with no browser URL address bar.
+
+#### Option B: Apple iPhone & iPad (iOS / iPadOS Safari)
+1. Open the deployed HTTPS URL in **Apple Safari** (iOS requires Safari for PWA home screen installation).
+2. Tap the **Share** button in Safari's bottom toolbar (the square icon with an upward-pointing arrow).
+3. Scroll down the share sheet and tap **"Add to Home Screen"** (`+`).
+4. Confirm or edit the app name ("LabAttend") and tap **Add** in the top right corner.
+5. Launch LabAttend from your iOS home screen. It will run in full-screen standalone mode with native safe-area inset management (notch and dynamic island support).
+
+#### Option C: Desktop (Google Chrome / Microsoft Edge / Brave)
+1. Open the deployed HTTPS URL in Chrome or Edge.
+2. An **Install LabAttend** icon will appear on the right side of the URL omnibar.
+3. Click the icon -> click **Install** in the dialog (or click your user profile menu in LabAttend and select **"Install LabAttend"**).
+4. The application opens as a native desktop window and pins to your taskbar or start menu.
+
+---
+
+## 8. PWA & Device Troubleshooting Guide
+
+| Issue | Root Cause | Resolution |
+| :--- | :--- | :--- |
+| **Camera Access Blocked / Denied** | Permission was dismissed or denied on first prompt. | **Android Chrome**: Tap the lock/tune icon left of the URL bar -> **Permissions** -> **Camera** -> select **Allow** -> reload page.<br>**iOS Safari**: Open iOS **Settings** -> **Safari** -> **Camera** -> set to **Ask** or **Allow**. Inside Safari, tap `aA` in the URL bar -> **Website Settings** -> **Camera** -> **Allow**. |
+| **Old Version Cached / Not Updating** | Browser is executing previous service worker precache. | LabAttend utilizes a prompt update strategy (`registerType: 'prompt'`). When an update deploys, a toast appears: *"New version available. Refresh now"*. Tap **Refresh Now**.<br>Alternatively, open Chrome DevTools -> **Application** -> **Service Workers** -> click **Unregister** and refresh. |
+| **Install Button Not Showing** | Already installed, running in standalone mode, or insecure HTTP context. | 1. Check if the app is already running in standalone mode (install button is hidden by design).<br>2. Confirm the page is served over **HTTPS** (PWAs require a secure context).<br>3. On iOS, Safari does not support the `beforeinstallprompt` event; use the manual **Share -> Add to Home Screen** action. |
+| **Login Fails in Standalone Mode** | Cross-site cookie partitioning or missing CORS headers. | LabAttend uses stateless JWT Bearer tokens in `Authorization: Bearer <token>` stored in `localStorage`, bypassing third-party cookie restrictions entirely. Verify that `CORS_ALLOWED_ORIGINS` on the backend includes the exact deployed frontend origin (e.g. `https://labattend.vercel.app`). |
+| **Scanning Paused While Offline** | Device lost network connection mid-session. | LabAttend strictly prohibits offline attendance queueing to prevent proxy tampering. An offline banner is displayed over the camera. Reconnect device to Wi-Fi/cellular; the scanner automatically resumes. |
+
+---
+
+## 9. Mobile Phone Post-Deployment Testing Checklist
+
+Follow this end-to-end verification checklist on a physical smartphone (iPhone or Android) connected to cellular data or Wi-Fi:
+
+- [ ] **1. HTTPS Access**: Open `https://<your-frontend-domain>` on your phone's browser. Confirm valid SSL padlock and zero console errors.
+- [ ] **2. PWA Installation**: Tap **Install LabAttend** (Android) or **Share -> Add to Home Screen** (iOS). Confirm app icon appears on phone home screen.
+- [ ] **3. Standalone Mode Launch**: Launch LabAttend by tapping the home screen icon. Confirm it opens without browser URL bars or navigation chrome.
+- [ ] **4. Lecturer Sign In**: Log in using lecturer credentials. Verify immediate token storage and redirection to the mobile Lecturer Dashboard.
+- [ ] **5. Session Creation**: Tap **Sessions** in the bottom navigation bar -> tap **New Session** -> select module, batch, lab group, and hall -> tap **Create Session** -> tap **Start Lab Session** (status transitions to `ACTIVE`).
+- [ ] **6. Camera Scanner**: Tap **Scan QR** in the bottom bar or tap **Badge Scanner** from the active session card. Allow camera permission when prompted.
+- [ ] **7. Hardware Controls**:
+  - Tap the **Torch** button: verify phone camera flash turns on and off (Android).
+  - Tap the **Mute** button: verify sound is muted; tap again to unmute.
+- [ ] **8. Real Badge Scan & Visual Confirmation**: Point camera at a printed student badge QR token. Verify:
+  - Instant pleasant chime and haptic vibration pulse.
+  - Emerald green **Attendance Recorded** card appears below camera with student name, ID, and lab group.
+  - Sticky counter increments (`Present: +1`, `Remaining: -1`).
+- [ ] **9. Duplicate Scan Safeguard**: Scan the exact same badge a second time. Verify:
+  - Blue warning card: *"Already Marked Present"*.
+  - Duplicate counter does not double-count.
+- [ ] **10. Cross-Group Scan**: Scan a student belonging to a different lab group within the same batch. Verify:
+  - Amber alert card: *"Cross-Group Attendance Marked (Group B -> Group A)"*.
+  - Visitors counter increments (`Visitors: +1`).
+- [ ] **11. Offline Safeguard**: Turn on Phone **Airplane Mode** mid-session. Verify:
+  - Viewfinder displays *"Scanning Paused — Offline"* banner.
+  - Scanning is safely blocked (no offline queueing).
+  - Turn off Airplane Mode; verify scanning restores seamlessly.
+- [ ] **12. Finalize Session & Export**: Tap **End Session** -> enter notes in the confirmation modal -> confirm closure. Verify:
+  - Session status becomes `FINALIZED`.
+  - Absentees are committed to database.
+  - Summary page opens; tap **Export CSV** or **Export PDF** to verify real report generation.
+
+---
+
+## 10. Server Verification Checklist
 
 Execute this checklist immediately after deploying to verify system integrity:
 

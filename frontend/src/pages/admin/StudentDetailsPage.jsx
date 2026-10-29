@@ -417,8 +417,62 @@ export default function StudentDetailsPage() {
             No lab session enrollments found for this student.
           </div>
         ) : (
-          <div className="overflow-x-auto rounded-xl border border-slate-800">
-            <table className="w-full text-left text-sm">
+          <div className="rounded-xl border border-slate-800 overflow-hidden">
+            {/* Mobile Stacked Card View (< 768px) */}
+            <div className="md:hidden divide-y divide-slate-800/80">
+              {attendanceRecords.map((item, idx) => {
+                let statusBadgeClass = 'bg-slate-800 text-slate-400';
+                if (item.attendanceStatus === 'PRESENT') {
+                  statusBadgeClass = 'bg-emerald-950/60 text-emerald-400 border border-emerald-800/50';
+                } else if (item.attendanceStatus === 'LATE') {
+                  statusBadgeClass = 'bg-amber-950/60 text-amber-400 border border-amber-800/50';
+                } else if (item.attendanceStatus === 'ABSENT') {
+                  statusBadgeClass = 'bg-rose-950/60 text-rose-400 border border-rose-800/50';
+                } else if (item.attendanceStatus === 'UNRECORDED') {
+                  statusBadgeClass = 'bg-slate-800 text-slate-400 border border-slate-700';
+                }
+
+                return (
+                  <div key={idx} className="p-4 space-y-2.5 bg-slate-900/40">
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <span className="font-mono font-bold text-emerald-400 text-xs">{item.sessionCode}</span>
+                        <p className="text-xs font-bold text-white mt-0.5">{item.moduleCode} - {item.moduleName}</p>
+                      </div>
+                      <span className={`text-xs font-semibold px-2.5 py-0.5 rounded-full ${statusBadgeClass}`}>
+                        {item.attendanceStatus}
+                      </span>
+                    </div>
+
+                    {item.isCrossGroup && (
+                      <div className="p-2 rounded-lg bg-amber-950/20 border border-amber-900/30 text-[11px] text-amber-300">
+                        Cross-Group Session (Host Group: {item.sessionGroupName || '—'})
+                        {item.lecturerName && <span className="block text-slate-400 text-[10px]">Lecturer: {item.lecturerName}</span>}
+                      </div>
+                    )}
+
+                    <div className="grid grid-cols-2 gap-2 text-xs pt-1 border-t border-slate-800/40 text-slate-400">
+                      <div>
+                        <span className="text-[10px] uppercase font-bold text-slate-500 block">Date & Hall</span>
+                        <span className="text-slate-200">{item.sessionDate}</span>
+                        <span className="text-[10px] text-slate-400 block font-mono">{item.hallCode} ({item.startTime} - {item.endTime})</span>
+                      </div>
+                      <div>
+                        <span className="text-[10px] uppercase font-bold text-slate-500 block">Method & Time</span>
+                        <span className="text-slate-200 font-mono text-[11px]">{item.attendanceMethod}</span>
+                        <span className="text-[10px] text-slate-400 block font-mono">
+                          {item.markedAt ? new Date(item.markedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Desktop Table (>= 768px) */}
+            <div className="hidden md:block overflow-x-auto">
+              <table className="w-full text-left text-sm">
               <thead className="bg-slate-800/70 text-slate-400 text-xs uppercase tracking-wider border-b border-slate-700/60">
                 <tr>
                   <th className="px-4 py-3 font-semibold">Session Code</th>
@@ -505,6 +559,7 @@ export default function StudentDetailsPage() {
                 })}
               </tbody>
             </table>
+          </div>
           </div>
         )}
       </div>
