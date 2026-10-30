@@ -129,6 +129,10 @@ public class StudentService {
 
         LabGroup labGroup = resolveLabGroup(request, batch);
 
+        String personalEmail = (request.getPersonalEmail() != null && !request.getPersonalEmail().isBlank())
+                ? request.getPersonalEmail().trim().toLowerCase()
+                : null;
+
         String offeredBy = (request.getOfferedBy() != null && !request.getOfferedBy().isBlank())
                 ? request.getOfferedBy().trim()
                 : null;
@@ -138,6 +142,7 @@ public class StudentService {
                 .title(request.getTitle() != null && !request.getTitle().isBlank() ? request.getTitle().trim() : null)
                 .fullName(request.getFullName().trim())
                 .email(email)
+                .personalEmail(personalEmail)
                 .offeredBy(offeredBy)
                 .degreeProgramme(programme)
                 .batch(batch)
@@ -200,7 +205,12 @@ public class StudentService {
         student.setStudentId(studentId);
         student.setTitle(request.getTitle() != null && !request.getTitle().isBlank() ? request.getTitle().trim() : null);
         student.setFullName(request.getFullName().trim());
+        String personalEmail = (request.getPersonalEmail() != null && !request.getPersonalEmail().isBlank())
+                ? request.getPersonalEmail().trim().toLowerCase()
+                : null;
+
         student.setEmail(email);
+        student.setPersonalEmail(personalEmail);
         student.setOfferedBy(request.getOfferedBy() != null && !request.getOfferedBy().isBlank() ? request.getOfferedBy().trim() : null);
         student.setDegreeProgramme(programme);
         // NOTE: Changing the student's batch or lab group updates only the student record.
@@ -381,7 +391,8 @@ public class StudentService {
             Integer nameWithInitialsIdx = findColumn(colIndex, "namewithinitials", "initialsname", "shortname");
             Integer titleIdx = findColumn(colIndex, "title", "salutation", "prefix");
             Integer offeredByIdx = findColumn(colIndex, "offeredby", "offered_by", "awardinguniversity", "university", "institute", "partneruniversity");
-            Integer emailIdx = findColumn(colIndex, "email", "emailaddress", "studentemail");
+            Integer emailIdx = findColumn(colIndex, "email", "emailaddress", "studentemail", "institutionalemail", "institutional_email");
+            Integer personalEmailIdx = findColumn(colIndex, "personalemail", "personal_email", "personalemailaddress", "personal_email_address", "studentpersonalemail");
             Integer progIdx = findColumn(colIndex, "degreeprogrammecode", "degreeprogrammename", "degreeprogramme", "programmecode", "programmename", "programme", "degree", "degreename", "course");
             Integer batchIdx = findColumn(colIndex, "batchcode", "batch", "cohort", "academicbatch");
             Integer facultyIdx = findColumn(colIndex, "faculty", "department", "school");
@@ -413,6 +424,7 @@ public class StudentService {
                 String rowTitle = titleIdx != null ? getVal(values, titleIdx) : null;
                 String rowOfferedBy = offeredByIdx != null ? getVal(values, offeredByIdx) : null;
                 String rowEmail = getVal(values, emailIdx);
+                String rowPersonalEmail = getVal(values, personalEmailIdx);
                 String rowProgCode = getVal(values, progIdx);
                 String rowBatchCode = getVal(values, batchIdx);
                 String rowFaculty = facultyIdx != null ? getVal(values, facultyIdx) : null;
@@ -447,6 +459,15 @@ public class StudentService {
                         continue;
                     }
                     seenEmails.add(lowerEmail);
+                }
+
+                String lowerPersonalEmail = null;
+                if (rowPersonalEmail != null && !rowPersonalEmail.isBlank()) {
+                    if (!rowPersonalEmail.contains("@")) {
+                        errors.add(new StudentCsvImportResponse.CsvRowError(rowNumber, upperStudentId, "Invalid personal email format"));
+                        continue;
+                    }
+                    lowerPersonalEmail = rowPersonalEmail.trim().toLowerCase();
                 }
 
                 if (rowProgCode == null || rowProgCode.isBlank()) {
@@ -534,6 +555,7 @@ public class StudentService {
                         .title(rowTitle != null && !rowTitle.isBlank() ? rowTitle.trim() : null)
                         .fullName(rowFullName)
                         .email(lowerEmail)
+                        .personalEmail(lowerPersonalEmail)
                         .offeredBy(rowOfferedBy != null && !rowOfferedBy.isBlank() ? rowOfferedBy.trim() : null)
                         .degreeProgramme(programme)
                         .batch(batch)
@@ -645,6 +667,7 @@ public class StudentService {
                 .title(s.getTitle())
                 .fullName(s.getFullName())
                 .email(s.getEmail())
+                .personalEmail(s.getPersonalEmail())
                 .offeredBy(s.getOfferedBy())
                 .degreeProgrammeId(s.getDegreeProgramme() != null ? s.getDegreeProgramme().getId() : null)
                 .degreeProgrammeCode(s.getDegreeProgramme() != null ? s.getDegreeProgramme().getCode() : null)

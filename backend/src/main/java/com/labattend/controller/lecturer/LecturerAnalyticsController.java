@@ -158,4 +158,18 @@ public class LecturerAnalyticsController {
         );
         return ResponseEntity.ok(ApiResponse.success(result));
     }
+
+    @GetMapping("/at-risk")
+    public ResponseEntity<ApiResponse<List<AtRiskStudentResponse>>> getAtRiskStudents(
+            @RequestParam(required = false) UUID moduleId,
+            @RequestParam(required = false) UUID batchId,
+            @RequestParam(required = false, defaultValue = "4") Integer minConsecutiveAbsences,
+            @AuthenticationPrincipal CustomUserDetails userDetails
+    ) {
+        List<AtRiskStudentResponse> result = analyticsService.getAtRiskStudents(
+                userDetails.getId(), false, moduleId, batchId, minConsecutiveAbsences
+        );
+        return ResponseEntity.ok(ApiResponse.success(result));
+    }
+
 }

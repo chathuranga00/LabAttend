@@ -21,7 +21,8 @@ import {
   RefreshCw,
   Clock,
   Layers,
-  ShieldCheck
+  ShieldCheck,
+  Mail
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { 
@@ -1275,6 +1276,7 @@ export default function LecturerReportsPage() {
                     <th className="py-2.5 px-3 text-center">Absent</th>
                     <th className="py-2.5 px-3 text-right">Attendance Rate</th>
                     <th className="py-2.5 px-3 text-center">Status</th>
+                    <th className="py-2.5 px-3 text-center">Action</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800">
@@ -1298,6 +1300,20 @@ export default function LecturerReportsPage() {
                             <CheckCircle2 className="h-3 w-3" />
                             COMPLIANT
                           </span>
+                        )}
+                      </td>
+                      <td className="py-2.5 px-3 text-center">
+                        {(s.email || s.personalEmail) ? (
+                          <a
+                            href={`mailto:${s.email || s.personalEmail}?${(s.email && s.personalEmail) ? 'cc=' + encodeURIComponent(s.personalEmail) + '&' : ''}subject=${encodeURIComponent('[ACADEMIC NOTICE] Laboratory Attendance - ' + s.officialStudentId)}&body=${encodeURIComponent('Dear ' + s.fullName + ' (' + s.officialStudentId + '),\\n\\nThis is an academic notification regarding your laboratory attendance for cohort ' + (s.batchCode || '') + '. Current attendance rate: ' + s.attendancePercentage + '. Please contact your module lecturer immediately.\\n\\nInstructor Faculty Desk\\nNSBM Green University')}`}
+                            className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-sky-500/15 hover:bg-sky-500/25 text-sky-400 border border-sky-500/30 text-[10px] font-semibold transition"
+                            title="Send notice to student via Outlook"
+                          >
+                            <Mail className="h-3 w-3" />
+                            <span>Outlook</span>
+                          </a>
+                        ) : (
+                          <span className="text-[10px] text-slate-600 italic">No email</span>
                         )}
                       </td>
                     </tr>

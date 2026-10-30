@@ -32,6 +32,10 @@ public class StudentRequest {
     @Size(max = 255, message = "Email cannot exceed 255 characters")
     private String email;
 
+    @Email(message = "Invalid personal email format")
+    @Size(max = 255, message = "Personal email cannot exceed 255 characters")
+    private String personalEmail;
+
     @Size(max = 100, message = "Offered By cannot exceed 100 characters")
     private String offeredBy;
 

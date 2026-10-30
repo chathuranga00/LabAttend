@@ -102,6 +102,7 @@ export default function StudentsPage() {
     studentId: '',
     fullName: '',
     email: '',
+    personalEmail: '',
     degreeProgrammeId: '',
     batchId: '',
     labGroupId: '',
@@ -231,6 +232,7 @@ export default function StudentsPage() {
       title: 'Mr.',
       fullName: '',
       email: '',
+      personalEmail: '',
       offeredBy: 'NSBM',
       degreeProgrammeId: firstProg,
       batchId: matchingBatches[0]?.id || (batches[0]?.id || ''),
@@ -249,6 +251,7 @@ export default function StudentsPage() {
       title: item.title || '',
       fullName: item.fullName || '',
       email: item.email || '',
+      personalEmail: item.personalEmail || '',
       offeredBy: item.offeredBy || '',
       degreeProgrammeId: item.degreeProgrammeId || '',
       batchId: item.batchId || '',
@@ -264,8 +267,11 @@ export default function StudentsPage() {
     const errs = {};
     if (!formData.studentId.trim()) errs.studentId = 'Student ID is required';
     if (!formData.fullName.trim()) errs.fullName = 'Full Name is required';
-    if (formData.email.trim() && !/\S+@\S+\.\S+/.test(formData.email)) {
-      errs.email = 'Invalid email address format';
+    if (formData.email && formData.email.trim() && !/\S+@\S+\.\S+/.test(formData.email)) {
+      errs.email = 'Invalid institutional email address format';
+    }
+    if (formData.personalEmail && formData.personalEmail.trim() && !/\S+@\S+\.\S+/.test(formData.personalEmail)) {
+      errs.personalEmail = 'Invalid personal email address format';
     }
     if (!formData.degreeProgrammeId) errs.degreeProgrammeId = 'Degree Programme is required';
     if (!formData.batchId) errs.batchId = 'Batch cohort is required';
@@ -375,7 +381,8 @@ export default function StudentsPage() {
         studentId: formData.studentId.trim(),
         title: formData.title ? formData.title.trim() : null,
         fullName: formData.fullName.trim(),
-        email: formData.email.trim(),
+        email: formData.email.trim() || null,
+        personalEmail: formData.personalEmail.trim() || null,
         offeredBy: formData.offeredBy ? formData.offeredBy.trim() : null,
         degreeProgrammeId: formData.degreeProgrammeId,
         batchId: formData.batchId,
@@ -609,9 +616,15 @@ export default function StudentsPage() {
             {item.fullName}
           </span>
           {item.email ? (
-            <span className="text-xs text-slate-400">{item.email}</span>
-          ) : (
-            <span className="text-xs text-slate-600 italic">No email</span>
+            <span className="text-xs text-slate-400 block">{item.email}</span>
+          ) : null}
+          {item.personalEmail ? (
+            <span className="text-[11px] text-slate-500 block truncate" title={`Personal: ${item.personalEmail}`}>
+              Personal: {item.personalEmail}
+            </span>
+          ) : null}
+          {!item.email && !item.personalEmail && (
+            <span className="text-xs text-slate-600 italic block">No email</span>
           )}
         </div>
       ),
@@ -1027,20 +1040,38 @@ export default function StudentsPage() {
             </div>
           </div>
 
-          <div>
-            <label className="block text-xs font-medium text-slate-300 mb-1">
-              Institutional Email <span className="text-slate-500 font-normal lowercase">(optional)</span>
-            </label>
-            <input
-              type="email"
-              value={formData.email}
-              onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-              placeholder="e.g. kasun@uni.ac.lk (optional)"
-              className="w-full px-3 py-2 bg-slate-800/80 border border-slate-700 rounded-xl text-sm text-slate-200 focus:outline-none focus:border-emerald-500"
-            />
-            {formErrors.email && (
-              <span className="text-xs text-rose-400 mt-1 block">{formErrors.email}</span>
-            )}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+            <div>
+              <label className="block text-xs font-medium text-slate-300 mb-1">
+                Institutional Email <span className="text-slate-500 font-normal lowercase">(optional)</span>
+              </label>
+              <input
+                type="email"
+                value={formData.email}
+                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                placeholder="e.g. kasun@uni.ac.lk (optional)"
+                className="w-full px-3 py-2 bg-slate-800/80 border border-slate-700 rounded-xl text-sm text-slate-200 focus:outline-none focus:border-emerald-500"
+              />
+              {formErrors.email && (
+                <span className="text-xs text-rose-400 mt-1 block">{formErrors.email}</span>
+              )}
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-slate-300 mb-1">
+                Personal Email <span className="text-slate-500 font-normal lowercase">(optional)</span>
+              </label>
+              <input
+                type="email"
+                value={formData.personalEmail}
+                onChange={(e) => setFormData({ ...formData, personalEmail: e.target.value })}
+                placeholder="e.g. kasun@gmail.com (optional)"
+                className="w-full px-3 py-2 bg-slate-800/80 border border-slate-700 rounded-xl text-sm text-slate-200 focus:outline-none focus:border-emerald-500"
+              />
+              {formErrors.personalEmail && (
+                <span className="text-xs text-rose-400 mt-1 block">{formErrors.personalEmail}</span>
+              )}
+            </div>
           </div>
 
           <div>

@@ -16,7 +16,8 @@ import {
   RefreshCw,
   Printer,
   ShieldAlert,
-  Building2
+  Building2,
+  Mail
 } from 'lucide-react';
 import { studentService, triggerBlobDownload } from '../../services/academicService';
 import { useToast } from '../../context/ToastContext';
@@ -207,7 +208,23 @@ export default function StudentDetailsPage() {
                   {student.isActive ? 'Active Student' : 'Inactive'}
                 </span>
               </div>
-              <p className="text-sm text-slate-400 mt-1">{student.email || <span className="text-slate-500 italic">No email registered</span>}</p>
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-slate-400 mt-1">
+                {student.email && (
+                  <span className="flex items-center gap-1.5">
+                    <Mail className="h-3.5 w-3.5 text-cyan-400 shrink-0" />
+                    <span><strong className="text-slate-300 font-medium">Inst:</strong> {student.email}</span>
+                  </span>
+                )}
+                {student.personalEmail && (
+                  <span className="flex items-center gap-1.5">
+                    <Mail className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
+                    <span><strong className="text-slate-300 font-medium">Personal:</strong> {student.personalEmail}</span>
+                  </span>
+                )}
+                {!student.email && !student.personalEmail && (
+                  <span className="text-slate-500 italic">No email registered</span>
+                )}
+              </div>
               <div className="flex flex-wrap items-center gap-4 mt-3 text-xs text-slate-300">
                 <span className="flex items-center gap-1.5 bg-slate-800/70 px-2.5 py-1 rounded-lg">
                   <GraduationCap className="h-3.5 w-3.5 text-cyan-400" />

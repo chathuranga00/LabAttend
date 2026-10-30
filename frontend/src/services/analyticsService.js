@@ -26,6 +26,9 @@ export const analyticsService = {
   getLecturerGroupAnalytics: (params = {}) =>
     api.get('/lecturer/analytics/groups', { params }),
 
+  getLecturerAtRiskStudents: (params = {}) =>
+    api.get('/lecturer/analytics/at-risk', { params }),
+
   // Admin Analytics Endpoints
   getAdminOverview: (params = {}) =>
     api.get('/admin/analytics/overview', { params }),
@@ -50,6 +53,9 @@ export const analyticsService = {
 
   getAdminGroupAnalytics: (params = {}) =>
     api.get('/admin/analytics/groups', { params }),
+
+  getAdminAtRiskStudents: (params = {}) =>
+    api.get('/admin/analytics/at-risk', { params }),
 };
 
 export default analyticsService;
