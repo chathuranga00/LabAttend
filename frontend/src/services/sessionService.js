@@ -17,7 +17,8 @@ export const sessionService = {
   getAllSessions: (params = {}) => api.get('/admin/sessions', { params }),
   getAdminSessionById: (id) => api.get(`/admin/sessions/${id}`),
   getAdminSessionSummary: (id) => api.get(`/admin/sessions/${id}/summary`),
+  adminUpdateSession: (id, data) => api.put(`/admin/sessions/${id}`, data),
+  adminDeleteSession: (id) => api.delete(`/admin/sessions/${id}`),
 };
 
 export default sessionService;
-

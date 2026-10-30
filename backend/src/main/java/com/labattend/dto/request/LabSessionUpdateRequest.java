@@ -29,5 +29,8 @@ public class LabSessionUpdateRequest {
     private LocalTime endTime;
 
     private UUID labGroupId;
-}
 
+    private UUID lecturerId;
+
+    private Boolean clearLabGroup;
+}
