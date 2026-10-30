@@ -1,6 +1,7 @@
 package com.labattend.controller.admin;
 
 import com.labattend.dto.request.AttendanceCorrectionRequest;
+import com.labattend.dto.request.LabSessionUpdateRequest;
 import com.labattend.dto.response.ApiResponse;
 import com.labattend.dto.response.AttendanceRecordResponse;
 import com.labattend.dto.response.LabSessionResponse;
@@ -61,6 +62,25 @@ public class AdminSessionController {
         return ResponseEntity.ok(ApiResponse.success(result));
     }
 
+    @PutMapping("/{id}")
+    public ResponseEntity<ApiResponse<LabSessionResponse>> updateSession(
+            @PathVariable UUID id,
+            @Valid @RequestBody LabSessionUpdateRequest request,
+            @AuthenticationPrincipal CustomUserDetails userDetails
+    ) {
+        LabSessionResponse result = labSessionService.updateSessionForAdmin(userDetails.getId(), id, request);
+        return ResponseEntity.ok(ApiResponse.success("Laboratory session updated successfully", result));
+    }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<ApiResponse<Void>> deleteSession(
+            @PathVariable UUID id,
+            @AuthenticationPrincipal CustomUserDetails userDetails
+    ) {
+        labSessionService.deleteSessionForAdmin(userDetails.getId(), id);
+        return ResponseEntity.ok(ApiResponse.success("Laboratory session deleted successfully", null));
+    }
+
     @GetMapping("/{id}/summary")
     public ResponseEntity<ApiResponse<SessionSummaryResponse>> getSessionSummary(
             @PathVariable UUID id,
@@ -83,4 +103,3 @@ public class AdminSessionController {
         return ResponseEntity.ok(ApiResponse.success("Attendance record corrected successfully by administrator", result));
     }
 }
-

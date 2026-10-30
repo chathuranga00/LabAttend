@@ -829,6 +829,181 @@ public class LabSessionService {
     }
 
     // =========================================================================
+    // 7b. ADMIN UPDATE LAB SESSION
+    // =========================================================================
+    public LabSessionResponse updateSessionForAdmin(UUID adminUserId, UUID sessionId, LabSessionUpdateRequest request) {
+        LabSession session = labSessionRepository.findById(sessionId)
+                .orElseThrow(() -> new ResourceNotFoundException("LabSession", "id", sessionId));
+
+        LaboratoryHall hall = laboratoryHallRepository.findById(request.getHallId())
+                .orElseThrow(() -> new ResourceNotFoundException("LaboratoryHall", "id", request.getHallId()));
+
+        if (!Boolean.TRUE.equals(hall.getIsActive())) {
+            throw new BadRequestException("Selected laboratory hall is inactive: " + hall.getHallCode());
+        }
+
+        if (!request.getEndTime().isAfter(request.getStartTime())) {
+            throw new BadRequestException("End time must be strictly after start time");
+        }
+
+        // Determine effective lecturer
+        Lecturer effectiveLecturer = session.getLecturer();
+        if (request.getLecturerId() != null && !request.getLecturerId().equals(effectiveLecturer.getId())) {
+            effectiveLecturer = lecturerRepository.findById(request.getLecturerId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Lecturer", "id", request.getLecturerId()));
+        }
+
+        // Determine effective lab group
+        LabGroup effectiveLabGroup = session.getLabGroup();
+        boolean groupChanged = false;
+        if (Boolean.TRUE.equals(request.getClearLabGroup())) {
+            if (effectiveLabGroup != null) {
+                effectiveLabGroup = null;
+                groupChanged = true;
+            }
+        } else if (request.getLabGroupId() != null) {
+            if (effectiveLabGroup == null || !request.getLabGroupId().equals(effectiveLabGroup.getId())) {
+                LabGroup newGroup = labGroupRepository.findById(request.getLabGroupId())
+                        .orElseThrow(() -> new ResourceNotFoundException("LabGroup", "id", request.getLabGroupId()));
+                if (session.getBatch() != null && !newGroup.getBatch().getId().equals(session.getBatch().getId())) {
+                    throw new BadRequestException("The selected lab group does not belong to the batch cohort: " + session.getBatch().getBatchCode());
+                }
+                effectiveLabGroup = newGroup;
+                groupChanged = true;
+            }
+        }
+
+        // Conflicting hall session check
+        List<LabSession> hallConflicts = labSessionRepository.findConflictingHallSessions(
+                hall.getId(), request.getSessionDate(), request.getStartTime(), request.getEndTime(), session.getId()
+        );
+        if (!hallConflicts.isEmpty()) {
+            LabSession conflict = hallConflicts.get(0);
+            throw new BadRequestException(String.format(
+                    "Hall conflict: '%s' is already occupied by session '%s' (%s - %s)",
+                    hall.getHallCode(), conflict.getSessionCode(), conflict.getStartTime(), conflict.getEndTime()
+            ));
+        }
+
+        // Conflicting lecturer schedule check
+        List<LabSession> lecturerConflicts = labSessionRepository.findConflictingLecturerSessions(
+                effectiveLecturer.getId(), request.getSessionDate(), request.getStartTime(), request.getEndTime(), session.getId()
+        );
+        if (!lecturerConflicts.isEmpty()) {
+            LabSession conflict = lecturerConflicts.get(0);
+            throw new BadRequestException(String.format(
+                    "Lecturer schedule conflict: Lecturer '%s' already has session '%s' scheduled from %s to %s",
+                    effectiveLecturer.getFullName(), conflict.getSessionCode(), conflict.getStartTime(), conflict.getEndTime()
+            ));
+        }
+
+        // Conflicting batch/group schedule check
+        if (session.getBatch() != null) {
+            UUID effectiveGroupId = effectiveLabGroup != null ? effectiveLabGroup.getId() : null;
+            List<LabSession> batchConflicts = labSessionRepository.findConflictingBatchOrGroupSessions(
+                    session.getBatch().getId(), effectiveGroupId,
+                    request.getSessionDate(), request.getStartTime(), request.getEndTime(), session.getId()
+            );
+            if (!batchConflicts.isEmpty()) {
+                LabSession conflict = batchConflicts.get(0);
+                String scope = conflict.getLabGroup() != null ? "Group " + conflict.getLabGroup().getGroupName() : "Whole Batch";
+                throw new BadRequestException(String.format(
+                        "Schedule conflict: Batch '%s' (%s) already has session '%s' scheduled from %s to %s",
+                        session.getBatch().getBatchCode(), scope, conflict.getSessionCode(), conflict.getStartTime(), conflict.getEndTime()
+                        ));
+            }
+        }
+
+        Map<String, Object> previousState = new HashMap<>();
+        previousState.put("hallId", session.getHall().getId());
+        previousState.put("hallCode", session.getHall().getHallCode());
+        previousState.put("sessionDate", session.getSessionDate().toString());
+        previousState.put("startTime", session.getStartTime().toString());
+        previousState.put("endTime", session.getEndTime().toString());
+        previousState.put("lecturerId", session.getLecturer().getId());
+        previousState.put("labGroupId", session.getLabGroup() != null ? session.getLabGroup().getId() : null);
+
+        session.setHall(hall);
+        session.setSessionDate(request.getSessionDate());
+        session.setStartTime(request.getStartTime());
+        session.setEndTime(request.getEndTime());
+        session.setLecturer(effectiveLecturer);
+        session.setLabGroup(effectiveLabGroup);
+
+        // If group changed and session is not yet finalized, update session_students
+        if (groupChanged && (session.getStatus() == SessionStatus.DRAFT || session.getStatus() == SessionStatus.SCHEDULED) && session.getBatch() != null) {
+            List<SessionStudent> currentStudents = sessionStudentRepository.findBySessionId(session.getId());
+            if (!currentStudents.isEmpty()) {
+                sessionStudentRepository.deleteAll(currentStudents);
+            }
+            List<Student> enrolledStudents;
+            if (effectiveLabGroup != null) {
+                enrolledStudents = studentRepository.findByBatchIdAndLabGroupIdAndIsActiveTrue(session.getBatch().getId(), effectiveLabGroup.getId());
+            } else {
+                enrolledStudents = studentRepository.findByBatchIdAndIsActiveTrue(session.getBatch().getId());
+            }
+            List<SessionStudent> sessionStudentList = new ArrayList<>();
+            for (Student student : enrolledStudents) {
+                sessionStudentList.add(SessionStudent.builder()
+                        .session(session)
+                        .student(student)
+                        .homeLabGroup(student.getLabGroup())
+                        .build());
+            }
+            sessionStudentRepository.saveAll(sessionStudentList);
+        }
+
+        LabSession updated = labSessionRepository.save(session);
+        LabSessionResponse response = enrichSessionResponse(updated);
+
+        Map<String, Object> newState = new HashMap<>();
+        newState.put("hallId", updated.getHall().getId());
+        newState.put("hallCode", updated.getHall().getHallCode());
+        newState.put("sessionDate", updated.getSessionDate().toString());
+        newState.put("startTime", updated.getStartTime().toString());
+        newState.put("endTime", updated.getEndTime().toString());
+        newState.put("lecturerId", updated.getLecturer().getId());
+        newState.put("labGroupId", updated.getLabGroup() != null ? updated.getLabGroup().getId() : null);
+
+        auditLogService.logAction("LabSession", sessionId, "ADMIN_UPDATE_SESSION", previousState, newState);
+        return response;
+    }
+
+    // =========================================================================
+    // 7c. ADMIN DELETE LAB SESSION
+    // =========================================================================
+    public void deleteSessionForAdmin(UUID adminUserId, UUID sessionId) {
+        LabSession session = labSessionRepository.findById(sessionId)
+                .orElseThrow(() -> new ResourceNotFoundException("LabSession", "id", sessionId));
+
+        String sessionCode = session.getSessionCode();
+
+        Map<String, Object> previousState = new HashMap<>();
+        previousState.put("sessionCode", sessionCode);
+        previousState.put("status", session.getStatus().name());
+        previousState.put("moduleCode", session.getModule() != null ? session.getModule().getModuleCode() : null);
+        previousState.put("batchCode", session.getBatch() != null ? session.getBatch().getBatchCode() : null);
+        previousState.put("hallCode", session.getHall() != null ? session.getHall().getHallCode() : null);
+        previousState.put("sessionDate", session.getSessionDate().toString());
+        previousState.put("startTime", session.getStartTime().toString());
+        previousState.put("endTime", session.getEndTime().toString());
+
+        List<AttendanceRecord> records = attendanceRecordRepository.findBySessionId(sessionId);
+        if (!records.isEmpty()) {
+            attendanceRecordRepository.deleteAll(records);
+        }
+
+        List<SessionStudent> sessionStudents = sessionStudentRepository.findBySessionId(sessionId);
+        if (!sessionStudents.isEmpty()) {
+            sessionStudentRepository.deleteAll(sessionStudents);
+        }
+
+        labSessionRepository.delete(session);
+
+        auditLogService.logAction("LabSession", sessionId, "ADMIN_DELETE_SESSION", previousState, null);
+    }
+
+    // =========================================================================
     // HELPER METHODS
     // =========================================================================
     private Lecturer getLecturerByUserId(UUID userId) {
