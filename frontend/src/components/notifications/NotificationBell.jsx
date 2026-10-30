@@ -14,9 +14,13 @@ import {
   Users,
   ShieldCheck,
   Sparkles,
-  ExternalLink
+  ExternalLink,
+  Mail,
+  Copy
 } from 'lucide-react';
 import { useNotifications } from '../../context/NotificationContext';
+import { useAuth } from '../../context/AuthContext';
+import analyticsService from '../../services/analyticsService';
 
 function formatTimeAgo(isoString) {
   if (!isoString) return '';
@@ -36,6 +40,9 @@ function formatTimeAgo(isoString) {
 }
 
 function getNotificationIcon(type, category) {
+  if (category === 'AT_RISK') {
+    return <AlertTriangle className="h-4 w-4 text-rose-400 shrink-0 animate-pulse" />;
+  }
   if (type === 'warning' || category === 'attendance') {
     return <AlertTriangle className="h-4 w-4 text-amber-400 shrink-0" />;
   }
@@ -64,11 +71,64 @@ export default function NotificationBell() {
     addNotification,
   } = useNotifications();
 
+  const { user } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
   const [activeTab, setActiveTab] = useState('ALL');
+  const [copiedId, setCopiedId] = useState(null);
   const panelRef = useRef(null);
   const buttonRef = useRef(null);
   const navigate = useNavigate();
+
+  // Fetch At-Risk students from backend and push into Notification Center
+  useEffect(() => {
+    if (!user) return;
+    let isMounted = true;
+
+    const fetchAtRiskAlerts = async () => {
+      try {
+        const fetcher = user.role === 'ADMIN'
+          ? analyticsService.getAdminAtRiskStudents({ minConsecutiveAbsences: 4 })
+          : analyticsService.getLecturerAtRiskStudents({ minConsecutiveAbsences: 4 });
+
+        const res = await fetcher;
+        if (isMounted && res && res.success && Array.isArray(res.data)) {
+          res.data.forEach((s) => {
+            addNotification({
+              id: `at-risk-${s.studentId}`,
+              title: `⚠️ At-Risk Alert: ${s.fullName} (${s.consecutiveAbsences} Weeks Absent)`,
+              message: `${s.fullName} (${s.officialStudentId}) has missed ${s.consecutiveAbsences} consecutive lab sessions in ${s.moduleCode}. Attendance: ${s.attendancePercentage}. Immediate academic warning required via Outlook.`,
+              type: 'warning',
+              category: 'AT_RISK',
+              link: user.role === 'ADMIN' ? '/admin/reports' : '/lecturer/reports',
+              emailData: {
+                studentId: s.studentId,
+                officialStudentId: s.officialStudentId,
+                fullName: s.fullName,
+                email: s.email,
+                personalEmail: s.personalEmail,
+                consecutiveAbsences: s.consecutiveAbsences,
+                attendancePercentage: s.attendancePercentage,
+                moduleCode: s.moduleCode,
+                moduleName: s.moduleName,
+                outlookMailtoLink: s.outlookMailtoLink,
+                outlookWebLink: s.outlookWebLink,
+                emailSubject: s.emailSubject,
+                emailBody: s.emailBody,
+              },
+              playSound: false, // Don't chime repetitively on reload
+            });
+          });
+        }
+      } catch (err) {
+        // Silently skip if offline or unauthenticated
+      }
+    };
+
+    fetchAtRiskAlerts();
+    return () => {
+      isMounted = false;
+    };
+  }, [user, addNotification]);
 
   // Close when clicking outside on desktop
   useEffect(() => {
@@ -102,6 +162,7 @@ export default function NotificationBell() {
   const filteredNotifications = useMemo(() => {
     return notifications.filter((n) => {
       if (activeTab === 'UNREAD') return !n.read;
+      if (activeTab === 'AT_RISK') return n.category === 'AT_RISK';
       if (activeTab === 'SESSION') return n.category === 'session';
       if (activeTab === 'ATTENDANCE') return n.category === 'attendance';
       if (activeTab === 'SYSTEM') return n.category === 'system' || n.category === 'security';
@@ -117,8 +178,33 @@ export default function NotificationBell() {
     }
   };
 
+  const handleCopyWarningEmail = (e, n) => {
+    e.stopPropagation();
+    if (n.emailData?.emailBody && navigator.clipboard) {
+      navigator.clipboard.writeText(n.emailData.emailBody);
+      setCopiedId(n.id);
+      setTimeout(() => setCopiedId(null), 2500);
+    }
+  };
+
   const handleSendTestNotification = () => {
     const samples = [
+      {
+        title: '⚠️ At-Risk Alert: Kasun Chamara (4 Weeks Absent)',
+        message: 'Kasun Chamara (STU2026099) has missed 4 consecutive lab sessions in CS303. Attendance: 33.3%. Click below to send an official academic warning via Outlook.',
+        type: 'warning',
+        category: 'AT_RISK',
+        emailData: {
+          fullName: 'Kasun Chamara',
+          officialStudentId: 'STU2026099',
+          email: 'kasun@uni.ac.lk',
+          personalEmail: 'kasun@gmail.com',
+          moduleCode: 'CS303',
+          outlookMailtoLink: 'mailto:kasun%40uni.ac.lk?cc=kasun%40gmail.com&subject=%5BACADEMIC%20WARNING%5D%20Consecutive%20Absence%20Alert%20-%20CS303%20-%20STU2026099&body=Dear%20Kasun%20Chamara%2C%0A%0AOur%20records%20show%20you%20have%20missed%204%20consecutive%20lab%20sessions.%20Please%20contact%20your%20lecturer%20immediately.',
+          outlookWebLink: 'https://outlook.office.com/mail/deeplink/compose?to=kasun%40uni.ac.lk&cc=kasun%40gmail.com&subject=%5BACADEMIC%20WARNING%5D%20Consecutive%20Absence%20Alert%20-%20CS303%20-%20STU2026099&body=Dear%20Kasun%20Chamara%2C%0A%0AOur%20records%20show%20you%20have%20missed%204%20consecutive%20lab%20sessions.%20Please%20contact%20your%20lecturer%20immediately.',
+          emailBody: 'Dear Kasun Chamara,\n\nOur records show you have missed 4 consecutive lab sessions in CS303. Please contact your lecturer immediately.\n\nAcademic Affairs\nNSBM Green University',
+        },
+      },
       {
         title: 'Cross-Group Scan Recorded',
         message: 'Student Janith Silva (Group B) was marked present in Batch 2026.3 as a cross-group visitor.',
@@ -130,12 +216,6 @@ export default function NotificationBell() {
         message: 'SES-303 (Engineering Mathematics) sealed with 94.5% final attendance.',
         type: 'success',
         category: 'session',
-      },
-      {
-        title: 'Audit Ledger Synced',
-        message: 'High-entropy QR cryptographic tokens verified for laboratory entrance.',
-        type: 'info',
-        category: 'security',
       },
     ];
     const picked = samples[Math.floor(Math.random() * samples.length)];
@@ -237,6 +317,7 @@ export default function NotificationBell() {
             {[
               { id: 'ALL', label: 'All' },
               { id: 'UNREAD', label: `Unread (${unreadCount})` },
+              { id: 'AT_RISK', label: 'At-Risk (4+ Wks)' },
               { id: 'SESSION', label: 'Sessions' },
               { id: 'ATTENDANCE', label: 'Attendance' },
               { id: 'SYSTEM', label: 'System' },
@@ -275,7 +356,7 @@ export default function NotificationBell() {
                       : 'hover:bg-slate-850/50 opacity-80'
                     }`}
                 >
-                  <div className="mt-0.5 p-1.5 rounded-lg bg-slate-950/80 border border-slate-800">
+                  <div className="mt-0.5 p-1.5 rounded-lg bg-slate-950/80 border border-slate-800 shrink-0">
                     {getNotificationIcon(n.type, n.category)}
                   </div>
 
@@ -289,6 +370,60 @@ export default function NotificationBell() {
                     <p className="text-[11px] text-slate-300 mt-0.5 leading-relaxed break-words">
                       {n.message}
                     </p>
+
+                    {/* Quick Outlook Warning Email Action Toolbar */}
+                    {n.emailData && (
+                      <div className="mt-2.5 pt-2 border-t border-slate-800/80 flex flex-wrap items-center gap-1.5">
+                        {n.emailData.outlookWebLink && (
+                          <a
+                            href={n.emailData.outlookWebLink}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={(e) => e.stopPropagation()}
+                            className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-sky-500/15 hover:bg-sky-500/25 text-sky-300 border border-sky-500/30 text-[10px] font-semibold transition shadow-sm"
+                            title="Open Outlook Web Mail (Office 365) with prefilled warning"
+                          >
+                            <Mail className="h-3 w-3 text-sky-400" />
+                            <span>Outlook Web</span>
+                            <ExternalLink className="h-2 w-2 opacity-60" />
+                          </a>
+                        )}
+
+                        {n.emailData.outlookMailtoLink && (
+                          <a
+                            href={n.emailData.outlookMailtoLink}
+                            onClick={(e) => e.stopPropagation()}
+                            className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-teal-500/15 hover:bg-teal-500/25 text-teal-300 border border-teal-500/30 text-[10px] font-semibold transition shadow-sm"
+                            title="Open in Outlook Desktop App"
+                          >
+                            <Mail className="h-3 w-3 text-teal-400" />
+                            <span>Outlook App</span>
+                          </a>
+                        )}
+
+                        {n.emailData.emailBody && (
+                          <button
+                            type="button"
+                            onClick={(e) => handleCopyWarningEmail(e, n)}
+                            className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] font-medium transition"
+                            title="Copy Academic Warning Email Template"
+                          >
+                            {copiedId === n.id ? (
+                              <>
+                                <Check className="h-3 w-3 text-emerald-400" />
+                                <span className="text-emerald-400">Copied!</span>
+                              </>
+                            ) : (
+                              <>
+                                <Copy className="h-3 w-3 text-slate-400" />
+                                <span>Copy Text</span>
+                              </>
+                            )}
+                          </button>
+                        )}
+                      </div>
+                    )}
+
                     <div className="flex items-center gap-2 mt-1.5 text-[10px] text-slate-500">
                       <span>{formatTimeAgo(n.timestamp)}</span>
                       {n.link && (
@@ -343,4 +478,3 @@ export default function NotificationBell() {
     </div>
   );
 }
-

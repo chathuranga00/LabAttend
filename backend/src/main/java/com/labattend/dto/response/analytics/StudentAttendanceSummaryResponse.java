@@ -18,6 +18,8 @@ public class StudentAttendanceSummaryResponse {
     private UUID studentId;
     private String officialStudentId;
     private String fullName;
+    private String email;
+    private String personalEmail;
     private String batchCode;
     private UUID labGroupId;
     private String labGroupName;
@@ -27,6 +29,11 @@ public class StudentAttendanceSummaryResponse {
     private long missedSessions;
     private long outgoingCrossGroupVisits;
     private long incomingCrossGroupVisits;
+
+    private int consecutiveAbsences;
+    private boolean isAtRisk;
+    private String outlookMailtoLink;
+    private String outlookWebLink;
 
     private String attendancePercentage; // "87.5%" or "N/A"
     private Double percentageNumeric;

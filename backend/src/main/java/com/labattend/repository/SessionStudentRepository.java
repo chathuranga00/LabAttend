@@ -36,7 +36,8 @@ public interface SessionStudentRepository extends JpaRepository<SessionStudent, 
     @org.springframework.data.jpa.repository.Query(
         "SELECT st.id, st.studentId, st.fullName, sb.batchCode, " +
         "lg.id, lg.groupName, " +
-        "COUNT(CASE WHEN s.status IN (com.labattend.entity.enums.SessionStatus.FINALIZED, com.labattend.entity.enums.SessionStatus.CLOSED) AND ss.isExpected = true THEN 1 ELSE NULL END) " +
+        "COUNT(CASE WHEN s.status IN (com.labattend.entity.enums.SessionStatus.FINALIZED, com.labattend.entity.enums.SessionStatus.CLOSED) AND ss.isExpected = true THEN 1 ELSE NULL END), " +
+        "st.email, st.personalEmail " +
         "FROM SessionStudent ss " +
         "JOIN ss.session s " +
         "JOIN ss.student st " +
@@ -55,7 +56,7 @@ public interface SessionStudentRepository extends JpaRepository<SessionStudent, 
         "(cast(:startDate as string) IS NULL OR s.sessionDate >= :startDate) AND " +
         "(cast(:endDate as string) IS NULL OR s.sessionDate <= :endDate) AND " +
         "(cast(:semester as string) IS NULL OR m.semester = :semester) " +
-        "GROUP BY st.id, st.studentId, st.fullName, sb.batchCode, lg.id, lg.groupName"
+        "GROUP BY st.id, st.studentId, st.fullName, sb.batchCode, lg.id, lg.groupName, st.email, st.personalEmail"
     )
     List<Object[]> countEligibleFinalizedSessionsPerStudent(
             @org.springframework.data.repository.query.Param("lecturerId") UUID lecturerId,

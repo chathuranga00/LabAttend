@@ -18,6 +18,7 @@ public class StudentResponse {
     private String title;
     private String fullName;
     private String email;
+    private String personalEmail;
     private String offeredBy;
     private UUID degreeProgrammeId;
     private String degreeProgrammeCode;

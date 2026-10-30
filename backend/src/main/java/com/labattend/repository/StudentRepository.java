@@ -43,7 +43,8 @@ public interface StudentRepository extends JpaRepository<Student, UUID> {
            "(cast(:offeredBy as string) IS NULL OR LOWER(s.offeredBy) = :offeredBy) AND " +
            "(cast(:search as string) IS NULL OR LOWER(s.studentId) LIKE :search OR " +
            "LOWER(s.fullName) LIKE :search OR " +
-           "(s.email IS NOT NULL AND LOWER(s.email) LIKE :search))")
+           "(s.email IS NOT NULL AND LOWER(s.email) LIKE :search) OR " +
+           "(s.personalEmail IS NOT NULL AND LOWER(s.personalEmail) LIKE :search))")
     Page<Student> searchStudents(
             @Param("programmeId") UUID programmeId,
             @Param("batchId") UUID batchId,

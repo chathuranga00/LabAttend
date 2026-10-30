@@ -10,6 +10,8 @@ import com.labattend.exception.ResourceNotFoundException;
 import com.labattend.repository.*;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 
 import java.time.LocalDate;
 import java.util.*;
@@ -535,6 +537,8 @@ public class AnalyticsService {
             UUID studentGroupId = (UUID) row[4];
             String studentGroupName = (String) row[5];
             long eligibleFinalized = ((Number) row[6]).longValue();
+            String email = row.length > 7 ? (String) row[7] : null;
+            String personalEmail = row.length > 8 ? (String) row[8] : null;
 
             if (searchLower != null) {
                 boolean matchesId = officialStudentId != null && officialStudentId.toLowerCase().contains(searchLower);
@@ -565,6 +569,8 @@ public class AnalyticsService {
                     .studentId(studentId)
                     .officialStudentId(officialStudentId)
                     .fullName(fullName)
+                    .email(email)
+                    .personalEmail(personalEmail)
                     .batchCode(batchCode)
                     .labGroupId(studentGroupId)
                     .labGroupName(studentGroupName)
@@ -715,6 +721,7 @@ public class AnalyticsService {
                 .officialStudentId(student.getStudentId())
                 .fullName(student.getFullName())
                 .email(student.getEmail())
+                .personalEmail(student.getPersonalEmail())
                 .batchCode(student.getBatch() != null ? student.getBatch().getBatchCode() : null)
                 .programmeName(student.getDegreeProgramme() != null ? student.getDegreeProgramme().getName() : null)
                 .labGroupId(student.getLabGroup() != null ? student.getLabGroup().getId() : null)
@@ -840,4 +847,190 @@ public class AnalyticsService {
         return lecturerRepository.findByUserId(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("Lecturer profile not found for user: " + userId));
     }
+
+    @Transactional(readOnly = true)
+    public List<AtRiskStudentResponse> getAtRiskStudents(
+            UUID requestingUserId,
+            boolean isAdmin,
+            UUID moduleId,
+            UUID batchId,
+            Integer minConsecutiveAbsences
+    ) {
+        final int threshold = (minConsecutiveAbsences != null && minConsecutiveAbsences > 0) ? minConsecutiveAbsences : 4;
+
+        UUID lecturerId = null;
+        if (!isAdmin) {
+            Lecturer lecturer = getLecturerByUserId(requestingUserId);
+            lecturerId = lecturer.getId();
+        }
+
+        List<Object[]> eligibleRows = sessionStudentRepository.countEligibleFinalizedSessionsPerStudent(
+                lecturerId, moduleId, batchId, null, null, null, null, null
+        );
+
+        List<Object[]> attendedRows = attendanceRecordRepository.countAttendedSessionsPerStudent(
+                lecturerId, moduleId, batchId, null, null, null, null, null
+        );
+
+        Map<UUID, Long> attendedMap = new HashMap<>();
+        for (Object[] row : attendedRows) {
+            UUID studentId = (UUID) row[0];
+            long count = ((Number) row[1]).longValue();
+            attendedMap.put(studentId, count);
+        }
+
+        List<AtRiskStudentResponse> atRiskStudents = new ArrayList<>();
+
+        for (Object[] row : eligibleRows) {
+            UUID studentId = (UUID) row[0];
+            String officialStudentId = (String) row[1];
+            String fullName = (String) row[2];
+            String batchCode = (String) row[3];
+            long eligibleFinalized = ((Number) row[6]).longValue();
+            String email = row.length > 7 ? (String) row[7] : null;
+            String personalEmail = row.length > 8 ? (String) row[8] : null;
+
+            long attended = attendedMap.getOrDefault(studentId, 0L);
+            long missed = Math.max(0, eligibleFinalized - attended);
+
+            if (missed < threshold) {
+                continue;
+            }
+
+            List<SessionStudent> sessionStudents = sessionStudentRepository.findStudentEligibleSessions(
+                    studentId, lecturerId, moduleId, null, null
+            );
+
+            List<SessionStudent> finalizedSessions = sessionStudents.stream()
+                    .filter(ss -> ss.getSession() != null)
+                    .filter(ss -> ss.getSession().getStatus() == SessionStatus.FINALIZED || ss.getSession().getStatus() == SessionStatus.CLOSED)
+                    .filter(ss -> !Boolean.FALSE.equals(ss.getIsExpected()))
+                    .collect(Collectors.toList());
+
+            if (finalizedSessions.isEmpty()) {
+                continue;
+            }
+
+            Set<UUID> sessionIds = finalizedSessions.stream()
+                    .map(ss -> ss.getSession().getId())
+                    .collect(Collectors.toSet());
+
+            List<AttendanceRecord> records = sessionIds.isEmpty() ? Collections.emptyList() :
+                    attendanceRecordRepository.findByStudentIdAndSessionIdIn(studentId, sessionIds);
+
+            Map<UUID, AttendanceRecord> recordMap = new HashMap<>();
+            for (AttendanceRecord r : records) {
+                recordMap.put(r.getSession().getId(), r);
+            }
+
+            int consecutive = 0;
+            LocalDate lastAbsentDate = null;
+            String activeModuleCode = null;
+            String activeModuleName = null;
+
+            for (SessionStudent ss : finalizedSessions) {
+                LabSession s = ss.getSession();
+                AttendanceRecord ar = recordMap.get(s.getId());
+                boolean isPresent = ar != null && (ar.getStatus() == AttendanceStatus.PRESENT || ar.getStatus() == AttendanceStatus.LATE);
+
+                if (isPresent) {
+                    break;
+                } else {
+                    consecutive++;
+                    if (lastAbsentDate == null) {
+                        lastAbsentDate = s.getSessionDate();
+                    }
+                    if (activeModuleCode == null && s.getModule() != null) {
+                        activeModuleCode = s.getModule().getModuleCode();
+                        activeModuleName = s.getModule().getName();
+                    }
+                }
+            }
+
+            if (consecutive >= threshold) {
+                String pctStr = eligibleFinalized > 0
+                        ? String.format(Locale.US, "%.1f%%", ((double) attended / eligibleFinalized) * 100.0)
+                        : "0.0%";
+
+                String modCode = activeModuleCode != null ? activeModuleCode : "LAB-MODULE";
+                String modName = activeModuleName != null ? activeModuleName : "Laboratory Course";
+
+                String subject = String.format("[ACADEMIC WARNING] Consecutive Absence Alert - %s - %s", modCode, officialStudentId);
+                String body = String.format(
+                        "Dear %s (%s),\n\n" +
+                        "This is an urgent academic notification regarding your laboratory attendance for %s - %s (Cohort: %s).\n\n" +
+                        "Our institutional attendance system records indicate that you have been marked ABSENT for %d consecutive laboratory sessions (most recently on %s).\n\n" +
+                        "Your current overall attendance rate stands at %s. In accordance with university and departmental academic regulations, maintaining mandatory attendance thresholds is required to remain eligible for end-of-semester practical and theoretical assessments.\n\n" +
+                        "Please contact your module instructor immediately or submit valid documentation (such as approved medical certificates or official leave records) to regularize your attendance.\n\n" +
+                        "Academic Affairs & Instructor Faculty Desk\nNSBM Green University Town",
+                        fullName, officialStudentId, modCode, modName, batchCode != null ? batchCode : "Current", consecutive,
+                        lastAbsentDate != null ? lastAbsentDate.toString() : "Recent session", pctStr
+                );
+
+                String to = email != null && !email.isBlank() ? email.trim() : (personalEmail != null ? personalEmail.trim() : "");
+                String cc = (email != null && !email.isBlank() && personalEmail != null && !personalEmail.isBlank()) ? personalEmail.trim() : "";
+
+                atRiskStudents.add(AtRiskStudentResponse.builder()
+                        .studentId(studentId)
+                        .officialStudentId(officialStudentId)
+                        .fullName(fullName)
+                        .email(email)
+                        .personalEmail(personalEmail)
+                        .batchCode(batchCode)
+                        .moduleCode(modCode)
+                        .moduleName(modName)
+                        .consecutiveAbsences(consecutive)
+                        .eligibleFinalizedSessions(eligibleFinalized)
+                        .attendedSessions(attended)
+                        .attendancePercentage(pctStr)
+                        .lastAbsentDate(lastAbsentDate)
+                        .outlookMailtoLink(buildOutlookMailto(to, cc, subject, body))
+                        .outlookWebLink(buildOutlookWebLink(to, cc, subject, body))
+                        .emailSubject(subject)
+                        .emailBody(body)
+                        .build());
+            }
+        }
+
+        atRiskStudents.sort(Comparator.comparingInt(AtRiskStudentResponse::getConsecutiveAbsences).reversed()
+                .thenComparing(AtRiskStudentResponse::getOfficialStudentId, Comparator.nullsLast(String::compareTo)));
+
+        return atRiskStudents;
+    }
+
+    private String buildOutlookMailto(String to, String cc, String subject, String body) {
+        try {
+            StringBuilder sb = new StringBuilder("mailto:");
+            if (to != null && !to.isBlank()) {
+                sb.append(URLEncoder.encode(to, StandardCharsets.UTF_8).replace("+", "%20"));
+            }
+            sb.append("?");
+            if (cc != null && !cc.isBlank()) {
+                sb.append("cc=").append(URLEncoder.encode(cc, StandardCharsets.UTF_8).replace("+", "%20")).append("&");
+            }
+            sb.append("subject=").append(URLEncoder.encode(subject, StandardCharsets.UTF_8).replace("+", "%20"));
+            sb.append("&body=").append(URLEncoder.encode(body, StandardCharsets.UTF_8).replace("+", "%20"));
+            return sb.toString();
+        } catch (Exception e) {
+            return "";
+        }
+    }
+
+    private String buildOutlookWebLink(String to, String cc, String subject, String body) {
+        try {
+            StringBuilder sb = new StringBuilder("https://outlook.office.com/mail/deeplink/compose?");
+            if (to != null && !to.isBlank()) {
+                sb.append("to=").append(URLEncoder.encode(to, StandardCharsets.UTF_8).replace("+", "%20"));
+            }
+            if (cc != null && !cc.isBlank()) {
+                sb.append("&cc=").append(URLEncoder.encode(cc, StandardCharsets.UTF_8).replace("+", "%20"));
+            }
+            sb.append("&subject=").append(URLEncoder.encode(subject, StandardCharsets.UTF_8).replace("+", "%20"));
+            sb.append("&body=").append(URLEncoder.encode(body, StandardCharsets.UTF_8).replace("+", "%20"));
+            return sb.toString();
+        } catch (Exception e) {
+            return "";
+        }
+    }
+
 }

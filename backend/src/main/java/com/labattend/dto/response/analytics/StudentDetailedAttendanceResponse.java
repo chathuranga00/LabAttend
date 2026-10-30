@@ -23,6 +23,7 @@ public class StudentDetailedAttendanceResponse {
     private String officialStudentId;
     private String fullName;
     private String email;
+    private String personalEmail;
     private String batchCode;
     private String programmeName;
     private UUID labGroupId;

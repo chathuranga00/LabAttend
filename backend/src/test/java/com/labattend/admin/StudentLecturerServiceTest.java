@@ -305,4 +305,45 @@ public class StudentLecturerServiceTest {
         // Verify saveAll was called with the 1 successful student
         verify(studentRepository, times(1)).saveAll(argThat(list -> ((List<?>) list).size() == 1));
     }
+    @Test
+    @DisplayName("Create Student -> Accepts both optional institutional and personal emails")
+    void testCreateStudentWithPersonalAndInstitutionalEmails() {
+        UUID progId = UUID.randomUUID();
+        UUID batchId = UUID.randomUUID();
+
+        DegreeProgramme programme = DegreeProgramme.builder().code("SE").name("Software Engineering").build();
+        programme.setId(progId);
+
+        Batch batch = Batch.builder().batchCode("BATCH-2026").degreeProgramme(programme).build();
+        batch.setId(batchId);
+
+        StudentRequest request = StudentRequest.builder()
+                .studentId("STU2026001")
+                .title("Mr.")
+                .fullName("Kasun Chamara")
+                .email("kasun@uni.ac.lk")
+                .personalEmail("kasun.personal@gmail.com")
+                .degreeProgrammeId(progId)
+                .batchId(batchId)
+                .build();
+
+        when(studentRepository.existsByStudentId("STU2026001")).thenReturn(false);
+        when(studentRepository.existsByEmail("kasun@uni.ac.lk")).thenReturn(false);
+        when(degreeProgrammeRepository.findById(progId)).thenReturn(Optional.of(programme));
+        when(batchRepository.findById(batchId)).thenReturn(Optional.of(batch));
+        when(studentRepository.save(any(Student.class))).thenAnswer(i -> {
+            Student s = i.getArgument(0);
+            if (s.getId() == null) s.setId(UUID.randomUUID());
+            return s;
+        });
+        when(qrCodeService.generateToken(any(), anyInt())).thenReturn("mock-token");
+        when(qrCodeService.generateTokenHash("mock-token")).thenReturn("mock-hash");
+
+        StudentResponse response = studentService.createStudent(request);
+
+        assertNotNull(response);
+        assertEquals("STU2026001", response.getStudentId());
+        assertEquals("kasun@uni.ac.lk", response.getEmail());
+        assertEquals("kasun.personal@gmail.com", response.getPersonalEmail());
+    }
 }

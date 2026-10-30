@@ -163,21 +163,27 @@ export function NotificationProvider({ children }) {
     }
   }, []);
 
-  // 3. Add Notification Action
+  // 3. Add Notification Action (with deduplication by id and optional emailData)
   const addNotification = useCallback(
-    ({ title, message, type = 'info', category = 'system', link = null, playSound = true }) => {
+    ({ id, title, message, type = 'info', category = 'system', link = null, emailData = null, playSound = true }) => {
       const newNotification = {
-        id: `notif-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+        id: id || `notif-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
         title,
         message,
         type, // 'info' | 'success' | 'warning' | 'alert'
-        category, // 'session' | 'attendance' | 'security' | 'system'
+        category, // 'session' | 'attendance' | 'security' | 'system' | 'AT_RISK'
         timestamp: new Date().toISOString(),
         read: false,
         link,
+        emailData,
       };
 
-      setNotifications((prev) => [newNotification, ...prev]);
+      setNotifications((prev) => {
+        if (id && prev.some((n) => n.id === id)) {
+          return prev;
+        }
+        return [newNotification, ...prev];
+      });
 
       if (playSound) {
         playNotificationChime(type);

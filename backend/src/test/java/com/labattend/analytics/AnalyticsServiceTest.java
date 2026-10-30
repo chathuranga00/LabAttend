@@ -411,4 +411,88 @@ public class AnalyticsServiceTest {
         assertEquals(60.0, bob.getPercentageNumeric());
         assertTrue(bob.isLowAttendance());
     }
+
+    @Test
+    @DisplayName("At-Risk Student Detection -> Correctly flags 4 consecutive absences and generates Outlook links")
+    void testAtRiskStudentsFourConsecutiveAbsences() {
+        UUID sId = UUID.randomUUID();
+        UUID adminId = UUID.randomUUID();
+
+        // 6 eligible sessions, 2 attended -> 4 missed
+        List<Object[]> eligibleRows = Collections.singletonList(
+                new Object[]{sId, "STU2026099", "Kasun Chamara", "2026.3", null, "Group A", 6L, "kasun@uni.ac.lk", "kasun@gmail.com"}
+        );
+        when(sessionStudentRepository.countEligibleFinalizedSessionsPerStudent(
+                isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull()
+        )).thenReturn(eligibleRows);
+
+        List<Object[]> attendedRows = Collections.singletonList(
+                new Object[]{sId, 2L}
+        );
+        when(attendanceRecordRepository.countAttendedSessionsPerStudent(
+                isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull()
+        )).thenReturn(attendedRows);
+
+        // Create 6 finalized sessions (latest to oldest)
+        com.labattend.entity.Module module = com.labattend.entity.Module.builder()
+                .moduleCode("CS303")
+                .name("Advanced Mathematics")
+                .build();
+        module.setId(UUID.randomUUID());
+
+        List<SessionStudent> sessionStudentList = new ArrayList<>();
+        List<AttendanceRecord> attendanceRecordList = new ArrayList<>();
+
+        for (int i = 0; i < 6; i++) {
+            LabSession session = LabSession.builder()
+                    .sessionCode("SES-" + i)
+                    .sessionDate(LocalDate.now().minusWeeks(i))
+                    .status(SessionStatus.FINALIZED)
+                    .module(module)
+                    .build();
+            session.setId(UUID.randomUUID());
+
+            SessionStudent ss = SessionStudent.builder()
+                    .session(session)
+                    .student(student)
+                    .isExpected(true)
+                    .build();
+            sessionStudentList.add(ss);
+
+            // Sessions index 0, 1, 2, 3 are ABSENT (4 consecutive)
+            // Sessions index 4, 5 are PRESENT
+            if (i >= 4) {
+                AttendanceRecord ar = AttendanceRecord.builder()
+                        .session(session)
+                        .student(student)
+                        .status(AttendanceStatus.PRESENT)
+                        .build();
+                attendanceRecordList.add(ar);
+            }
+        }
+
+        when(sessionStudentRepository.findStudentEligibleSessions(eq(sId), isNull(), isNull(), isNull(), isNull()))
+                .thenReturn(sessionStudentList);
+        when(attendanceRecordRepository.findByStudentIdAndSessionIdIn(eq(sId), any()))
+                .thenReturn(attendanceRecordList);
+
+        List<AtRiskStudentResponse> atRisk = analyticsService.getAtRiskStudents(adminId, true, null, null, 4);
+
+        assertNotNull(atRisk);
+        assertEquals(1, atRisk.size());
+        AtRiskStudentResponse studentNotice = atRisk.get(0);
+        assertEquals("STU2026099", studentNotice.getOfficialStudentId());
+        assertEquals("Kasun Chamara", studentNotice.getFullName());
+        assertEquals(4, studentNotice.getConsecutiveAbsences());
+        assertEquals("kasun@uni.ac.lk", studentNotice.getEmail());
+        assertEquals("kasun@gmail.com", studentNotice.getPersonalEmail());
+        assertNotNull(studentNotice.getOutlookMailtoLink());
+        assertTrue(studentNotice.getOutlookMailtoLink().startsWith("mailto:kasun%40uni.ac.lk"));
+        assertTrue(studentNotice.getOutlookMailtoLink().contains("cc=kasun%40gmail.com"));
+        assertNotNull(studentNotice.getOutlookWebLink());
+        assertTrue(studentNotice.getOutlookWebLink().startsWith("https://outlook.office.com/mail/deeplink/compose"));
+        assertTrue(studentNotice.getEmailSubject().contains("[ACADEMIC WARNING]"));
+        assertTrue(studentNotice.getEmailBody().contains("4 consecutive laboratory sessions"));
+    }
+
 }
