@@ -34,3 +34,4 @@ public class AtRiskStudentResponse {
     private String emailSubject;
     private String emailBody;
 }
+
