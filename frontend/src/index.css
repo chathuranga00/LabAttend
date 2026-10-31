@@ -65,6 +65,32 @@ body {
   padding-right: env(safe-area-inset-right, 0px);
 }
 
+/* Custom and hidden scrollbar utilities */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.25);
+  border-radius: 9999px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.45);
+}
+
 /* Prevent iOS auto-zoom on input focus while keeping crisp UI */
 @media screen and (max-width: 767px) {
   input:not([type="checkbox"]):not([type="radio"]),
