@@ -23,6 +23,15 @@ public interface SessionStudentRepository extends JpaRepository<SessionStudent, 
     @org.springframework.data.jpa.repository.Query(
         "SELECT ss FROM SessionStudent ss " +
         "JOIN FETCH ss.student s " +
+        "LEFT JOIN FETCH s.labGroup lg " +
+        "WHERE ss.session.id = :sessionId " +
+        "ORDER BY s.studentId ASC"
+    )
+    List<SessionStudent> findBySessionIdWithStudentAndGroup(@org.springframework.data.repository.query.Param("sessionId") UUID sessionId);
+
+    @org.springframework.data.jpa.repository.Query(
+        "SELECT ss FROM SessionStudent ss " +
+        "JOIN FETCH ss.student s " +
         "WHERE ss.session.id = :sessionId AND " +
         "(:search IS NULL OR LOWER(s.studentId) LIKE :search OR " +
         "LOWER(s.fullName) LIKE :search) " +

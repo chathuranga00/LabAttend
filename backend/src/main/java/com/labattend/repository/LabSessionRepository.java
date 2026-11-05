@@ -139,6 +139,15 @@ public interface LabSessionRepository extends JpaRepository<LabSession, UUID> {
            "LEFT JOIN FETCH s.labGroup lg " +
            "JOIN FETCH s.lecturer l " +
            "JOIN FETCH s.hall h " +
+           "WHERE s.id = :id")
+    Optional<LabSession> findByIdWithDetails(@Param("id") UUID id);
+
+    @Query("SELECT s FROM LabSession s " +
+           "JOIN FETCH s.module m " +
+           "LEFT JOIN FETCH s.batch b " +
+           "LEFT JOIN FETCH s.labGroup lg " +
+           "JOIN FETCH s.lecturer l " +
+           "JOIN FETCH s.hall h " +
            "WHERE s.status IN (com.labattend.entity.enums.SessionStatus.FINALIZED, com.labattend.entity.enums.SessionStatus.CLOSED) AND " +
            "(cast(:lecturerId as string) IS NULL OR s.lecturer.id = :lecturerId) AND " +
            "(cast(:moduleId as string) IS NULL OR s.module.id = :moduleId) AND " +

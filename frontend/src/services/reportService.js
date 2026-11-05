@@ -12,6 +12,7 @@ const downloadFileBlob = async (endpoint, params, defaultFilename) => {
     const response = await axios.get(`${BASE_URL}${endpoint}`, {
       params,
       responseType: 'blob',
+      timeout: 90000,
       headers: {
         Authorization: token ? `Bearer ${token}` : undefined,
       },

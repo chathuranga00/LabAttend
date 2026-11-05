@@ -16,6 +16,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -43,6 +45,7 @@ public class ReportService {
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd");
     private static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern("HH:mm");
     private static final DateTimeFormatter DATE_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+    public static final ZoneId COLOMBO_ZONE = ZoneId.of("Asia/Colombo");
 
     public ReportService(
             LabSessionRepository labSessionRepository,
@@ -94,7 +97,8 @@ public class ReportService {
     // 1. INDIVIDUAL SESSION REPORT
     // =========================================================================
     public ReportData generateSessionReport(UUID sessionId, UUID requestingUserId, boolean isAdmin) {
-        LabSession session = labSessionRepository.findById(sessionId)
+        LabSession session = labSessionRepository.findByIdWithDetails(sessionId)
+                .or(() -> labSessionRepository.findById(sessionId))
                 .orElseThrow(() -> new ResourceNotFoundException("Session not found: " + sessionId));
 
         if (session.getStatus() == SessionStatus.CANCELLED) {
@@ -113,8 +117,15 @@ public class ReportService {
             throw new BadRequestException("Only finalized sessions can generate official attendance reports. Current session is " + session.getStatus());
         }
 
-        List<SessionStudent> sessionStudents = sessionStudentRepository.findBySessionId(session.getId());
-        List<AttendanceRecord> records = attendanceRecordRepository.findBySessionId(session.getId());
+        List<SessionStudent> sessionStudents = sessionStudentRepository.findBySessionIdWithStudentAndGroup(session.getId());
+        if (sessionStudents == null || sessionStudents.isEmpty()) {
+            sessionStudents = sessionStudentRepository.findBySessionId(session.getId());
+        }
+
+        List<AttendanceRecord> records = attendanceRecordRepository.findBySessionIdWithStudentAndHomeGroup(session.getId());
+        if (records == null || records.isEmpty()) {
+            records = attendanceRecordRepository.findBySessionId(session.getId());
+        }
         Map<UUID, AttendanceRecord> recordMap = records.stream()
                 .collect(Collectors.toMap(r -> r.getStudent().getId(), r -> r, (a, b) -> a));
 
@@ -163,7 +174,11 @@ public class ReportService {
 
             String status = r != null ? r.getStatus().name() : "UNRECORDED";
             String method = (r != null && r.getMethod() != null) ? r.getMethod().name() : "-";
-            String time = (r != null && r.getMarkedAt() != null) ? r.getMarkedAt().format(DATE_TIME_FORMATTER) : "-";
+            String time = "-";
+            if (r != null && r.getMarkedAt() != null &&
+                    (r.getStatus() == AttendanceStatus.PRESENT || r.getStatus() == AttendanceStatus.LATE)) {
+                time = r.getMarkedAt().atZoneSameInstant(COLOMBO_ZONE).format(DATE_TIME_FORMATTER);
+            }
             String remarks = (r != null && r.getJustificationNotes() != null) ? r.getJustificationNotes() : "-";
             String studentGroup = s.getLabGroup() != null ? s.getLabGroup().getGroupName() : "-";
             String crossGroup = (r != null && Boolean.TRUE.equals(r.getIsCrossGroup()))
@@ -369,7 +384,8 @@ public class ReportService {
                     s.getHall().getName(),
                     getLabSheetOrNotes(s),
                     status,
-                    (r != null && r.getMarkedAt() != null) ? r.getMarkedAt().format(DATE_TIME_FORMATTER) : "-",
+                    (r != null && r.getMarkedAt() != null && (r.getStatus() == AttendanceStatus.PRESENT || r.getStatus() == AttendanceStatus.LATE))
+                            ? r.getMarkedAt().atZoneSameInstant(COLOMBO_ZONE).format(DATE_TIME_FORMATTER) : "-",
                     (r != null && r.getMethod() != null) ? r.getMethod().name() : "-"
             ));
         }
@@ -957,7 +973,7 @@ public class ReportService {
         return ReportData.builder()
                 .title(title)
                 .type(type)
-                .generatedAt(LocalDateTime.now().format(DATE_TIME_FORMATTER))
+                .generatedAt(ZonedDateTime.now(COLOMBO_ZONE).format(DATE_TIME_FORMATTER))
                 .metadata(metadata)
                 .expectedCount(expected)
                 .presentCount(present)
