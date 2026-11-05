@@ -2,9 +2,18 @@ package com.labattend.service.report;
 
 import com.labattend.dto.report.ReportData;
 import com.labattend.dto.report.ReportType;
-import com.lowagie.text.*;
+import com.lowagie.text.Document;
+import com.lowagie.text.Element;
 import com.lowagie.text.Font;
-import com.lowagie.text.pdf.*;
+import com.lowagie.text.FontFactory;
+import com.lowagie.text.PageSize;
+import com.lowagie.text.Paragraph;
+import com.lowagie.text.Phrase;
+import com.lowagie.text.Rectangle;
+import com.lowagie.text.pdf.PdfPCell;
+import com.lowagie.text.pdf.PdfPTable;
+import com.lowagie.text.pdf.PdfPageEventHelper;
+import com.lowagie.text.pdf.PdfWriter;
 import org.springframework.stereotype.Component;
 
 import java.awt.Color;
