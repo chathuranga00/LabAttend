@@ -294,4 +294,45 @@ public class LabSessionServiceTest {
         );
         assertTrue(ex.getMessage().contains("Cannot cancel a finalized"));
     }
+
+    @Test
+    @DisplayName("Create Session with optional lab sheet number -> Persists and maps labSheetNumber")
+    void testCreateSessionWithLabSheetNumber() {
+        LocalDate date = LocalDate.now(LabSessionService.COLOMBO_ZONE).plusDays(3);
+        LocalTime start = LocalTime.of(8, 30);
+        LocalTime end = LocalTime.of(11, 30);
+
+        LabSessionCreateRequest request = LabSessionCreateRequest.builder()
+                .moduleId(module.getId())
+                .batchId(batch.getId())
+                .hallId(hall.getId())
+                .labSheetNumber("Lab Sheet 01")
+                .sessionDate(date)
+                .startTime(start)
+                .endTime(end)
+                .build();
+
+        when(lecturerRepository.findByUserId(userId)).thenReturn(Optional.of(lecturer));
+        when(moduleRepository.findById(module.getId())).thenReturn(Optional.of(module));
+        when(batchRepository.findById(batch.getId())).thenReturn(Optional.of(batch));
+        when(laboratoryHallRepository.findById(hall.getId())).thenReturn(Optional.of(hall));
+        when(lecturerModuleAssignmentRepository.isLecturerAssignedToModuleBatchAndGroup(lecturerId, module.getId(), batch.getId(), null))
+                .thenReturn(true);
+        when(labSessionRepository.findConflictingHallSessions(hall.getId(), date, start, end, null))
+                .thenReturn(Collections.emptyList());
+        when(labSessionRepository.findConflictingLecturerSessions(lecturerId, date, start, end, null))
+                .thenReturn(Collections.emptyList());
+        when(studentRepository.findByBatchIdAndIsActiveTrue(batch.getId()))
+                .thenReturn(Collections.emptyList());
+        when(labSessionRepository.save(any(LabSession.class))).thenAnswer(i -> {
+            LabSession s = i.getArgument(0);
+            s.setId(UUID.randomUUID());
+            return s;
+        });
+
+        LabSessionResponse response = labSessionService.createSession(userId, request);
+
+        assertNotNull(response);
+        assertEquals("Lab Sheet 01", response.getLabSheetNumber());
+    }
 }

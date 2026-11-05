@@ -1,6 +1,7 @@
 package com.labattend.dto.request;
 
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -35,4 +36,7 @@ public class LabSessionCreateRequest {
 
     @NotNull(message = "End time is required")
     private LocalTime endTime;
+
+    @Size(max = 100, message = "Lab sheet number must not exceed 100 characters")
+    private String labSheetNumber;
 }

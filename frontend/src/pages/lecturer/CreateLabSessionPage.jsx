@@ -10,7 +10,8 @@ import {
   Users, 
   CheckCircle2, 
   AlertCircle,
-  ShieldCheck
+  ShieldCheck,
+  FileText
 } from 'lucide-react';
 import { sessionService } from '../../services/sessionService';
 import { useToast } from '../../context/ToastContext';
@@ -33,6 +34,7 @@ export default function CreateLabSessionPage() {
     batchId: '',
     labGroupId: '',
     hallId: '',
+    labSheetNumber: '',
     sessionDate: '',
     startTime: '09:00',
     endTime: '12:00',
@@ -132,6 +134,10 @@ export default function CreateLabSessionPage() {
       errs.endTime = 'End time must be strictly after start time';
     }
 
+    if (formData.labSheetNumber && formData.labSheetNumber.length > 100) {
+      errs.labSheetNumber = 'Lab sheet number must not exceed 100 characters';
+    }
+
     setFormErrors(errs);
     return Object.keys(errs).length === 0;
   };
@@ -147,6 +153,7 @@ export default function CreateLabSessionPage() {
         batchId: formData.batchId,
         labGroupId: formData.labGroupId || null,
         hallId: formData.hallId,
+        labSheetNumber: formData.labSheetNumber ? formData.labSheetNumber.trim() : null,
         sessionDate: formData.sessionDate,
         startTime: formData.startTime.length === 5 ? `${formData.startTime}:00` : formData.startTime,
         endTime: formData.endTime.length === 5 ? `${formData.endTime}:00` : formData.endTime,
@@ -361,41 +368,63 @@ export default function CreateLabSessionPage() {
               </div>
             )}
 
-            {/* Hall Selection & Hall Capacity Preview */}
-            <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-                Active Laboratory Hall *
-              </label>
-              <select
-                value={formData.hallId}
-                onChange={(e) => setFormData({ ...formData, hallId: e.target.value })}
-                className="w-full px-3.5 py-2.5 bg-slate-800/80 border border-slate-700 rounded-xl text-sm text-slate-100 focus:outline-none focus:border-teal-500"
-              >
-                <option value="">Select a laboratory hall</option>
-                {formOptions.halls.map((h) => (
-                  <option key={h.hallId} value={h.hallId}>
-                    {h.hallCode} — {h.name} (Capacity: {h.capacity} seats, {h.location || 'Main Lab'})
-                  </option>
-                ))}
-              </select>
-              {selectedHallObj && selectedBatchObj && (
-                <div className="mt-2 flex items-center gap-2 text-xs">
-                  {selectedHallObj.capacity >= expectedStudentCount ? (
-                    <span className="text-emerald-400 flex items-center gap-1 font-medium">
-                      <CheckCircle2 className="h-3.5 w-3.5" />
-                      Hall capacity ({selectedHallObj.capacity}) comfortably accommodates target attendance size ({expectedStudentCount}).
-                    </span>
-                  ) : (
-                    <span className="text-amber-400 flex items-center gap-1 font-medium">
-                      <AlertCircle className="h-3.5 w-3.5" />
-                      Warning: Hall capacity ({selectedHallObj.capacity}) is lower than the target group/batch size ({expectedStudentCount}).
-                    </span>
-                  )}
-                </div>
-              )}
-              {formErrors.hallId && (
-                <span className="text-xs text-rose-400 mt-1 block">{formErrors.hallId}</span>
-              )}
+            {/* Hall Selection & Lab Sheet Number */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                  Active Laboratory Hall *
+                </label>
+                <select
+                  value={formData.hallId}
+                  onChange={(e) => setFormData({ ...formData, hallId: e.target.value })}
+                  className="w-full px-3.5 py-2.5 bg-slate-800/80 border border-slate-700 rounded-xl text-sm text-slate-100 focus:outline-none focus:border-teal-500"
+                >
+                  <option value="">Select a laboratory hall</option>
+                  {formOptions.halls.map((h) => (
+                    <option key={h.hallId} value={h.hallId}>
+                      {h.hallCode} — {h.name} (Capacity: {h.capacity} seats, {h.location || 'Main Lab'})
+                    </option>
+                  ))}
+                </select>
+                {selectedHallObj && selectedBatchObj && (
+                  <div className="mt-2 flex items-center gap-2 text-xs">
+                    {selectedHallObj.capacity >= expectedStudentCount ? (
+                      <span className="text-emerald-400 flex items-center gap-1 font-medium">
+                        <CheckCircle2 className="h-3.5 w-3.5" />
+                        Hall capacity ({selectedHallObj.capacity}) comfortably accommodates target attendance size ({expectedStudentCount}).
+                      </span>
+                    ) : (
+                      <span className="text-amber-400 flex items-center gap-1 font-medium">
+                        <AlertCircle className="h-3.5 w-3.5" />
+                        Warning: Hall capacity ({selectedHallObj.capacity}) is lower than the target group/batch size ({expectedStudentCount}).
+                      </span>
+                    )}
+                  </div>
+                )}
+                {formErrors.hallId && (
+                  <span className="text-xs text-rose-400 mt-1 block">{formErrors.hallId}</span>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                  Lab Sheet Number <span className="text-slate-500 font-normal lowercase">(optional)</span>
+                </label>
+                <input
+                  type="text"
+                  value={formData.labSheetNumber}
+                  onChange={(e) => setFormData({ ...formData, labSheetNumber: e.target.value })}
+                  placeholder="e.g. Lab Sheet 01 / OOP Lab 04"
+                  maxLength={100}
+                  className="w-full px-3.5 py-2.5 bg-slate-800/80 border border-slate-700 rounded-xl text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-teal-500"
+                />
+                <p className="text-[11px] text-slate-400 mt-1">
+                  Optional practical exercise or lab sheet identifier for attendance audit reports.
+                </p>
+                {formErrors.labSheetNumber && (
+                  <span className="text-xs text-rose-400 mt-1 block">{formErrors.labSheetNumber}</span>
+                )}
+              </div>
             </div>
 
             {/* Date and Time Pickers */}

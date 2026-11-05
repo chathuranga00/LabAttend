@@ -206,6 +206,8 @@ public class LabSessionService {
                 .sessionDate(request.getSessionDate())
                 .startTime(request.getStartTime())
                 .endTime(request.getEndTime())
+                .labSheetNumber(request.getLabSheetNumber() != null && !request.getLabSheetNumber().trim().isEmpty()
+                        ? request.getLabSheetNumber().trim() : null)
                 .status(SessionStatus.DRAFT)
                 .build();
 
@@ -422,6 +424,9 @@ public class LabSessionService {
         session.setSessionDate(request.getSessionDate());
         session.setStartTime(request.getStartTime());
         session.setEndTime(request.getEndTime());
+        if (request.getLabSheetNumber() != null) {
+            session.setLabSheetNumber(request.getLabSheetNumber().trim().isEmpty() ? null : request.getLabSheetNumber().trim());
+        }
 
         LabSession updated = labSessionRepository.save(session);
         LabSessionResponse response = enrichSessionResponse(updated);
@@ -927,6 +932,9 @@ public class LabSessionService {
         session.setSessionDate(request.getSessionDate());
         session.setStartTime(request.getStartTime());
         session.setEndTime(request.getEndTime());
+        if (request.getLabSheetNumber() != null) {
+            session.setLabSheetNumber(request.getLabSheetNumber().trim().isEmpty() ? null : request.getLabSheetNumber().trim());
+        }
         session.setLecturer(effectiveLecturer);
         session.setLabGroup(effectiveLabGroup);
 
@@ -1048,6 +1056,7 @@ public class LabSessionService {
                 .cancelledAt(s.getCancelledAt())
                 .cancellationReason(s.getCancellationReason())
                 .finalizationNotes(s.getFinalizationNotes())
+                .labSheetNumber(s.getLabSheetNumber())
                 .createdAt(s.getCreatedAt())
                 .updatedAt(s.getUpdatedAt())
                 .build();

@@ -57,6 +57,7 @@ public class LabSessionResponse {
     private OffsetDateTime cancelledAt;
     private String cancellationReason;
     private String finalizationNotes;
+    private String labSheetNumber;
 
     private OffsetDateTime createdAt;
     private OffsetDateTime updatedAt;
