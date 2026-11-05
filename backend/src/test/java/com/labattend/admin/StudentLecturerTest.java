@@ -171,6 +171,48 @@ public class StudentLecturerTest {
                 .andExpect(jsonPath("$.data.hasQrToken").value(true));
     }
 
+    @Test
+    @DisplayName("Create Student without Degree Programme -> Returns 201 Created (Degree programme is optional)")
+    void testCreateStudentSuccessWithoutDegreeProgramme() throws Exception {
+        UUID batchId = UUID.randomUUID();
+        UUID studentId = UUID.randomUUID();
+
+        StudentRequest request = StudentRequest.builder()
+                .studentId("STU002")
+                .fullName("John Optional")
+                .email("john.optional@uni.ac.lk")
+                .degreeProgrammeId(null)
+                .batchId(batchId)
+                .build();
+
+        StudentResponse response = StudentResponse.builder()
+                .id(studentId)
+                .studentId("STU002")
+                .fullName("John Optional")
+                .email("john.optional@uni.ac.lk")
+                .degreeProgrammeId(null)
+                .degreeProgrammeCode(null)
+                .degreeProgrammeName(null)
+                .batchId(batchId)
+                .batchCode("Y2026-B1")
+                .isActive(true)
+                .hasQrToken(false)
+                .createdAt(OffsetDateTime.now())
+                .updatedAt(OffsetDateTime.now())
+                .build();
+
+        when(studentService.createStudent(any(StudentRequest.class))).thenReturn(response);
+
+        mockMvc.perform(post("/api/admin/students")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.studentId").value("STU002"))
+                .andExpect(jsonPath("$.data.degreeProgrammeId").doesNotExist());
+    }
+
     // ==========================================
     // 2. DUPLICATE STUDENT ID
     // ==========================================

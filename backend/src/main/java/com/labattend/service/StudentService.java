@@ -117,14 +117,17 @@ public class StudentService {
             throw new BadRequestException("Email already exists: " + email);
         }
 
-        DegreeProgramme programme = degreeProgrammeRepository.findById(request.getDegreeProgrammeId())
-                .orElseThrow(() -> new ResourceNotFoundException("DegreeProgramme", "id", request.getDegreeProgrammeId()));
-
         Batch batch = batchRepository.findById(request.getBatchId())
                 .orElseThrow(() -> new ResourceNotFoundException("Batch", "id", request.getBatchId()));
 
-        if (batch.getDegreeProgramme() != null && !batch.getDegreeProgramme().getId().equals(programme.getId())) {
-            throw new BadRequestException("Selected batch does not belong to the selected degree programme");
+        DegreeProgramme programme = null;
+        if (request.getDegreeProgrammeId() != null) {
+            programme = degreeProgrammeRepository.findById(request.getDegreeProgrammeId())
+                    .orElseThrow(() -> new ResourceNotFoundException("DegreeProgramme", "id", request.getDegreeProgrammeId()));
+
+            if (batch.getDegreeProgramme() != null && !batch.getDegreeProgramme().getId().equals(programme.getId())) {
+                throw new BadRequestException("Selected batch does not belong to the selected degree programme");
+            }
         }
 
         LabGroup labGroup = resolveLabGroup(request, batch);
@@ -179,14 +182,17 @@ public class StudentService {
             throw new BadRequestException("Email already exists: " + email);
         }
 
-        DegreeProgramme programme = degreeProgrammeRepository.findById(request.getDegreeProgrammeId())
-                .orElseThrow(() -> new ResourceNotFoundException("DegreeProgramme", "id", request.getDegreeProgrammeId()));
-
         Batch batch = batchRepository.findById(request.getBatchId())
                 .orElseThrow(() -> new ResourceNotFoundException("Batch", "id", request.getBatchId()));
 
-        if (batch.getDegreeProgramme() != null && !batch.getDegreeProgramme().getId().equals(programme.getId())) {
-            throw new BadRequestException("Selected batch does not belong to the selected degree programme");
+        DegreeProgramme programme = null;
+        if (request.getDegreeProgrammeId() != null) {
+            programme = degreeProgrammeRepository.findById(request.getDegreeProgrammeId())
+                    .orElseThrow(() -> new ResourceNotFoundException("DegreeProgramme", "id", request.getDegreeProgrammeId()));
+
+            if (batch.getDegreeProgramme() != null && !batch.getDegreeProgramme().getId().equals(programme.getId())) {
+                throw new BadRequestException("Selected batch does not belong to the selected degree programme");
+            }
         }
 
         LabGroup labGroup = resolveLabGroup(request, batch);
@@ -347,7 +353,7 @@ public class StudentService {
                 .studentRegNumber(student.getStudentId())
                 .studentName(student.getFullName())
                 .batchCode(student.getBatch().getBatchCode())
-                .degreeProgrammeCode(student.getDegreeProgramme().getCode())
+                .degreeProgrammeCode(student.getDegreeProgramme() != null ? student.getDegreeProgramme().getCode() : null)
                 .totalEligibleSessions(totalEligible)
                 .attendedSessions(attended)
                 .missedSessions(missed)
@@ -403,8 +409,8 @@ public class StudentService {
                 fullNameIdx = nameWithInitialsIdx;
             }
 
-            if (studentIdIdx == null || fullNameIdx == null || progIdx == null || batchIdx == null) {
-                throw new BadRequestException("CSV must contain columns: student_id, name (or name_in_full), degree, batch (email is optional)");
+            if (studentIdIdx == null || fullNameIdx == null || batchIdx == null) {
+                throw new BadRequestException("CSV must contain columns: student_id, name (or name_in_full), batch (degree, email, and group are optional)");
             }
 
             Map<String, LabGroup> groupCache = new HashMap<>();
@@ -470,32 +476,26 @@ public class StudentService {
                     lowerPersonalEmail = rowPersonalEmail.trim().toLowerCase();
                 }
 
-                if (rowProgCode == null || rowProgCode.isBlank()) {
-                    errors.add(new StudentCsvImportResponse.CsvRowError(rowNumber, upperStudentId, "Missing degree programme"));
-                    continue;
-                }
-                String rawProg = rowProgCode.trim();
-                String upperProgCode = rawProg.toUpperCase();
+                DegreeProgramme programme = null;
+                if (rowProgCode != null && !rowProgCode.isBlank()) {
+                    String rawProg = rowProgCode.trim();
+                    String upperProgCode = rawProg.toUpperCase();
 
-                DegreeProgramme programme = programmeCache.computeIfAbsent(upperProgCode, k -> {
-                    return degreeProgrammeRepository.findByCode(rawProg)
-                            .or(() -> degreeProgrammeRepository.findByCodeIgnoreCase(rawProg))
-                            .or(() -> degreeProgrammeRepository.findByNameIgnoreCase(rawProg))
-                            .orElseGet(() -> {
-                                return degreeProgrammeRepository.save(
-                                        DegreeProgramme.builder()
-                                                .code(null)
-                                                .name(rawProg)
-                                                .department(rowFaculty != null && !rowFaculty.isBlank() ? rowFaculty.trim() : "Faculty of Computing")
-                                                .isActive(true)
-                                                .build()
-                                );
-                            });
-                });
-
-                if (programme == null) {
-                    errors.add(new StudentCsvImportResponse.CsvRowError(rowNumber, upperStudentId, "Degree programme not found: " + rawProg));
-                    continue;
+                    programme = programmeCache.computeIfAbsent(upperProgCode, k -> {
+                        return degreeProgrammeRepository.findByCode(rawProg)
+                                .or(() -> degreeProgrammeRepository.findByCodeIgnoreCase(rawProg))
+                                .or(() -> degreeProgrammeRepository.findByNameIgnoreCase(rawProg))
+                                .orElseGet(() -> {
+                                    return degreeProgrammeRepository.save(
+                                            DegreeProgramme.builder()
+                                                    .code(null)
+                                                    .name(rawProg)
+                                                    .department(rowFaculty != null && !rowFaculty.isBlank() ? rowFaculty.trim() : "Faculty of Computing")
+                                                    .isActive(true)
+                                                    .build()
+                                    );
+                                });
+                    });
                 }
 
                 if (rowBatchCode == null || rowBatchCode.isBlank()) {

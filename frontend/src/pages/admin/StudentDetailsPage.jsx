@@ -226,10 +226,12 @@ export default function StudentDetailsPage() {
                 )}
               </div>
               <div className="flex flex-wrap items-center gap-4 mt-3 text-xs text-slate-300">
-                <span className="flex items-center gap-1.5 bg-slate-800/70 px-2.5 py-1 rounded-lg">
-                  <GraduationCap className="h-3.5 w-3.5 text-cyan-400" />
-                  {student.degreeProgrammeCode ? `${student.degreeProgrammeCode} — ` : ''}{student.degreeProgrammeName}
-                </span>
+                {student.degreeProgrammeName && (
+                  <span className="flex items-center gap-1.5 bg-slate-800/70 px-2.5 py-1 rounded-lg">
+                    <GraduationCap className="h-3.5 w-3.5 text-cyan-400" />
+                    {student.degreeProgrammeCode ? `${student.degreeProgrammeCode} — ` : ''}{student.degreeProgrammeName}
+                  </span>
+                )}
                 {student.offeredBy && (
                   <span className="flex items-center gap-1.5 bg-teal-950/60 border border-teal-800/50 text-teal-300 px-2.5 py-1 rounded-lg font-medium">
                     <Building2 className="h-3.5 w-3.5 text-teal-400" />
