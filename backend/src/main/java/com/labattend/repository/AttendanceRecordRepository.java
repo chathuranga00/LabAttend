@@ -24,6 +24,14 @@ public interface AttendanceRecordRepository extends JpaRepository<AttendanceReco
     long countBySessionIdAndIsCrossGroupTrue(UUID sessionId);
 
     @org.springframework.data.jpa.repository.Query(
+        "SELECT a FROM AttendanceRecord a " +
+        "JOIN FETCH a.student s " +
+        "LEFT JOIN FETCH a.homeLabGroup hlg " +
+        "WHERE a.session.id = :sessionId"
+    )
+    List<AttendanceRecord> findBySessionIdWithStudentAndHomeGroup(@org.springframework.data.repository.query.Param("sessionId") UUID sessionId);
+
+    @org.springframework.data.jpa.repository.Query(
         value = "SELECT a FROM AttendanceRecord a " +
                 "JOIN FETCH a.student s " +
                 "JOIN FETCH a.session ses " +
