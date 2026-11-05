@@ -196,6 +196,7 @@ public interface AttendanceRecordRepository extends JpaRepository<AttendanceReco
         "SELECT a FROM AttendanceRecord a " +
         "JOIN FETCH a.student st " +
         "LEFT JOIN FETCH st.labGroup hlg " +
+        "LEFT JOIN FETCH a.homeLabGroup ahlg " +
         "JOIN FETCH a.session s " +
         "LEFT JOIN FETCH s.batch b " +
         "LEFT JOIN FETCH s.labGroup slg " +

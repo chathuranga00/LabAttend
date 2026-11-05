@@ -234,6 +234,9 @@ public class ReportService {
         int idx = 1;
         for (LabSession s : sessions) {
             int exp = (int) sessionStudentRepository.countBySessionIdAndIsExpectedTrue(s.getId());
+            if (exp == 0) {
+                exp = (int) sessionStudentRepository.countBySessionId(s.getId());
+            }
             int pres = (int) attendanceRecordRepository.countBySessionIdAndIsCrossGroupFalseAndStatusIn(
                     s.getId(), List.of(AttendanceStatus.PRESENT, AttendanceStatus.LATE));
             int abs = Math.max(0, exp - pres);
@@ -456,6 +459,9 @@ public class ReportService {
         int idx = 1;
         for (LabSession s : sessions) {
             int exp = (int) sessionStudentRepository.countBySessionIdAndIsExpectedTrue(s.getId());
+            if (exp == 0) {
+                exp = (int) sessionStudentRepository.countBySessionId(s.getId());
+            }
             int pres = (int) attendanceRecordRepository.countBySessionIdAndIsCrossGroupFalseAndStatusIn(
                     s.getId(), List.of(AttendanceStatus.PRESENT, AttendanceStatus.LATE));
             int abs = Math.max(0, exp - pres);
@@ -546,6 +552,9 @@ public class ReportService {
         int idx = 1;
         for (LabSession s : sessions) {
             int exp = (int) sessionStudentRepository.countBySessionIdAndIsExpectedTrue(s.getId());
+            if (exp == 0) {
+                exp = (int) sessionStudentRepository.countBySessionId(s.getId());
+            }
             int pres = (int) attendanceRecordRepository.countBySessionIdAndIsCrossGroupFalseAndStatusIn(
                     s.getId(), List.of(AttendanceStatus.PRESENT, AttendanceStatus.LATE));
             int abs = Math.max(0, exp - pres);
@@ -624,8 +633,8 @@ public class ReportService {
         List<LabSession> sessions = labSessionRepository.findFinalizedSessionsForReports(
                 null, null, startDate, endDate, moduleId, batchId, labGroupId, programmeId, semester, lecturerId);
 
-        Map<Module, List<LabSession>> moduleMap = sessions.stream()
-                .collect(Collectors.groupingBy(LabSession::getModule));
+        Map<UUID, List<LabSession>> moduleMap = sessions.stream()
+                .collect(Collectors.groupingBy(s -> s.getModule().getId(), LinkedHashMap::new, Collectors.toList()));
 
         int totalExpected = 0;
         int totalPresent = 0;
@@ -637,9 +646,9 @@ public class ReportService {
         List<List<String>> rows = new ArrayList<>();
 
         int idx = 1;
-        for (Map.Entry<Module, List<LabSession>> entry : moduleMap.entrySet()) {
-            Module m = entry.getKey();
+        for (Map.Entry<UUID, List<LabSession>> entry : moduleMap.entrySet()) {
             List<LabSession> modSessions = entry.getValue();
+            Module m = modSessions.get(0).getModule();
 
             int modExp = 0;
             int modPres = 0;
@@ -647,6 +656,9 @@ public class ReportService {
 
             for (LabSession s : modSessions) {
                 int exp = (int) sessionStudentRepository.countBySessionIdAndIsExpectedTrue(s.getId());
+            if (exp == 0) {
+                exp = (int) sessionStudentRepository.countBySessionId(s.getId());
+            }
                 int pres = (int) attendanceRecordRepository.countBySessionIdAndIsCrossGroupFalseAndStatusIn(
                         s.getId(), List.of(AttendanceStatus.PRESENT, AttendanceStatus.LATE));
                 int abs = Math.max(0, exp - pres);
@@ -837,6 +849,9 @@ public class ReportService {
         int idx = 1;
         for (LabSession s : sessions) {
             int exp = (int) sessionStudentRepository.countBySessionIdAndIsExpectedTrue(s.getId());
+            if (exp == 0) {
+                exp = (int) sessionStudentRepository.countBySessionId(s.getId());
+            }
             int pres = (int) attendanceRecordRepository.countBySessionIdAndIsCrossGroupFalseAndStatusIn(
                     s.getId(), List.of(AttendanceStatus.PRESENT, AttendanceStatus.LATE));
             int abs = Math.max(0, exp - pres);
