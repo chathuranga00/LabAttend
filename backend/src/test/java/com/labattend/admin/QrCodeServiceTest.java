@@ -291,10 +291,18 @@ public class QrCodeServiceTest {
         assertTrue(qrPng.length > 0);
 
         // Decode the QR image with ZXing to verify decoded content
-        BinaryBitmap bitmap = new BinaryBitmap(new HybridBinarizer(
-                new BufferedImageLuminanceSource(ImageIO.read(new ByteArrayInputStream(qrPng)))
-        ));
-        Result decodedResult = new MultiFormatReader().decode(bitmap);
+        java.awt.image.BufferedImage img = ImageIO.read(new ByteArrayInputStream(qrPng));
+        com.google.zxing.LuminanceSource source = new BufferedImageLuminanceSource(img);
+        BinaryBitmap bitmap = new BinaryBitmap(new HybridBinarizer(source));
+        Result decodedResult;
+        try {
+            Map<com.google.zxing.DecodeHintType, Object> hints = new EnumMap<>(com.google.zxing.DecodeHintType.class);
+            hints.put(com.google.zxing.DecodeHintType.TRY_HARDER, Boolean.TRUE);
+            hints.put(com.google.zxing.DecodeHintType.POSSIBLE_FORMATS, List.of(com.google.zxing.BarcodeFormat.QR_CODE));
+            decodedResult = new MultiFormatReader().decode(bitmap, hints);
+        } catch (com.google.zxing.NotFoundException e) {
+            decodedResult = new MultiFormatReader().decode(new BinaryBitmap(new com.google.zxing.common.GlobalHistogramBinarizer(source)));
+        }
 
         assertNotNull(decodedResult);
         assertEquals(token, decodedResult.getText(), "Decoded QR matrix content must match ONLY the opaque token");
