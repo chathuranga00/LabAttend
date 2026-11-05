@@ -45,7 +45,10 @@ import {
 } from '../../services/academicService';
 import { useToast } from '../../context/ToastContext';
 
-export const STANDARD_GROUPS = ['Group A', 'Group B', 'Group C', 'Group D', 'Group E', 'Group F'];
+export const STANDARD_GROUPS = [
+  'Group A', 'Group B', 'Group C', 'Group D', 'Group E', 
+  'Group F', 'Group G', 'Group H', 'Group I', 'Group J'
+];
 
 export const formatGroupName = (name) => {
   if (!name) return '';

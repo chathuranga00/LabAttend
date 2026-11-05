@@ -30,11 +30,21 @@ import {
 import { useToast } from '../../context/ToastContext';
 import { DataTable, Pagination, SearchBar, Modal, StatusBadge } from '../../components/common';
 
-export const STANDARD_GROUPS = ['Group A', 'Group B', 'Group C', 'Group D', 'Group E', 'Group F'];
+export const STANDARD_GROUPS = [
+  'Group A', 'Group B', 'Group C', 'Group D', 'Group E', 
+  'Group F', 'Group G', 'Group H', 'Group I', 'Group J'
+];
 
 export const formatGroupName = (name) => {
   if (!name) return '';
-  return name.toLowerCase().startsWith('group ') ? name : `Group ${name}`;
+  const trimmed = name.trim();
+  if (trimmed.toLowerCase().startsWith('group ')) {
+    return `Group ${trimmed.substring(6).trim().toUpperCase()}`;
+  }
+  if (trimmed.length === 1 && /[a-zA-Z]/.test(trimmed)) {
+    return `Group ${trimmed.toUpperCase()}`;
+  }
+  return trimmed;
 };
 
 export default function StudentsPage() {
@@ -1168,14 +1178,14 @@ export default function StudentsPage() {
           <div>
             <div className="flex items-center justify-between mb-1.5">
               <label className="block text-xs font-semibold text-slate-300">
-                Lab Group <span className="text-slate-500 font-normal">(Group A, B, C, D, E, F or Unassigned)</span>
+                Lab Group <span className="text-slate-500 font-normal">(Group A, B, C, D, E, F, G, H, I, J or Unassigned)</span>
               </label>
               <span className="text-[11px] text-indigo-400 font-medium">
                 {formData.groupName ? formData.groupName : (formData.labGroupId ? formatGroupName(formGroups.find(g => g.id === formData.labGroupId)?.groupName) : 'No Group')}
               </span>
             </div>
 
-            {/* Quick-select pills for standard groups (Group A, B, C, D, E, F) */}
+            {/* Quick-select pills for standard groups (Group A, B, C, D, E, F, G, H, I, J) */}
             <div className="flex flex-wrap gap-1.5 mb-2.5">
               <button
                 type="button"

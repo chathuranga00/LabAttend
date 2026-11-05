@@ -373,4 +373,44 @@ public class LabGroupServiceTest {
         verify(attendanceRecordRepository, never()).save(any());
         verify(attendanceRecordRepository, never()).delete(any());
     }
+
+    // =========================================================================
+    // TEST 7: Support expanded groups (Group G, H, I, J)
+    // =========================================================================
+    @Test
+    @DisplayName("Student Creation: Assign Group J via groupName -> Normalizes and creates Group J")
+    void testAssignExpandedGroupJToStudent() {
+        when(degreeProgrammeRepository.findById(batch1.getDegreeProgramme().getId())).thenReturn(Optional.of(batch1.getDegreeProgramme()));
+        when(batchRepository.findById(batch1.getId())).thenReturn(Optional.of(batch1));
+        when(labGroupRepository.findByBatchIdAndGroupNameIgnoreCase(batch1.getId(), "Group J")).thenReturn(Optional.empty());
+        when(labGroupRepository.findByBatchIdAndGroupNameIgnoreCase(batch1.getId(), "J")).thenReturn(Optional.empty());
+        
+        LabGroup groupJ = LabGroup.builder()
+                .groupName("Group J")
+                .batch(batch1)
+                .isActive(true)
+                .build();
+        groupJ.setId(UUID.randomUUID());
+        when(labGroupRepository.save(any(LabGroup.class))).thenReturn(groupJ);
+        when(studentRepository.save(any(Student.class))).thenAnswer(invocation -> {
+            Student s = invocation.getArgument(0);
+            s.setId(UUID.randomUUID());
+            return s;
+        });
+
+        StudentRequest request = StudentRequest.builder()
+                .studentId("IT210099")
+                .fullName("Kasun Jayawardena")
+                .email("kasun.j@students.labattend.com")
+                .degreeProgrammeId(batch1.getDegreeProgramme().getId())
+                .batchId(batch1.getId())
+                .groupName("Group J")
+                .build();
+
+        var response = studentService.createStudent(request);
+
+        assertNotNull(response);
+        assertEquals("Group J", response.getLabGroupName());
+        verify(labGroupRepository, times(1)).save(argThat(g -> "Group J".equals(g.getGroupName())));
+    }
 }
