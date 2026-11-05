@@ -50,6 +50,7 @@ export default function AdminAllSessionsPage() {
   const [editLoading, setEditLoading] = useState(false);
   const [editForm, setEditForm] = useState({
     hallId: '',
+    labSheetNumber: '',
     sessionDate: '',
     startTime: '',
     endTime: '',
@@ -122,6 +123,7 @@ export default function AdminAllSessionsPage() {
     setEditModalSession(sessionItem);
     setEditForm({
       hallId: sessionItem.hallId || '',
+      labSheetNumber: sessionItem.labSheetNumber || '',
       sessionDate: sessionItem.sessionDate || '',
       startTime: sessionItem.startTime ? sessionItem.startTime.substring(0, 5) : '',
       endTime: sessionItem.endTime ? sessionItem.endTime.substring(0, 5) : '',
@@ -170,6 +172,7 @@ export default function AdminAllSessionsPage() {
       setEditLoading(true);
       const payload = {
         hallId: editForm.hallId,
+        labSheetNumber: editForm.labSheetNumber ? editForm.labSheetNumber.trim() : null,
         sessionDate: editForm.sessionDate,
         startTime: editForm.startTime.length === 5 ? `${editForm.startTime}:00` : editForm.startTime,
         endTime: editForm.endTime.length === 5 ? `${editForm.endTime}:00` : editForm.endTime,
@@ -235,6 +238,11 @@ export default function AdminAllSessionsPage() {
             {item.labGroupName && (
               <span className="ml-1.5 px-1.5 py-0.2 rounded bg-slate-800 text-teal-300 border border-teal-800/40 text-[10px]">
                 {item.labGroupName}
+              </span>
+            )}
+            {item.labSheetNumber && (
+              <span className="ml-1.5 px-1.5 py-0.2 rounded bg-emerald-950/70 text-emerald-300 border border-emerald-800/50 text-[10px] font-medium" title="Lab Sheet Number">
+                {item.labSheetNumber}
               </span>
             )}
           </span>
@@ -485,6 +493,13 @@ export default function AdminAllSessionsPage() {
               </div>
             </div>
 
+            {selectedSession.labSheetNumber && (
+              <div className="p-3 bg-emerald-950/30 border border-emerald-900/40 rounded-xl flex items-center justify-between text-xs">
+                <span className="text-slate-400 font-medium">Lab Sheet Identifier:</span>
+                <span className="text-emerald-400 font-bold">{selectedSession.labSheetNumber}</span>
+              </div>
+            )}
+
             <div className="p-3 bg-slate-800/40 rounded-xl flex items-center justify-between">
               <div>
                 <span className="text-slate-400 block font-medium">Cohort Check-in Count:</span>
@@ -610,6 +625,21 @@ export default function AdminAllSessionsPage() {
                   </option>
                 ))}
               </select>
+            </div>
+
+            {/* Lab Sheet Number Field (Optional) */}
+            <div>
+              <label className="block text-slate-300 font-medium mb-1">
+                Lab Sheet Number <span className="text-slate-500">(Optional)</span>
+              </label>
+              <input
+                type="text"
+                value={editForm.labSheetNumber || ''}
+                onChange={(e) => setEditForm({ ...editForm, labSheetNumber: e.target.value })}
+                placeholder="e.g. Lab Sheet 01 / OOP Lab 04"
+                maxLength={100}
+                className="w-full px-3 py-2 bg-slate-800/90 border border-slate-700 rounded-xl text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-emerald-500"
+              />
             </div>
 
             {/* Date Field */}

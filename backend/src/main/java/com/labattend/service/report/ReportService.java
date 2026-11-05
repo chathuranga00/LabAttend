@@ -1001,6 +1001,9 @@ public class ReportService {
     }
 
     private String getLabSheetOrNotes(LabSession s) {
+        if (s.getLabSheetNumber() != null && !s.getLabSheetNumber().trim().isEmpty()) {
+            return s.getLabSheetNumber().trim();
+        }
         if (s.getFinalizationNotes() != null && !s.getFinalizationNotes().trim().isEmpty()) {
             return s.getFinalizationNotes();
         }

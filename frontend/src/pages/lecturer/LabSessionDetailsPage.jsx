@@ -177,6 +177,12 @@ export default function LabSessionDetailsPage() {
                 <Clock className="h-3.5 w-3.5 text-amber-400" />
                 {session.sessionDate} ({session.startTime} - {session.endTime})
               </span>
+              {session.labSheetNumber && (
+                <span className="flex items-center gap-1.5 bg-emerald-950/70 border border-emerald-800/60 px-2.5 py-1 rounded-lg text-emerald-300 font-medium">
+                  <FileText className="h-3.5 w-3.5 text-emerald-400" />
+                  <span>Lab Sheet: <strong className="text-white">{session.labSheetNumber}</strong></span>
+                </span>
+              )}
             </div>
           </div>
 

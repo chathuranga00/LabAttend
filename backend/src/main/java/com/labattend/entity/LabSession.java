@@ -71,4 +71,7 @@ public class LabSession extends BaseEntity {
 
     @Column(name = "finalization_notes", columnDefinition = "TEXT")
     private String finalizationNotes;
+
+    @Column(name = "lab_sheet_number", length = 100)
+    private String labSheetNumber;
 }

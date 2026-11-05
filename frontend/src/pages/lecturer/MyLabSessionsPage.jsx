@@ -120,6 +120,7 @@ export default function MyLabSessionsPage() {
     setEditingSession(session);
     setEditForm({
       hallId: session.hallId || '',
+      labSheetNumber: session.labSheetNumber || '',
       sessionDate: session.sessionDate || '',
       startTime: session.startTime ? session.startTime.substring(0, 5) : '',
       endTime: session.endTime ? session.endTime.substring(0, 5) : '',
@@ -152,6 +153,7 @@ export default function MyLabSessionsPage() {
       setEditLoading(true);
       const payload = {
         hallId: editForm.hallId,
+        labSheetNumber: editForm.labSheetNumber ? editForm.labSheetNumber.trim() : null,
         sessionDate: editForm.sessionDate,
         startTime: editForm.startTime.length === 5 ? `${editForm.startTime}:00` : editForm.startTime,
         endTime: editForm.endTime.length === 5 ? `${editForm.endTime}:00` : editForm.endTime,
@@ -221,6 +223,11 @@ export default function MyLabSessionsPage() {
             ) : (
               <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-slate-800 text-slate-400">
                 Whole Batch
+              </span>
+            )}
+            {item.labSheetNumber && (
+              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-950/70 border border-emerald-800 text-emerald-300" title="Lab Sheet Number">
+                {item.labSheetNumber}
               </span>
             )}
           </div>
@@ -502,6 +509,21 @@ export default function MyLabSessionsPage() {
                   </option>
                 ))}
               </select>
+            </div>
+
+            {/* Lab Sheet Number */}
+            <div>
+              <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                Lab Sheet Number <span className="text-slate-500 font-normal lowercase">(optional)</span>
+              </label>
+              <input
+                type="text"
+                value={editForm.labSheetNumber || ''}
+                onChange={(e) => setEditForm({ ...editForm, labSheetNumber: e.target.value })}
+                placeholder="e.g. Lab Sheet 01 / OOP Lab 04"
+                maxLength={100}
+                className="w-full px-3 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-teal-500"
+              />
             </div>
 
             {/* Date */}
