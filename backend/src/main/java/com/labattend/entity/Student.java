@@ -32,8 +32,8 @@ public class Student extends BaseEntity {
     @Column(name = "offered_by", length = 100)
     private String offeredBy;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "degree_programme_id", nullable = false)
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "degree_programme_id")
     private DegreeProgramme degreeProgramme;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)

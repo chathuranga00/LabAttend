@@ -225,8 +225,6 @@ export default function StudentsPage() {
 
   const handleOpenCreate = () => {
     setEditingItem(null);
-    const firstProg = programmes[0]?.id || '';
-    const matchingBatches = batches.filter(b => !b.degreeProgrammeId || b.degreeProgrammeId === firstProg);
     setFormData({
       studentId: '',
       title: 'Mr.',
@@ -234,8 +232,8 @@ export default function StudentsPage() {
       email: '',
       personalEmail: '',
       offeredBy: 'NSBM',
-      degreeProgrammeId: firstProg,
-      batchId: matchingBatches[0]?.id || (batches[0]?.id || ''),
+      degreeProgrammeId: '',
+      batchId: batches[0]?.id || '',
       labGroupId: '',
       groupName: '',
       qrToken: '',
@@ -273,7 +271,7 @@ export default function StudentsPage() {
     if (formData.personalEmail && formData.personalEmail.trim() && !/\S+@\S+\.\S+/.test(formData.personalEmail)) {
       errs.personalEmail = 'Invalid personal email address format';
     }
-    if (!formData.degreeProgrammeId) errs.degreeProgrammeId = 'Degree Programme is required';
+    // Degree programme is optional
     if (!formData.batchId) errs.batchId = 'Batch cohort is required';
     setFormErrors(errs);
     return Object.keys(errs).length === 0;
@@ -384,7 +382,7 @@ export default function StudentsPage() {
         email: formData.email.trim() || null,
         personalEmail: formData.personalEmail.trim() || null,
         offeredBy: formData.offeredBy ? formData.offeredBy.trim() : null,
-        degreeProgrammeId: formData.degreeProgrammeId,
+        degreeProgrammeId: formData.degreeProgrammeId || null,
         batchId: formData.batchId,
         labGroupId: formData.labGroupId || null,
         groupName: formData.groupName || null,
@@ -644,7 +642,9 @@ export default function StudentsPage() {
               </span>
             )}
           </div>
-          <span className="text-xs text-slate-500 block mt-0.5">{item.degreeProgrammeName}</span>
+          {item.degreeProgrammeName && (
+            <span className="text-xs text-slate-500 block mt-0.5">{item.degreeProgrammeName}</span>
+          )}
         </div>
       ),
     },
@@ -1124,14 +1124,14 @@ export default function StudentsPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-medium text-slate-300 mb-1">
-                Degree Programme *
+                Degree Programme <span className="text-slate-500 font-normal">(optional)</span>
               </label>
               <select
                 value={formData.degreeProgrammeId}
                 onChange={(e) => setFormData({ ...formData, degreeProgrammeId: e.target.value })}
                 className="w-full px-3 py-2 bg-slate-800/80 border border-slate-700 rounded-xl text-sm text-slate-200 focus:outline-none focus:border-emerald-500"
               >
-                <option value="">Select Programme</option>
+                <option value="">Select Programme (Optional)</option>
                 {programmes.map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.code ? `${p.code} - ` : ''}{p.name}

@@ -39,7 +39,6 @@ public class StudentRequest {
     @Size(max = 100, message = "Offered By cannot exceed 100 characters")
     private String offeredBy;
 
-    @NotNull(message = "Degree programme ID is required")
     private UUID degreeProgrammeId;
 
     @NotNull(message = "Batch ID is required")
