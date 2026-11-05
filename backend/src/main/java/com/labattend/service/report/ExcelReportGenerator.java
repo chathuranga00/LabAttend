@@ -2,6 +2,7 @@ package com.labattend.service.report;
 
 import com.labattend.dto.report.ReportData;
 import org.apache.poi.ss.usermodel.*;
+import org.apache.poi.ss.util.CellRangeAddress;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.springframework.stereotype.Component;
 
@@ -116,6 +117,10 @@ public class ExcelReportGenerator {
             subTitleCell.setCellValue("Official Attendance & Academic Audit Record");
             subTitleCell.setCellStyle(subTitleStyle);
 
+            int maxCols = Math.max(3, (reportData.getHeaders() != null && !reportData.getHeaders().isEmpty() ? reportData.getHeaders().size() : 4) - 1);
+            sheet.addMergedRegion(new CellRangeAddress(0, 0, 0, maxCols));
+            sheet.addMergedRegion(new CellRangeAddress(1, 1, 0, maxCols));
+
             rowIndex++; // Blank row
 
             // Metadata Section
@@ -174,15 +179,23 @@ public class ExcelReportGenerator {
 
             // Data Table Rows
             List<List<String>> rows = reportData.getRows();
-            for (int r = 0; r < rows.size(); r++) {
-                Row row = sheet.createRow(rowIndex++);
-                List<String> rowData = rows.get(r);
-                CellStyle activeStyle = (r % 2 == 1) ? zebraStyle : dataStyle;
+            if (rows == null || rows.isEmpty()) {
+                Row emptyRow = sheet.createRow(rowIndex++);
+                Cell emptyCell = emptyRow.createCell(0);
+                emptyCell.setCellValue("No attendance or session records found matching the specified filter criteria.");
+                emptyCell.setCellStyle(dataStyle);
+                sheet.addMergedRegion(new CellRangeAddress(rowIndex - 1, rowIndex - 1, 0, Math.max(0, headers.size() - 1)));
+            } else {
+                for (int r = 0; r < rows.size(); r++) {
+                    Row row = sheet.createRow(rowIndex++);
+                    List<String> rowData = rows.get(r);
+                    CellStyle activeStyle = (r % 2 == 1) ? zebraStyle : dataStyle;
 
-                for (int c = 0; c < rowData.size(); c++) {
-                    Cell cell = row.createCell(c);
-                    cell.setCellValue(rowData.get(c));
-                    cell.setCellStyle(activeStyle);
+                    for (int c = 0; c < rowData.size(); c++) {
+                        Cell cell = row.createCell(c);
+                        cell.setCellValue(rowData.get(c));
+                        cell.setCellStyle(activeStyle);
+                    }
                 }
             }
 
@@ -195,9 +208,9 @@ public class ExcelReportGenerator {
                 footerCell.setCellStyle(labelStyle);
             }
 
-            // Auto-size columns
+            // Auto-size columns (useMergedCells = true ignores merged title/footer rows)
             for (int col = 0; col < headers.size(); col++) {
-                sheet.autoSizeColumn(col);
+                sheet.autoSizeColumn(col, true);
                 int currentWidth = sheet.getColumnWidth(col);
                 if (currentWidth < 3000) {
                     sheet.setColumnWidth(col, 3500);

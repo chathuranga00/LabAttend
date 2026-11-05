@@ -1,6 +1,7 @@
 package com.labattend.service.report;
 
 import com.labattend.dto.report.ReportData;
+import com.labattend.dto.report.ReportType;
 import com.lowagie.text.*;
 import com.lowagie.text.Font;
 import com.lowagie.text.pdf.*;
@@ -90,8 +91,8 @@ public class PdfReportGenerator {
                 }
             }
 
-            // Fill empty cells if odd count
-            int remainder = metaTable.size() % 2; // handled internally by OpenPDF
+            // Ensure last row is properly filled if metadata count is odd
+            metaTable.completeRow();
             document.add(metaTable);
 
             // Summary Metrics Box Table
@@ -111,6 +112,16 @@ public class PdfReportGenerator {
                 dataTable.setWidthPercentage(100);
                 dataTable.setHeaderRows(1);
 
+                // Set proportional column widths to prevent awkward wrapping
+                try {
+                    float[] widths = getTableWidths(reportData.getType(), headers);
+                    if (widths != null && widths.length == headers.size()) {
+                        dataTable.setWidths(widths);
+                    }
+                } catch (Exception ignored) {
+                    // Fall back to default equal widths if custom calculation fails
+                }
+
                 // Add Table Headers
                 for (String header : headers) {
                     PdfPCell hCell = new PdfPCell(new Phrase(header, tableHeaderFont));
@@ -123,19 +134,28 @@ public class PdfReportGenerator {
 
                 // Add Table Rows
                 List<List<String>> rows = reportData.getRows();
-                Color alternateColor = new Color(248, 250, 252); // Slate 50
-                Color normalColor = Color.WHITE;
+                if (rows == null || rows.isEmpty()) {
+                    PdfPCell emptyCell = new PdfPCell(new Phrase("No attendance or session records found matching the specified filter criteria.", tableDataFont));
+                    emptyCell.setColspan(headers.size());
+                    emptyCell.setHorizontalAlignment(Element.ALIGN_CENTER);
+                    emptyCell.setPadding(12);
+                    dataTable.addCell(emptyCell);
+                } else {
+                    Color alternateColor = new Color(248, 250, 252); // Slate 50
+                    Color normalColor = Color.WHITE;
 
-                for (int r = 0; r < rows.size(); r++) {
-                    List<String> row = rows.get(r);
-                    Color rowBg = (r % 2 == 1) ? alternateColor : normalColor;
+                    for (int r = 0; r < rows.size(); r++) {
+                        List<String> row = rows.get(r);
+                        Color rowBg = (r % 2 == 1) ? alternateColor : normalColor;
 
-                    for (String colValue : row) {
-                        PdfPCell dCell = new PdfPCell(new Phrase(colValue != null ? colValue : "-", tableDataFont));
-                        dCell.setBackgroundColor(rowBg);
-                        dCell.setPadding(5);
-                        dCell.setVerticalAlignment(Element.ALIGN_MIDDLE);
-                        dataTable.addCell(dCell);
+                        for (String colValue : row) {
+                            PdfPCell dCell = new PdfPCell(new Phrase(colValue != null ? colValue : "-", tableDataFont));
+                            dCell.setBackgroundColor(rowBg);
+                            dCell.setPadding(5);
+                            dCell.setVerticalAlignment(Element.ALIGN_MIDDLE);
+                            dataTable.addCell(dCell);
+                        }
+                        dataTable.completeRow();
                     }
                 }
 
@@ -185,5 +205,54 @@ public class PdfReportGenerator {
         cell.addElement(pVal);
 
         table.addCell(cell);
+    }
+
+    private float[] getTableWidths(ReportType type, List<String> headers) {
+        if (headers == null || headers.isEmpty()) return new float[0];
+        int count = headers.size();
+
+        if (type != null) {
+            switch (type) {
+                case SESSION:
+                    if (count == 9) return new float[]{4f, 13f, 22f, 10f, 12f, 9f, 8f, 14f, 16f};
+                    break;
+                case DAILY:
+                    if (count == 14) return new float[]{3f, 10f, 8f, 7f, 8f, 7f, 10f, 12f, 11f, 5f, 5f, 5f, 5f, 8f};
+                    break;
+                case STUDENT_HISTORY:
+                    if (count == 12) return new float[]{3f, 8f, 11f, 14f, 7f, 8f, 8f, 7f, 10f, 10f, 12f, 7f};
+                    break;
+                case MODULE:
+                    if (count == 13) return new float[]{3f, 11f, 8f, 7f, 8f, 7f, 12f, 12f, 5f, 5f, 5f, 5f, 8f};
+                    break;
+                case BATCH:
+                    if (count == 13) return new float[]{3f, 8f, 11f, 12f, 8f, 7f, 12f, 12f, 5f, 5f, 5f, 5f, 8f};
+                    break;
+                case SEMESTER:
+                    if (count == 8) return new float[]{4f, 10f, 24f, 10f, 12f, 10f, 10f, 10f};
+                    break;
+                case LOW_ATTENDANCE:
+                    if (count == 10) return new float[]{4f, 13f, 22f, 8f, 9f, 9f, 9f, 9f, 10f, 10f};
+                    break;
+                case HALL:
+                    if (count == 13) return new float[]{3f, 8f, 11f, 11f, 8f, 8f, 12f, 10f, 5f, 5f, 5f, 7f, 7f};
+                    break;
+                case CROSS_GROUP:
+                    if (count == 9) return new float[]{4f, 12f, 18f, 10f, 12f, 10f, 9f, 12f, 13f};
+                    break;
+            }
+        }
+
+        float[] weights = new float[count];
+        if (count > 1) {
+            weights[0] = 4f;
+            float remainder = 96f / (count - 1);
+            for (int i = 1; i < count; i++) {
+                weights[i] = remainder;
+            }
+        } else {
+            weights[0] = 100f;
+        }
+        return weights;
     }
 }

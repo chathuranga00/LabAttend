@@ -206,45 +206,45 @@ export default function AdminReportsPage() {
     return params;
   };
 
+  // Client-side parameter check
+  const validateReportParams = (type, params) => {
+    if (type === 'SESSION' && !params.sessionId) {
+      showToast('Please select or specify a Finalized Lab Session', 'warning');
+      return false;
+    }
+    if (type === 'DAILY' && !params.sessionDate) {
+      showToast('Please select a session date', 'warning');
+      return false;
+    }
+    if (type === 'STUDENT_HISTORY' && !params.studentId) {
+      showToast('Please specify a Student UUID or matriculation ID', 'warning');
+      return false;
+    }
+    if (type === 'MODULE' && !params.moduleId) {
+      showToast('Please select a module', 'warning');
+      return false;
+    }
+    if (type === 'BATCH' && !params.batchId) {
+      showToast('Please select a batch', 'warning');
+      return false;
+    }
+    if (type === 'HALL' && !params.hallId) {
+      showToast('Please select a laboratory hall', 'warning');
+      return false;
+    }
+    return true;
+  };
+
   // Generate Preview
   const handleGeneratePreview = async () => {
+    const params = getQueryParams();
+    if (!validateReportParams(reportType, params)) {
+      return;
+    }
+
     setLoadingPreview(true);
     setPreviewData(null);
     try {
-      const params = getQueryParams();
-
-      // Client-side quick check
-      if (reportType === 'SESSION' && !params.sessionId) {
-        showToast('Please select or specify a Finalized Lab Session', 'warning');
-        setLoadingPreview(false);
-        return;
-      }
-      if (reportType === 'DAILY' && !params.sessionDate) {
-        showToast('Please select a session date', 'warning');
-        setLoadingPreview(false);
-        return;
-      }
-      if (reportType === 'STUDENT_HISTORY' && !params.studentId) {
-        showToast('Please specify a Student UUID or matriculation ID', 'warning');
-        setLoadingPreview(false);
-        return;
-      }
-      if (reportType === 'MODULE' && !params.moduleId) {
-        showToast('Please select a module', 'warning');
-        setLoadingPreview(false);
-        return;
-      }
-      if (reportType === 'BATCH' && !params.batchId) {
-        showToast('Please select a batch', 'warning');
-        setLoadingPreview(false);
-        return;
-      }
-      if (reportType === 'HALL' && !params.hallId) {
-        showToast('Please select a laboratory hall', 'warning');
-        setLoadingPreview(false);
-        return;
-      }
-
       const res = await reportService.getAdminReportPreview(reportType, params);
       if (res.success && res.data) {
         setPreviewData(res.data);
@@ -262,9 +262,13 @@ export default function AdminReportsPage() {
 
   // Trigger File Download (PDF, Excel, CSV)
   const handleExport = async (format) => {
+    const params = getQueryParams();
+    if (!validateReportParams(reportType, params)) {
+      return;
+    }
+
     setExportLoading((prev) => ({ ...prev, [format]: true }));
     try {
-      const params = getQueryParams();
       await reportService.downloadAdminReport(reportType, format, params);
       showToast(`${format} report downloaded successfully`, 'success');
     } catch (err) {

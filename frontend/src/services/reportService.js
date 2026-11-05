@@ -40,6 +40,13 @@ const downloadFileBlob = async (endpoint, params, defaultFilename) => {
     link.remove();
     window.URL.revokeObjectURL(url);
   } catch (error) {
+    if (error.response?.status === 401) {
+      localStorage.removeItem('labattend_token');
+      localStorage.removeItem('labattend_user');
+      window.dispatchEvent(new Event('labattend:unauthorized'));
+      throw new Error('Your session has expired. Please sign in again.');
+    }
+
     if (error.response?.data instanceof Blob) {
       try {
         const text = await error.response.data.text();
@@ -51,6 +58,11 @@ const downloadFileBlob = async (endpoint, params, defaultFilename) => {
         if (jsonErr.message && jsonErr !== error) throw jsonErr;
       }
     }
+
+    if (!error.response || error.code === 'ERR_NETWORK') {
+      throw new Error('Unable to connect to the server. Check your connection and try again.');
+    }
+
     throw error;
   }
 };

@@ -356,44 +356,45 @@ export default function LecturerReportsPage() {
     return params;
   };
 
+  // Client-side report parameter check
+  const validateReportParams = (type, params) => {
+    if (type === 'SESSION' && !params.sessionId) {
+      showToast('Please select a finalized lab session', 'warning');
+      return false;
+    }
+    if (type === 'DAILY' && !params.sessionDate) {
+      showToast('Please select a date', 'warning');
+      return false;
+    }
+    if (type === 'STUDENT_HISTORY' && !params.studentId) {
+      showToast('Please specify a Student UUID or matriculation ID', 'warning');
+      return false;
+    }
+    if (type === 'MODULE' && !params.moduleId) {
+      showToast('Please select an assigned module', 'warning');
+      return false;
+    }
+    if (type === 'BATCH' && !params.batchId) {
+      showToast('Please select a batch cohort', 'warning');
+      return false;
+    }
+    if (type === 'HALL' && !params.hallId) {
+      showToast('Please select a laboratory hall', 'warning');
+      return false;
+    }
+    return true;
+  };
+
   // Generate Report Preview
   const handleGeneratePreview = async () => {
+    const params = getReportParams();
+    if (!validateReportParams(reportType, params)) {
+      return;
+    }
+
     setLoadingPreview(true);
     setPreviewData(null);
     try {
-      const params = getReportParams();
-
-      if (reportType === 'SESSION' && !params.sessionId) {
-        showToast('Please select a finalized lab session', 'warning');
-        setLoadingPreview(false);
-        return;
-      }
-      if (reportType === 'DAILY' && !params.sessionDate) {
-        showToast('Please select a date', 'warning');
-        setLoadingPreview(false);
-        return;
-      }
-      if (reportType === 'STUDENT_HISTORY' && !params.studentId) {
-        showToast('Please specify a Student UUID or matriculation ID', 'warning');
-        setLoadingPreview(false);
-        return;
-      }
-      if (reportType === 'MODULE' && !params.moduleId) {
-        showToast('Please select an assigned module', 'warning');
-        setLoadingPreview(false);
-        return;
-      }
-      if (reportType === 'BATCH' && !params.batchId) {
-        showToast('Please select a batch cohort', 'warning');
-        setLoadingPreview(false);
-        return;
-      }
-      if (reportType === 'HALL' && !params.hallId) {
-        showToast('Please select a laboratory hall', 'warning');
-        setLoadingPreview(false);
-        return;
-      }
-
       const res = await reportService.getLecturerReportPreview(reportType, params);
       if (res.success && res.data) {
         setPreviewData(res.data);
@@ -411,9 +412,13 @@ export default function LecturerReportsPage() {
 
   // Download Report
   const handleExport = async (format) => {
+    const params = getReportParams();
+    if (!validateReportParams(reportType, params)) {
+      return;
+    }
+
     setExportLoading((prev) => ({ ...prev, [format]: true }));
     try {
-      const params = getReportParams();
       await reportService.downloadLecturerReport(reportType, format, params);
       showToast(`${format} report downloaded successfully`, 'success');
     } catch (err) {
