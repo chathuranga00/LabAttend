@@ -20,3 +20,4 @@ public class StudentResetPasswordRequest {
     @Size(min = 8, max = 100, message = "Password must be at least 8 characters")
     private String newPassword;
 }
+

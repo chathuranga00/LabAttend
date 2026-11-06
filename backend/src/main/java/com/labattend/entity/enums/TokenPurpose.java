@@ -4,3 +4,4 @@ public enum TokenPurpose {
     ACTIVATION,
     PASSWORD_RESET
 }
+

@@ -40,3 +40,4 @@ public class AccountActivationToken extends BaseEntity {
         return usedAt != null;
     }
 }
+

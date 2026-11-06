@@ -17,3 +17,4 @@ public class StudentBulkAccountRequest {
     private UUID labGroupId;
     private List<UUID> studentIds;
 }
+

@@ -61,11 +61,12 @@ public class RateLimitingFilter extends OncePerRequestFilter {
             }
         }
 
-        // 3. Student Public Actions Rate Limiting (activate, forgot-password, reset-password)
+        // 3. Student Actions Rate Limiting (activate, forgot-password, reset-password, change-password)
         if ("POST".equalsIgnoreCase(method) && (
                 path.endsWith("/api/auth/student/activate") ||
                 path.endsWith("/api/auth/student/forgot-password") ||
-                path.endsWith("/api/auth/student/reset-password")
+                path.endsWith("/api/auth/student/reset-password") ||
+                path.endsWith("/api/student/change-password")
         )) {
             String clientIp = extractClientIp(request);
             if (!rateLimiterService.isStudentActionAllowed(clientIp)) {
