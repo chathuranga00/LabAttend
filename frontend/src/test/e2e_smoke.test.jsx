@@ -201,7 +201,7 @@ describe('End-to-End Mobile Viewport Smoke Test Suite', () => {
 
   it('1. Login Flow: user logs in on mobile, receives Bearer token, and navigates to Lecturer Dashboard', async () => {
     api.post.mockImplementation((url) => {
-      if (url === '/auth/login') {
+      if (url === '/auth/login' || url === '/auth/staff/login') {
         return Promise.resolve({
           token: 'mock-e2e-jwt-token',
           user: {
@@ -231,7 +231,7 @@ describe('End-to-End Mobile Viewport Smoke Test Suite', () => {
 
     // Verify token stored in localStorage
     await waitFor(() => {
-      expect(api.post).toHaveBeenCalledWith('/auth/login', {
+      expect(api.post).toHaveBeenCalledWith('/auth/staff/login', {
         email: 'lecturer@labattend.local',
         password: 'Lecturer@2026!',
       });

@@ -17,8 +17,11 @@ import java.time.OffsetDateTime;
 
 /**
  * Security filter enforcing rate limits on sensitive endpoints:
- * - POST /api/auth/login (brute-force defense)
- * - POST /api/lecturer/sessions/{id}/scan (flooding / scanning abuse defense)
+ * - Staff login (POST /api/auth/staff/login)
+ * - Student login (POST /api/auth/student/login)
+ * - Student public actions (activate, forgot-password, reset-password)
+ * - Attendance scan (POST /api/lecturer/sessions/{id}/scan)
+ * - Bulk QR export (GET /api/admin/students/qr/bulk)
  */
 @Component
 public class RateLimitingFilter extends OncePerRequestFilter {
@@ -40,16 +43,38 @@ public class RateLimitingFilter extends OncePerRequestFilter {
         String path = request.getRequestURI();
         String method = request.getMethod();
 
-        // 1. Login Rate Limiting (POST /api/auth/login)
-        if ("POST".equalsIgnoreCase(method) && path.endsWith("/api/auth/login")) {
+        // 1. Staff Login Rate Limiting (POST /api/auth/staff/login or legacy /api/auth/login)
+        if ("POST".equalsIgnoreCase(method) && (path.endsWith("/api/auth/staff/login") || path.endsWith("/api/auth/login"))) {
             String clientIp = extractClientIp(request);
-            if (!rateLimiterService.isLoginAllowed(clientIp)) {
+            if (!rateLimiterService.isStaffLoginAllowed(clientIp, null)) {
                 writeTooManyRequestsResponse(response, path, "Too many login attempts. Please try again after 1 minute.");
                 return;
             }
         }
 
-        // 2. Attendance Scan Rate Limiting (POST /api/lecturer/sessions/{id}/scan)
+        // 2. Student Login Rate Limiting (POST /api/auth/student/login)
+        if ("POST".equalsIgnoreCase(method) && path.endsWith("/api/auth/student/login")) {
+            String clientIp = extractClientIp(request);
+            if (!rateLimiterService.isStudentLoginAllowed(clientIp, null)) {
+                writeTooManyRequestsResponse(response, path, "Too many login attempts. Please try again after 1 minute.");
+                return;
+            }
+        }
+
+        // 3. Student Public Actions Rate Limiting (activate, forgot-password, reset-password)
+        if ("POST".equalsIgnoreCase(method) && (
+                path.endsWith("/api/auth/student/activate") ||
+                path.endsWith("/api/auth/student/forgot-password") ||
+                path.endsWith("/api/auth/student/reset-password")
+        )) {
+            String clientIp = extractClientIp(request);
+            if (!rateLimiterService.isStudentActionAllowed(clientIp)) {
+                writeTooManyRequestsResponse(response, path, "Action rate limit exceeded. Please wait a moment before trying again.");
+                return;
+            }
+        }
+
+        // 4. Attendance Scan Rate Limiting (POST /api/lecturer/sessions/{id}/scan)
         if ("POST".equalsIgnoreCase(method) && path.contains("/api/lecturer/sessions/") && path.endsWith("/scan")) {
             String clientIp = extractClientIp(request);
             if (!rateLimiterService.isScanAllowed(path + ":" + clientIp)) {
@@ -58,7 +83,7 @@ public class RateLimitingFilter extends OncePerRequestFilter {
             }
         }
 
-        // 3. Bulk QR Generation Rate Limiting (GET /api/admin/students/qr/bulk)
+        // 5. Bulk QR Generation Rate Limiting (GET /api/admin/students/qr/bulk)
         if ("GET".equalsIgnoreCase(method) && path.endsWith("/api/admin/students/qr/bulk")) {
             String clientIp = extractClientIp(request);
             if (!rateLimiterService.isBulkQrAllowed(clientIp)) {

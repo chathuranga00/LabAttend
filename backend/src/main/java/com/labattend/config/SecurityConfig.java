@@ -61,11 +61,21 @@ public class SecurityConfig {
             )
             .authorizeHttpRequests(auth -> auth
                 // Public Endpoints
-                .requestMatchers("/api/auth/login", "/api/health").permitAll()
+                .requestMatchers(
+                    "/api/auth/staff/login",
+                    "/api/auth/student/login",
+                    "/api/auth/login",
+                    "/api/auth/student/activate",
+                    "/api/auth/student/forgot-password",
+                    "/api/auth/student/reset-password",
+                    "/api/health"
+                ).permitAll()
                 // Role-Restricted Admin Endpoints (derived exclusively from validated JWT claims)
                 .requestMatchers("/api/admin/**").hasRole("ADMIN")
                 // Role-Restricted Lecturer Endpoints (derived exclusively from validated JWT claims)
                 .requestMatchers("/api/lecturer/**").hasRole("LECTURER")
+                // Role-Restricted Student Endpoints (derived exclusively from validated JWT claims)
+                .requestMatchers("/api/student/**").hasRole("STUDENT")
                 // All other endpoints require authentication (e.g. /api/auth/me, /api/auth/logout)
                 .anyRequest().authenticated()
             )
@@ -89,7 +99,7 @@ public class SecurityConfig {
                 .filter(origin -> !origin.isEmpty())
                 .toList();
 
-        configuration.setAllowedOriginPatterns(origins);
+        configuration.setAllowedOrigins(origins);
         configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(Arrays.asList("Authorization", "Content-Type", "X-Requested-With", "Accept", "Origin"));
         configuration.setExposedHeaders(List.of("Authorization"));
