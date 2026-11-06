@@ -185,7 +185,8 @@ public class StudentPortalEndToEndScenarioTest {
                 userRepository,
                 passwordEncoder,
                 systemSettingService,
-                studentAccountService
+                studentAccountService,
+                qrCodeService
         );
 
         // 1. Setup Admin & Lecturer

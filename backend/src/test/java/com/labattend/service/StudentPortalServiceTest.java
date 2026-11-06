@@ -52,6 +52,8 @@ class StudentPortalServiceTest {
     private SystemSettingService systemSettingService;
     @Mock
     private StudentAccountService studentAccountService;
+    @Mock
+    private QrCodeService qrCodeService;
 
     @InjectMocks
     private StudentPortalService studentPortalService;
@@ -330,6 +332,35 @@ class StudentPortalServiceTest {
         assertThatThrownBy(() -> studentPortalService.changePassword(userDetails, request))
                 .isInstanceOf(BadRequestException.class)
                 .hasMessage("New password and confirmation do not match.");
+    }
+
+    @Test
+    @DisplayName("getPersonalQrBadge -> Successfully returns Base64 data URLs for personal QR code and badge")
+    void testGetPersonalQrBadgeSuccess() {
+        when(studentRepository.findByUserId(testUser.getId())).thenReturn(Optional.of(testStudent));
+        when(qrCodeService.ensureStudentToken(any(Student.class))).thenReturn(testStudent);
+        when(qrCodeService.getStudentQrImage(eq(testStudent.getId()), eq(true))).thenReturn(new byte[]{1, 2, 3});
+        when(qrCodeService.getStudentQrImage(eq(testStudent.getId()), eq(false))).thenReturn(new byte[]{4, 5, 6});
+
+        StudentQrBadgeResponse badge = studentPortalService.getPersonalQrBadge(userDetails);
+
+        assertThat(badge).isNotNull();
+        assertThat(badge.getStudentId()).isEqualTo(testStudent.getStudentId());
+        assertThat(badge.getFullName()).isEqualTo(testStudent.getFullName());
+        assertThat(badge.getBadgeDataUrl()).startsWith("data:image/png;base64,");
+        assertThat(badge.getQrDataUrl()).startsWith("data:image/png;base64,");
+    }
+
+    @Test
+    @DisplayName("getPersonalQrImage -> Returns raw PNG bytes for personal QR code")
+    void testGetPersonalQrImageSuccess() {
+        when(studentRepository.findByUserId(testUser.getId())).thenReturn(Optional.of(testStudent));
+        when(qrCodeService.ensureStudentToken(any(Student.class))).thenReturn(testStudent);
+        when(qrCodeService.getStudentQrImage(eq(testStudent.getId()), eq(true))).thenReturn(new byte[]{10, 20, 30});
+
+        byte[] bytes = studentPortalService.getPersonalQrImage(userDetails, true);
+
+        assertThat(bytes).isNotNull().containsExactly(10, 20, 30);
     }
 
     private LabSession createSession(SessionStatus status, String code) {

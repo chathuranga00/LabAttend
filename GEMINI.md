@@ -70,12 +70,12 @@ Staff-only:
 - **Admin QR Generation & Download Permitted**:
   - The `ADMIN` can generate each student's QR code from the student record, view it, download it as a PNG image, and bulk download QR codes as a ZIP file partitioned by batch or lab group.
   - `LECTURER` has scanner-only capabilities and is strictly forbidden from generating or downloading QR codes.
-  - Students CANNOT view or access their own QR token through the student portal.
+  - Students can view and download their own personal digital lab badge (with their QR code) on their Profile page in the student portal, but cannot view or access raw secret token hashes or any other student's QR code.
 - **QR Token Security & Privacy Constraints**:
   - The QR content must be an **opaque, unpredictable token** (e.g., cryptographically secure high-entropy UUID or random token) that maps to exactly one student.
   - The QR payload must **NEVER contain personal data** (no plain names, student IDs, emails, NICs, or PII).
   - A scanned QR must resolve to exactly one student, and the backend must cryptographically verify that the token belongs to that student.
-  - Student portal response DTOs must **NEVER include** `qr_token`, `qr_token_hash`, or `qr_generated_at`.
+  - Student portal response DTOs must **NEVER include** raw `qr_token` secret, `qr_token_hash`, or `qr_generated_at`. Rendered QR images/badges for the authenticated student are served via dedicated `/api/student/me/qr*` endpoints.
 - **Scanner Flow & Visual Confirmation**:
   - The system utilizes `html5-qrcode` in the **staff frontend** strictly for webcam/camera scanning during active sessions.
   - The lecturer UI must display the student's **name, student ID, and lab group** immediately after each scan for real-time visual confirmation.

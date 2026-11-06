@@ -35,6 +35,7 @@ public class StudentPortalService {
     private final PasswordEncoder passwordEncoder;
     private final SystemSettingService systemSettingService;
     private final StudentAccountService studentAccountService;
+    private final QrCodeService qrCodeService;
 
     public StudentPortalService(
             StudentRepository studentRepository,
@@ -43,7 +44,8 @@ public class StudentPortalService {
             UserRepository userRepository,
             PasswordEncoder passwordEncoder,
             SystemSettingService systemSettingService,
-            StudentAccountService studentAccountService
+            StudentAccountService studentAccountService,
+            QrCodeService qrCodeService
     ) {
         this.studentRepository = studentRepository;
         this.sessionStudentRepository = sessionStudentRepository;
@@ -52,6 +54,7 @@ public class StudentPortalService {
         this.passwordEncoder = passwordEncoder;
         this.systemSettingService = systemSettingService;
         this.studentAccountService = studentAccountService;
+        this.qrCodeService = qrCodeService;
     }
 
     /**
@@ -348,5 +351,41 @@ public class StudentPortalService {
 
         user.setPasswordHash(passwordEncoder.encode(request.getNewPassword()));
         userRepository.save(user);
+    }
+
+    /**
+     * GET /api/student/me/qr
+     * Retrieves the authenticated student's personal QR image (PNG bytes).
+     */
+    @Transactional
+    public byte[] getPersonalQrImage(CustomUserDetails userDetails, boolean isSticker) {
+        Student student = resolveAuthenticatedStudent(userDetails);
+        student = qrCodeService.ensureStudentToken(student);
+        return qrCodeService.getStudentQrImage(student.getId(), isSticker);
+    }
+
+    /**
+     * GET /api/student/me/qr-badge
+     * Retrieves the student's personal QR code as Base64 data URLs for UI rendering and easy downloading.
+     */
+    @Transactional
+    public StudentQrBadgeResponse getPersonalQrBadge(CustomUserDetails userDetails) {
+        Student student = resolveAuthenticatedStudent(userDetails);
+        student = qrCodeService.ensureStudentToken(student);
+
+        byte[] stickerBytes = qrCodeService.getStudentQrImage(student.getId(), true);
+        byte[] rawQrBytes = qrCodeService.getStudentQrImage(student.getId(), false);
+
+        String stickerBase64 = "data:image/png;base64," + Base64.getEncoder().encodeToString(stickerBytes);
+        String rawQrBase64 = "data:image/png;base64," + Base64.getEncoder().encodeToString(rawQrBytes);
+
+        return StudentQrBadgeResponse.builder()
+                .studentId(student.getStudentId())
+                .fullName(student.getFullName())
+                .batch(student.getBatch() != null ? student.getBatch().getBatchCode() : "N/A")
+                .labGroup(student.getLabGroup() != null ? "Group " + student.getLabGroup().getGroupName() : "Whole Batch")
+                .badgeDataUrl(stickerBase64)
+                .qrDataUrl(rawQrBase64)
+                .build();
     }
 }

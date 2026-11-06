@@ -9,6 +9,10 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.ContentDisposition;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -107,5 +111,35 @@ public class StudentController {
     ) {
         studentPortalService.changePassword(userDetails, request);
         return ResponseEntity.ok(ApiResponse.success("Password changed successfully", null));
+    }
+
+    /**
+     * GET /api/student/me/qr
+     * Streams the authenticated student's personal QR badge PNG image.
+     */
+    @GetMapping("/me/qr")
+    public ResponseEntity<byte[]> getPersonalQrImage(
+            @AuthenticationPrincipal CustomUserDetails userDetails,
+            @RequestParam(defaultValue = "true") boolean sticker
+    ) {
+        byte[] imageBytes = studentPortalService.getPersonalQrImage(userDetails, sticker);
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.IMAGE_PNG);
+        headers.setContentDisposition(ContentDisposition.inline()
+                .filename("student_qr_badge.png")
+                .build());
+        return new ResponseEntity<>(imageBytes, headers, HttpStatus.OK);
+    }
+
+    /**
+     * GET /api/student/me/qr-badge
+     * Returns the authenticated student's QR badge and raw QR code as Base64 data URLs.
+     */
+    @GetMapping("/me/qr-badge")
+    public ResponseEntity<ApiResponse<StudentQrBadgeResponse>> getPersonalQrBadge(
+            @AuthenticationPrincipal CustomUserDetails userDetails
+    ) {
+        StudentQrBadgeResponse badge = studentPortalService.getPersonalQrBadge(userDetails);
+        return ResponseEntity.ok(ApiResponse.success("Personal QR badge retrieved successfully", badge));
     }
 }

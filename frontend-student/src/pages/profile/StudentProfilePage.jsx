@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   User,
   Mail,
@@ -11,7 +11,10 @@ import {
   AlertCircle,
   CheckCircle2,
   HelpCircle,
-  KeyRound
+  KeyRound,
+  QrCode,
+  Download,
+  Loader2
 } from 'lucide-react';
 import { useStudentAuth } from '../../context/StudentAuthContext';
 import { studentPortalService } from '../../services/studentService';
@@ -29,6 +32,38 @@ export const StudentProfilePage = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [formError, setFormError] = useState('');
   const [formSuccess, setFormSuccess] = useState('');
+
+  // Personal QR Lab Badge states
+  const [qrBadge, setQrBadge] = useState(null);
+  const [qrLoading, setQrLoading] = useState(true);
+  const [qrError, setQrError] = useState('');
+  const [badgeMode, setBadgeMode] = useState('badge'); // 'badge' or 'raw'
+
+  useEffect(() => {
+    let isMounted = true;
+    const fetchQr = async () => {
+      try {
+        setQrLoading(true);
+        setQrError('');
+        const res = await studentPortalService.getPersonalQrBadge();
+        if (isMounted) {
+          setQrBadge(res.data || res);
+        }
+      } catch (err) {
+        if (isMounted) {
+          setQrError('Unable to generate your digital badge. Please contact your administrator.');
+        }
+      } finally {
+        if (isMounted) {
+          setQrLoading(false);
+        }
+      }
+    };
+    fetchQr();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   // Password rules validation
   const rules = [
@@ -181,8 +216,100 @@ export const StudentProfilePage = () => {
           </div>
         </div>
 
-        {/* Right Column: Change Password Form */}
+        {/* Right Column: Digital QR Badge & Change Password Form */}
         <div className="space-y-6">
+          {/* Digital Student Lab Badge Card */}
+          <div className="p-6 rounded-2xl bg-slate-900/90 border border-slate-800 shadow-xl space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <div className="flex items-center gap-2">
+                <QrCode className="w-5 h-5 text-emerald-400" />
+                <h2 className="text-base font-bold text-white">Digital Lab Badge</h2>
+              </div>
+              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 uppercase tracking-wide">
+                Live Badge
+              </span>
+            </div>
+
+            {qrLoading ? (
+              <div className="py-12 flex flex-col items-center justify-center gap-3 text-slate-400 text-xs">
+                <Loader2 className="w-6 h-6 animate-spin text-emerald-400" />
+                <span>Rendering personal attendance badge...</span>
+              </div>
+            ) : qrError ? (
+              <div className="p-4 rounded-xl bg-red-500/10 border border-red-500/20 text-red-300 text-xs flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{qrError}</span>
+              </div>
+            ) : qrBadge ? (
+              <div className="space-y-4">
+                {/* Badge View Mode Toggle */}
+                <div className="flex rounded-lg bg-slate-950 p-1 border border-slate-800 text-xs">
+                  <button
+                    type="button"
+                    onClick={() => setBadgeMode('badge')}
+                    className={`flex-1 py-1.5 rounded-md font-medium transition-all ${
+                      badgeMode === 'badge'
+                        ? 'bg-emerald-600 text-white shadow-sm'
+                        : 'text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    Official Badge Card
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setBadgeMode('raw')}
+                    className={`flex-1 py-1.5 rounded-md font-medium transition-all ${
+                      badgeMode === 'raw'
+                        ? 'bg-emerald-600 text-white shadow-sm'
+                        : 'text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    Compact QR Only
+                  </button>
+                </div>
+
+                {/* QR Display Container */}
+                <div className="bg-slate-950/80 rounded-xl p-3 border border-slate-800/80 flex flex-col items-center">
+                  <div className="bg-white p-2 rounded-xl shadow-lg ring-1 ring-slate-800 max-w-[220px] w-full flex items-center justify-center overflow-hidden">
+                    <img
+                      src={badgeMode === 'badge' ? qrBadge.badgeDataUrl : qrBadge.qrDataUrl}
+                      alt={`Lab Attendance QR for ${qrBadge.fullName}`}
+                      className="w-full h-auto object-contain rounded"
+                    />
+                  </div>
+                  <p className="mt-2.5 text-[11px] text-slate-400 text-center font-mono">
+                    ID: {qrBadge.studentId} • {qrBadge.labGroup}
+                  </p>
+                </div>
+
+                {/* Download Actions */}
+                <div className="grid grid-cols-2 gap-2">
+                  <a
+                    href={qrBadge.badgeDataUrl}
+                    download={`LabAttend_Badge_${qrBadge.studentId}.png`}
+                    className="flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold shadow-md transition-all text-center"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    <span>Save Badge</span>
+                  </a>
+                  <a
+                    href={qrBadge.qrDataUrl}
+                    download={`LabAttend_QR_${qrBadge.studentId}.png`}
+                    className="flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition-all text-center"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    <span>Save QR</span>
+                  </a>
+                </div>
+
+                {/* Visual Confirmation Notice */}
+                <p className="text-[11px] text-slate-400 leading-relaxed bg-slate-950/40 p-2.5 rounded-lg border border-slate-800/60 text-center">
+                  Present this QR code on your mobile screen to your instructor during active lab sessions to record your attendance.
+                </p>
+              </div>
+            ) : null}
+          </div>
+
           <div className="p-6 rounded-2xl bg-slate-900/90 border border-slate-800 shadow-xl space-y-5">
             <div className="flex items-center gap-2.5 pb-4 border-b border-slate-800">
               <KeyRound className="w-5 h-5 text-emerald-400" />

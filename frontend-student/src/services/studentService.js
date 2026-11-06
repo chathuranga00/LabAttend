@@ -75,5 +75,10 @@ export const studentPortalService = {
     });
     return response.data;
   },
+
+  getPersonalQrBadge: async () => {
+    const response = await api.get('/student/me/qr-badge');
+    return response.data;
+  },
 };
 
