@@ -146,44 +146,67 @@ The backend includes a production-grade multi-stage [Dockerfile](file:///q:/MY%2
 
 ---
 
-## 4. Frontend Deployment (Vercel / Netlify)
+## 4. Frontend Deployments (Two Separate Portals on Vercel / Netlify) [Updated 2026-11]
 
-The React frontend requires single-page application (SPA) rewrite rules so that deep links (`/admin/dashboard`, `/lecturer/sessions/active`) do not result in HTTP 404 errors when reloaded.
+LabAttend operates **two separate frontend web applications** connected to the same Spring Boot API:
+1. **`frontend-staff`**: Admin and Lecturer portal with live QR scanner and audit generation.
+2. **`frontend-student`**: Lightweight, read-only student attendance portal (no scanner, no admin code).
 
-The repository includes pre-configured fallback configurations:
-- **Vercel**: [vercel.json](file:///q:/MY%20Projects/Lab%20Attend/frontend/vercel.json)
-- **Netlify**: [netlify.toml](file:///q:/MY%20Projects/Lab%20Attend/frontend/netlify.toml) & [public/_redirects](file:///q:/MY%20Projects/Lab%20Attend/frontend/public/_redirects)
-
-### Option A: Vercel (Recommended)
-
-1. Sign in to [Vercel](https://vercel.com).
-2. Click **Add New...** -> **Project**.
-3. Import your `LabAttend` GitHub repository.
-4. In the configuration modal:
-   - **Framework Preset**: `Vite`
-   - **Root Directory**: Click edit and select `frontend`
-   - **Build Command**: `npm run build`
-   - **Output Directory**: `dist`
-5. Expand **Environment Variables** and add:
-   - `VITE_API_BASE_URL`: `https://<your-backend-host>/api` (e.g., `https://labattend-backend.onrender.com/api`)
-6. Click **Deploy**.
-7. Vercel automatically deploys with edge caching, asset compression, and SPA rewrite rules.
+Both portals require single-page application (SPA) rewrite rules so that deep links (`/dashboard`, `/attendance`) do not result in HTTP 404 errors when reloaded.
 
 ---
 
-### Option B: Netlify
+### Deploying Portal 1: Staff Portal (`frontend-staff`)
 
-1. Sign in to [Netlify](https://www.netlify.com).
-2. Click **Add new site** -> **Import an existing project**.
-3. Select GitHub and pick the `LabAttend` repository.
-4. Configure Build settings:
-   - **Base directory**: `frontend`
-   - **Build command**: `npm run build`
-   - **Publish directory**: `frontend/dist`
-5. Under **Environment variables**, add:
+#### Vercel Setup:
+1. Sign in to [Vercel](https://vercel.com) and click **Add New...** -> **Project**.
+2. Import the `LabAttend` repository.
+3. Configure project:
+   - **Project Name**: `labattend-staff`
+   - **Framework Preset**: `Vite`
+   - **Root Directory**: `frontend-staff`
+   - **Build Command**: `npm run build`
+   - **Output Directory**: `dist`
+4. Add Environment Variable:
    - `VITE_API_BASE_URL`: `https://<your-backend-host>/api`
-6. Click **Deploy site**.
-7. Netlify detects `public/_redirects` and routes all traffic to `index.html` with HTTP 200.
+5. Click **Deploy**.
+
+#### Netlify Setup:
+- **Base directory**: `frontend-staff`
+- **Build command**: `npm run build`
+- **Publish directory**: `frontend-staff/dist`
+- **Environment variables**: `VITE_API_BASE_URL` = `https://<your-backend-host>/api`
+
+---
+
+### Deploying Portal 2: Student Portal (`frontend-student`)
+
+#### Vercel Setup:
+1. In Vercel, click **Add New...** -> **Project**.
+2. Select the **same** `LabAttend` repository again.
+3. Configure project:
+   - **Project Name**: `labattend-student`
+   - **Framework Preset**: `Vite`
+   - **Root Directory**: `frontend-student`
+   - **Build Command**: `npm run build`
+   - **Output Directory**: `dist`
+4. Add Environment Variable:
+   - `VITE_API_BASE_URL`: `https://<your-backend-host>/api`
+5. Click **Deploy**.
+
+#### Netlify Setup:
+- **Base directory**: `frontend-student`
+- **Build command**: `npm run build`
+- **Publish directory**: `frontend-student/dist`
+- **Environment variables**: `VITE_API_BASE_URL` = `https://<your-backend-host>/api`
+
+---
+
+### Backend CORS Configuration for Both Frontends
+Ensure `CORS_ALLOWED_ORIGINS` on the backend includes both deployed domains, comma-separated with no trailing slash:
+```env
+CORS_ALLOWED_ORIGINS=https://labattend-staff.vercel.app,https://labattend-student.vercel.app
+```
 
 ---
 

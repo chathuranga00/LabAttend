@@ -95,40 +95,51 @@ The backend starts on `http://localhost:8080`.
 
 ---
 
-### 3. Frontend Setup & Run
+### 3. Frontend Setup & Run (Staff & Student Portals)
 
+LabAttend has two separate frontend portals:
+1. **Staff Portal (`/frontend-staff`)**: Admin and Lecturer dashboard, scanner, rosters, reports (`http://localhost:5173`).
+2. **Student Portal (`/frontend-student`)**: Read-only student attendance dashboard, module breakdown, history (`http://localhost:5174`).
+
+#### Running the Staff Portal (Port 5173)
 ```bash
-cd frontend
-
-# 1. Create environment configuration
+cd frontend-staff
 cp .env.example .env
-
-# 2. Install dependencies
 npm install
-
-# 3. Launch Vite development server
 npm run dev
 ```
+Open `http://localhost:5173` in your browser.
 
-The frontend launches on `http://localhost:5173`. Open your browser and log in with the administrator credentials above.
+#### Running the Student Portal (Port 5174)
+```bash
+cd frontend-student
+cp .env.example .env
+npm install
+npm run dev
+```
+Open `http://localhost:5174` in your browser.
 
 ---
 
 ## Automated Test Suites
 
-### Backend Tests (137 Tests, JUnit 5 + Spring Boot Test)
+### Backend Tests (183 Tests, JUnit 5 + Spring Boot Test)
 ```bash
 cd backend
 mvn clean test
 ```
-Verifies authentication, student management, lab group management, QR generation & bulk exports (ZIP & PDF), cross-group attendance tracking, group-aware analytics/reports, canonical Section 29 benchmark (40 students, 35 present, 5 absent, 87.5% turnout), Step 16 benchmark (100 students across Groups A, B, C), multi-threaded concurrent scan deduplication, role escalation defense, cross-lecturer isolation, and rate limiters (login, scan, bulk QR).
 
-### Frontend Tests (27 Tests, Vitest + React Testing Library)
+### Staff Frontend Tests (51 Tests, Vitest)
 ```bash
-cd frontend
+cd frontend-staff
 npm test
 ```
-Verifies login form validation, protected route guards, role redirection, camera scanner feedback outcome cards, cross-group visitor indicators, student QR generation & regeneration modals, bulk QR export panels, and group-aware analytics & reports filters.
+
+### Student Frontend Tests (Vitest)
+```bash
+cd frontend-student
+npm test
+```
 
 ---
 
