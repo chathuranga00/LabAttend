@@ -44,6 +44,10 @@ public class Student extends BaseEntity {
     @JoinColumn(name = "lab_group_id")
     private LabGroup labGroup;
 
+    @OneToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "user_id", unique = true)
+    private User user;
+
     @Column(name = "qr_token_hash", unique = true, length = 64)
     private String qrTokenHash;
 

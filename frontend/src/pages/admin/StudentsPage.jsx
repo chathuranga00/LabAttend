@@ -18,7 +18,10 @@ import {
   Printer,
   FileArchive,
   ShieldCheck,
-  Trash2
+  Trash2,
+  UserPlus,
+  KeyRound,
+  Send
 } from 'lucide-react';
 import { 
   studentService, 
@@ -82,6 +85,13 @@ export default function StudentsPage() {
   const [bulkQrBatchGroups, setBulkQrBatchGroups] = useState([]);
   const [bulkQrFormat, setBulkQrFormat] = useState('zip'); // 'zip' | 'pdf'
   const [bulkQrDownloading, setBulkQrDownloading] = useState(false);
+
+  // Bulk Account Provisioning Modal states
+  const [isBulkAccountModalOpen, setIsBulkAccountModalOpen] = useState(false);
+  const [bulkAccountBatchId, setBulkAccountBatchId] = useState('');
+  const [bulkAccountGroupId, setBulkAccountGroupId] = useState('');
+  const [bulkAccountBatchGroups, setBulkAccountBatchGroups] = useState([]);
+  const [bulkAccountLoading, setBulkAccountLoading] = useState(false);
 
   // Single QR Download Modal states
   const [singleQrModalStudent, setSingleQrModalStudent] = useState(null);
@@ -376,6 +386,115 @@ export default function StudentsPage() {
       showToast(err.message || 'Failed to download bulk QR package', 'error');
     } finally {
       setBulkQrDownloading(false);
+    }
+  };
+
+  // Student Account Management Handlers
+  const handleCreateAccount = async (student) => {
+    try {
+      await studentService.createAccount(student.id);
+      showToast(`Account provisioned and activation link emailed to ${student.email || student.fullName}`, 'success');
+      fetchStudents();
+    } catch (err) {
+      showToast(err.message || 'Failed to create student account', 'error');
+    }
+  };
+
+  const handleSendActivation = async (student) => {
+    try {
+      await studentService.sendActivationLink(student.id);
+      showToast(`Activation link re-sent to ${student.email || student.fullName}`, 'success');
+      fetchStudents();
+    } catch (err) {
+      showToast(err.message || 'Failed to send activation link', 'error');
+    }
+  };
+
+  const handleToggleAccountStatus = async (student) => {
+    try {
+      const res = await studentService.toggleAccountStatus(student.id);
+      const isNowActive = res.data?.isAccountActive;
+      showToast(`Student portal account ${isNowActive ? 'reactivated' : 'deactivated'} successfully`, 'success');
+      fetchStudents();
+    } catch (err) {
+      showToast(err.message || 'Failed to toggle account status', 'error');
+    }
+  };
+
+  const handleResetAccess = async (student) => {
+    if (!window.confirm(`Reset portal access for ${student.fullName}? Existing password will be invalidated and a fresh activation link emailed.`)) {
+      return;
+    }
+    try {
+      await studentService.resetAccess(student.id);
+      showToast(`Access reset. A fresh activation link has been sent to ${student.email}`, 'success');
+      fetchStudents();
+    } catch (err) {
+      showToast(err.message || 'Failed to reset access', 'error');
+    }
+  };
+
+  const handleOpenBulkAccountModal = () => {
+    const defaultBatch = selectedBatchId || batches[0]?.id || '';
+    setBulkAccountBatchId(defaultBatch);
+    setBulkAccountGroupId(selectedGroupId || '');
+    if (defaultBatch) {
+      labGroupService.getGroupsByBatch(defaultBatch)
+        .then((res) => setBulkAccountBatchGroups(res.data || []))
+        .catch(() => setBulkAccountBatchGroups([]));
+    } else {
+      setBulkAccountBatchGroups([]);
+    }
+    setIsBulkAccountModalOpen(true);
+  };
+
+  const handleBulkAccountBatchChange = (batchId) => {
+    setBulkAccountBatchId(batchId);
+    setBulkAccountGroupId('');
+    if (batchId) {
+      labGroupService.getGroupsByBatch(batchId)
+        .then((res) => setBulkAccountBatchGroups(res.data || []))
+        .catch(() => setBulkAccountBatchGroups([]));
+    } else {
+      setBulkAccountBatchGroups([]);
+    }
+  };
+
+  const handleBulkCreateAccounts = async (e) => {
+    e?.preventDefault();
+    if (!bulkAccountBatchId) {
+      showToast('Please select a batch for bulk account creation', 'warning');
+      return;
+    }
+    setBulkAccountLoading(true);
+    try {
+      const res = await studentService.bulkCreateAccounts({
+        batchId: bulkAccountBatchId,
+        labGroupId: bulkAccountGroupId || undefined,
+      });
+      const data = res.data || res;
+      showToast(`Bulk account creation completed: ${data.createdCount || 0} provisioned, ${data.skippedCount || 0} skipped`, 'success');
+      setIsBulkAccountModalOpen(false);
+      fetchStudents();
+    } catch (err) {
+      showToast(err.message || 'Failed to bulk create student accounts', 'error');
+    } finally {
+      setBulkAccountLoading(false);
+    }
+  };
+
+  const handleBulkCreateAccountsForSelected = async () => {
+    if (!selectedStudentIds.length) return;
+    try {
+      const res = await studentService.bulkCreateAccounts({
+        studentIds: selectedStudentIds,
+      });
+      const data = res.data || res;
+      showToast(`Provisioned accounts: ${data.createdCount || 0} created, ${data.skippedCount || 0} skipped`, 'success');
+      setSelectedStudentIds([]);
+      fetchStudents();
+    } catch (err) {
+      showToast(err.message || 'Failed to create accounts for selected students', 'error');
     }
   };
 
@@ -700,6 +819,76 @@ export default function StudentsPage() {
       ),
     },
     {
+      header: 'Portal Account',
+      accessor: 'accountStatus',
+      render: (item) => {
+        const status = item.accountStatus || (item.hasAccount ? 'ACTIVE' : 'NO_ACCOUNT');
+        return (
+          <div className="flex items-center gap-2">
+            {status === 'ACTIVE' && (
+              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-950/60 border border-emerald-800/50 text-emerald-400">
+                <CheckCircle className="h-3 w-3" />
+                Active
+              </span>
+            )}
+            {status === 'PENDING_ACTIVATION' && (
+              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-950/60 border border-amber-800/50 text-amber-300">
+                <AlertCircle className="h-3 w-3" />
+                Invited
+              </span>
+            )}
+            {status === 'DEACTIVATED' && (
+              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-rose-950/60 border border-rose-800/50 text-rose-400">
+                <X className="h-3 w-3" />
+                Deactivated
+              </span>
+            )}
+            {status === 'NO_ACCOUNT' && (
+              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-800 border border-slate-700 text-slate-400">
+                No Account
+              </span>
+            )}
+
+            {/* Quick Actions */}
+            {status === 'NO_ACCOUNT' && (
+              <button
+                type="button"
+                onClick={() => handleCreateAccount(item)}
+                className="px-2.5 py-1 text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg shadow-sm transition"
+                title="Create account and email activation link"
+              >
+                Create
+              </button>
+            )}
+            {status === 'PENDING_ACTIVATION' && (
+              <button
+                type="button"
+                onClick={() => handleSendActivation(item)}
+                className="px-2.5 py-1 text-xs font-semibold bg-amber-600/80 hover:bg-amber-600 text-white rounded-lg shadow-sm transition"
+                title="Resend activation email"
+              >
+                Send link
+              </button>
+            )}
+            {(status === 'ACTIVE' || status === 'DEACTIVATED') && (
+              <button
+                type="button"
+                onClick={() => handleToggleAccountStatus(item)}
+                className={`px-2.5 py-1 text-xs font-semibold rounded-lg transition ${
+                  status === 'ACTIVE'
+                    ? 'bg-rose-950/60 hover:bg-rose-900 text-rose-300 border border-rose-800/50'
+                    : 'bg-emerald-950/60 hover:bg-emerald-900 text-emerald-300 border border-emerald-800/50'
+                }`}
+                title={status === 'ACTIVE' ? 'Deactivate student account' : 'Reactivate student account'}
+              >
+                {status === 'ACTIVE' ? 'Deactivate' : 'Reactivate'}
+              </button>
+            )}
+          </div>
+        );
+      },
+    },
+    {
       header: 'Actions',
       accessor: 'actions',
       render: (item) => (
@@ -718,6 +907,15 @@ export default function StudentsPage() {
           >
             <QrCode className="h-4 w-4" />
           </button>
+          {item.hasAccount && (
+            <button
+              onClick={() => handleResetAccess(item)}
+              className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-400 hover:text-amber-300 transition"
+              title="Reset Access & Invalidate Passwords"
+            >
+              <KeyRound className="h-4 w-4" />
+            </button>
+          )}
           <button
             onClick={() => handleOpenEdit(item)}
             className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition"
@@ -760,6 +958,15 @@ export default function StudentsPage() {
           >
             <Download className="h-4 w-4 text-emerald-400" />
             <span>Download QR Codes</span>
+          </button>
+
+          <button
+            onClick={handleOpenBulkAccountModal}
+            className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 text-sm font-medium transition"
+            title="Bulk create portal accounts for a cohort batch or lab group"
+          >
+            <UserPlus className="h-4 w-4 text-cyan-400" />
+            <span>Provision Accounts</span>
           </button>
 
           <button
@@ -934,6 +1141,15 @@ export default function StudentsPage() {
             >
               <Download className="w-3.5 h-3.5" />
               Download QR ({selectedStudentIds.length})
+            </button>
+            <button
+              type="button"
+              onClick={handleBulkCreateAccountsForSelected}
+              className="inline-flex items-center gap-2 px-3.5 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded-xl text-xs font-semibold shadow-lg shadow-cyan-600/20 transition"
+              title="Provision student portal accounts for selected students"
+            >
+              <UserPlus className="w-3.5 h-3.5" />
+              Create Accounts ({selectedStudentIds.length})
             </button>
             <button
               type="button"
@@ -1910,6 +2126,90 @@ export default function StudentsPage() {
                 <>
                   <Download className="h-4 w-4" />
                   <span>Download {bulkQrFormat.toUpperCase()}</span>
+                </>
+              )}
+            </button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Bulk Account Provisioning Modal */}
+      <Modal
+        isOpen={isBulkAccountModalOpen}
+        onClose={() => setIsBulkAccountModalOpen(false)}
+        title="Provision Student Portal Accounts"
+        subtitle="Batch generate student accounts and email one-time activation links"
+      >
+        <form onSubmit={handleBulkCreateAccounts} className="space-y-4">
+          <div>
+            <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+              Target Academic Batch *
+            </label>
+            <select
+              value={bulkAccountBatchId}
+              onChange={(e) => handleBulkAccountBatchChange(e.target.value)}
+              required
+              className="w-full px-3 py-2 bg-slate-800/80 border border-slate-700 rounded-xl text-sm text-slate-200 focus:outline-none focus:border-cyan-500 font-medium"
+            >
+              <option value="">Select Target Batch</option>
+              {batches.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.batchCode} ({b.academicYear || 'Cohort'})
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+              Target Lab Group (Optional)
+            </label>
+            <select
+              value={bulkAccountGroupId}
+              onChange={(e) => setBulkAccountGroupId(e.target.value)}
+              className="w-full px-3 py-2 bg-slate-800/80 border border-slate-700 rounded-xl text-sm text-slate-200 focus:outline-none focus:border-cyan-500 font-medium"
+              disabled={!bulkAccountBatchId}
+            >
+              <option value="">All Lab Groups (Whole Cohort Batch)</option>
+              {bulkAccountBatchGroups.map((g) => (
+                <option key={g.id} value={g.id}>
+                  {formatGroupName(g.groupName)}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="p-3 bg-cyan-950/40 border border-cyan-800/50 rounded-xl text-xs text-cyan-200 space-y-1">
+            <span className="font-semibold block text-cyan-300">Automated Account Onboarding:</span>
+            <p className="text-slate-300">
+              Only students with registered university emails who do not already have an account will be provisioned.
+              Each student will receive a single-use, 24-hour expiring activation link.
+            </p>
+          </div>
+
+          <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-800">
+            <button
+              type="button"
+              onClick={() => setIsBulkAccountModalOpen(false)}
+              disabled={bulkAccountLoading}
+              className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-sm font-medium transition"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={bulkAccountLoading || !bulkAccountBatchId}
+              className="flex items-center gap-2 px-5 py-2 bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50 text-white rounded-xl text-sm font-semibold shadow-lg shadow-cyan-600/20 transition"
+            >
+              {bulkAccountLoading ? (
+                <>
+                  <RefreshCw className="h-4 w-4 animate-spin" />
+                  <span>Provisioning Accounts...</span>
+                </>
+              ) : (
+                <>
+                  <UserPlus className="h-4 w-4" />
+                  <span>Provision Accounts</span>
                 </>
               )}
             </button>

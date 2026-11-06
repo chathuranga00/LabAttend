@@ -70,6 +70,11 @@ export const studentService = {
     api.post(`/admin/students/${id}/qr/regenerate`, { reason }),
   downloadBulkQr: (params = {}) =>
     api.get('/admin/students/qr/bulk', { params, responseType: 'blob' }),
+  createAccount: (id) => api.post(`/admin/students/${id}/account`),
+  sendActivationLink: (id) => api.post(`/admin/students/${id}/account/send-activation`),
+  toggleAccountStatus: (id) => api.patch(`/admin/students/${id}/account/toggle-status`),
+  resetAccess: (id) => api.post(`/admin/students/${id}/account/reset-access`),
+  bulkCreateAccounts: (data) => api.post('/admin/students/accounts/bulk-create', data),
   importCsv: (formData) =>
     api.post('/admin/students/import-csv', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },

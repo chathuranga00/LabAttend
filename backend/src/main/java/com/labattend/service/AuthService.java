@@ -10,6 +10,7 @@ import com.labattend.exception.ResourceNotFoundException;
 import com.labattend.repository.LecturerRepository;
 import com.labattend.repository.UserRepository;
 import com.labattend.security.JwtService;
+import com.labattend.security.RateLimiterService;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -25,42 +26,97 @@ public class AuthService {
     private final LecturerRepository lecturerRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
+    private final RateLimiterService rateLimiterService;
+
+    // Fixed dummy hash to ensure constant-time response when user is not found
+    private static final String DUMMY_HASH = "$2a$10$w8WzK8h5Z3xP3qN9n5M3r.O9i6jK7l8m9n0p1q2r3s4t5u6v7w8x9";
 
     public AuthService(UserRepository userRepository,
                        LecturerRepository lecturerRepository,
                        PasswordEncoder passwordEncoder,
-                       JwtService jwtService) {
+                       JwtService jwtService,
+                       RateLimiterService rateLimiterService) {
         this.userRepository = userRepository;
         this.lecturerRepository = lecturerRepository;
         this.passwordEncoder = passwordEncoder;
         this.jwtService = jwtService;
+        this.rateLimiterService = rateLimiterService;
     }
 
+    /**
+     * Staff Login: strictly ADMIN and LECTURER roles only.
+     * Rejects STUDENT accounts with the exact same generic 401 message as wrong passwords.
+     */
+    @Transactional(readOnly = true)
+    public LoginResponse staffLogin(LoginRequest request, String clientIp) {
+        String normalizedEmail = request.getEmail() != null ? request.getEmail().trim().toLowerCase() : "";
+
+        // Check rate limiter & account lockout
+        if (!rateLimiterService.isStaffLoginAllowed(clientIp, normalizedEmail)) {
+            throw new BadCredentialsException("Email or password is incorrect.");
+        }
+
+        Optional<User> userOpt = userRepository.findByEmail(normalizedEmail);
+        if (userOpt.isEmpty()) {
+            passwordEncoder.matches(request.getPassword(), DUMMY_HASH);
+            rateLimiterService.recordFailedAttempt(normalizedEmail, "STAFF");
+            throw new BadCredentialsException("Email or password is incorrect.");
+        }
+
+        User user = userOpt.get();
+        boolean passwordMatches = passwordEncoder.matches(request.getPassword(), user.getPasswordHash());
+        boolean isStaffRole = user.getRole() == Role.ADMIN || user.getRole() == Role.LECTURER;
+        boolean isActive = Boolean.TRUE.equals(user.getIsActive());
+
+        if (!passwordMatches || !isStaffRole || !isActive) {
+            rateLimiterService.recordFailedAttempt(normalizedEmail, "STAFF");
+            throw new BadCredentialsException("Email or password is incorrect.");
+        }
+
+        rateLimiterService.recordSuccessfulLogin(normalizedEmail, "STAFF");
+        return generateLoginResponse(user);
+    }
+
+    /**
+     * Student Login: strictly STUDENT role only.
+     * Rejects ADMIN and LECTURER accounts with the exact same generic 401 message as wrong passwords.
+     */
+    @Transactional(readOnly = true)
+    public LoginResponse studentLogin(LoginRequest request, String clientIp) {
+        String normalizedEmail = request.getEmail() != null ? request.getEmail().trim().toLowerCase() : "";
+
+        // Check rate limiter & account lockout
+        if (!rateLimiterService.isStudentLoginAllowed(clientIp, normalizedEmail)) {
+            throw new BadCredentialsException("Email or password is incorrect.");
+        }
+
+        Optional<User> userOpt = userRepository.findByEmail(normalizedEmail);
+        if (userOpt.isEmpty()) {
+            passwordEncoder.matches(request.getPassword(), DUMMY_HASH);
+            rateLimiterService.recordFailedAttempt(normalizedEmail, "STUDENT");
+            throw new BadCredentialsException("Email or password is incorrect.");
+        }
+
+        User user = userOpt.get();
+        boolean passwordMatches = passwordEncoder.matches(request.getPassword(), user.getPasswordHash());
+        boolean isStudentRole = user.getRole() == Role.STUDENT;
+        boolean isActive = Boolean.TRUE.equals(user.getIsActive());
+
+        if (!passwordMatches || !isStudentRole || !isActive) {
+            rateLimiterService.recordFailedAttempt(normalizedEmail, "STUDENT");
+            throw new BadCredentialsException("Email or password is incorrect.");
+        }
+
+        rateLimiterService.recordSuccessfulLogin(normalizedEmail, "STUDENT");
+        return generateLoginResponse(user);
+    }
+
+    /**
+     * Legacy login endpoint alias (defaults to staff login).
+     */
     @Transactional(readOnly = true)
     public LoginResponse login(LoginRequest request) {
-        String normalizedEmail = request.getEmail().trim().toLowerCase();
-
-        User user = userRepository.findByEmail(normalizedEmail)
-                .orElseThrow(() -> new BadCredentialsException("Email or password is incorrect."));
-
-        // Generic error message if deactivated or invalid password to prevent user enumeration
-        if (!Boolean.TRUE.equals(user.getIsActive())) {
-            throw new BadCredentialsException("Email or password is incorrect.");
-        }
-
-        if (!passwordEncoder.matches(request.getPassword(), user.getPasswordHash())) {
-            throw new BadCredentialsException("Email or password is incorrect.");
-        }
-
-        String token = jwtService.generateToken(user);
-        UserSummaryDto userSummary = buildUserSummary(user);
-
-        return LoginResponse.builder()
-                .token(token)
-                .tokenType("Bearer")
-                .expiresIn(jwtService.getExpirationMs())
-                .user(userSummary)
-                .build();
+        return staffLogin(request, "unknown");
     }
 
     @Transactional(readOnly = true)
@@ -73,6 +129,18 @@ public class AuthService {
         }
 
         return buildUserSummary(user);
+    }
+
+    private LoginResponse generateLoginResponse(User user) {
+        String token = jwtService.generateToken(user);
+        UserSummaryDto userSummary = buildUserSummary(user);
+
+        return LoginResponse.builder()
+                .token(token)
+                .tokenType("Bearer")
+                .expiresIn(jwtService.getExpirationMs())
+                .user(userSummary)
+                .build();
     }
 
     private UserSummaryDto buildUserSummary(User user) {
@@ -93,6 +161,7 @@ public class AuthService {
                 .fullName(user.getFullName())
                 .role(user.getRole())
                 .isActive(user.getIsActive())
+                .mustChangePassword(user.getMustChangePassword())
                 .staffId(staffId)
                 .department(department)
                 .build();

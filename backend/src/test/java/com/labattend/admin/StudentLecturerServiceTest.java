@@ -66,6 +66,8 @@ public class StudentLecturerServiceTest {
     private PasswordEncoder passwordEncoder;
     @Mock
     private JwtService jwtService;
+    @Mock
+    private com.labattend.security.RateLimiterService rateLimiterService;
 
     private StudentService studentService;
     private LecturerService lecturerService;
@@ -95,8 +97,12 @@ public class StudentLecturerServiceTest {
                 userRepository,
                 lecturerRepository,
                 passwordEncoder,
-                jwtService
+                jwtService,
+                rateLimiterService
         );
+
+        lenient().when(rateLimiterService.isStaffLoginAllowed(any(), any())).thenReturn(true);
+        lenient().when(rateLimiterService.isStudentLoginAllowed(any(), any())).thenReturn(true);
     }
 
     @Test
