@@ -14,40 +14,43 @@
 
 ## Architecture & Technology Stack
 
-- **Frontend (`/frontend`)**:
-  - React 18 + Vite 5 + Tailwind CSS + React Router v6
-  - Centralized Axios client with JWT request interceptors and 401 token expiry handling
-  - `html5-qrcode` for high-performance webcam and mobile camera QR badge scanning
-  - Lucide Icons & Recharts for interactive analytics visualizations
-  - Vitest + React Testing Library for component & integration testing
-  - Pre-configured SPA client-side routing fallback (`vercel.json`, `netlify.toml`, `public/_redirects`)
+- **Frontends (Two Independent SPAs)**:
+  - **Staff Portal (`/frontend-staff`)**: React 18 + Vite 5 + Tailwind CSS + React Router v6 + `html5-qrcode` (Port 5173). Admin & Lecturer management, webcam/camera QR scanning, lab session scheduling, rosters, attendance adjustments, and analytics reports.
+  - **Student Portal (`/frontend-student`)**: Mobile-first React 18 + Vite 5 + Tailwind CSS + Recharts + Lucide Icons (Port 5174). Read-only student personal attendance turnout, module progress, attendance history, low attendance advisory alerts, PWA offline app shell. No administrative code, no scanner, no QR badges.
 
 - **Backend (`/backend`)**:
   - Java 21 (Temurin) & Spring Boot 3.3.5
   - Spring Web, Spring Data JPA, Spring Security, Spring Validation
-  - Flyway database migration engine (V1..V5 schemas auto-applied on startup)
+  - Flyway database migration engine (V1..V21 schemas auto-applied on startup)
   - JJWT (JSON Web Token) with HMAC-SHA256 signing and BCrypt password encryption
-  - Thread-safe token bucket rate limiters protecting authentication (10 req/min) and scan endpoints (120 req/min)
+  - Separate login authentication endpoints (`/api/auth/staff/login` and `/api/auth/student/login`) with non-enumerating generic 401 defense
+  - Rate limiting with token bucket per endpoint and IP
   - Apache POI (Excel `.xlsx`), OpenPDF (Vector `.pdf`), and CSV report streaming engines
   - Multi-stage containerization ([Dockerfile](file:///q:/MY%20Projects/Lab%20Attend/backend/Dockerfile)) running on Alpine Linux as a non-root user
 
 - **Database (`Supabase PostgreSQL via JDBC`)**:
-  - 12 normalized relational tables with foreign keys and cascade constraints
+  - Normalized relational tables with foreign keys and cascade constraints
   - Relational unique constraint `(session_id, student_id)` preventing concurrent duplicate scans
   - Append-only immutable `attendance_audit_logs` tracking all session finalizations and medical/administrative adjustments
+  - `account_activation_tokens` storing cryptographically hashed single-use tokens for student account activation and password resets
 
 ---
 
 ## Core System Principles (Non-Negotiable)
 
-1. **Only Two Roles**: Authenticated roles are strictly `ADMIN` and `LECTURER`.
-2. **Students Are Records Only**: Students have database profiles only; no student accounts, logins, or mobile student portals.
-3. **Admin QR Generation & Bulk Export**: The `ADMIN` can generate opaque cryptographic student QR tokens, preview/download individual student QR badges (PNG), and bulk export QR codes by batch or lab group (ZIP archive and printable A4 sticker PDF). `LECTURER` retains a scanner-only role and cannot generate or download QR tokens. Students have no login and cannot view or generate QR codes.
-4. **Zero-Trust Client**: Roles and authorizations are derived exclusively from verified JWT claims in Spring Boot. Roles sent from the client are never trusted.
-5. **Session Finalization Rules**: Unmarked students are never prematurely marked absent during active sessions. Absent records are calculated and committed only upon explicit session closure by the lecturer.
-6. **Lab Groups & Cross-Group Attendance**: Batches can be partitioned into physical lab groups. Sessions target either a whole batch or a specific lab group. Students in the same batch attending another group's session are accepted and audited as cross-group visitors without distorting regular attendance percentages or home-group expected rosters.
-7. **Historical Data Preservation**: Historical attendance records remain immutable even when course assignments or student batches change.
-8. **No Hardcoded Secrets**: All database connection URLs, credentials, and cryptographic keys (`JWT_SECRET`, `QR_HMAC_SECRET`) are injected exclusively via environment variables.
+1. **Three Roles**: Authenticated roles are strictly `ADMIN`, `LECTURER`, and `STUDENT`.
+2. **Student Identity Derived Strictly from Token**: In the Student Portal (`/api/student/**`), student identity is derived exclusively from validated JWT claims in Spring Security. No student ID appears in any URL path, query string, or request body, completely preventing Insecure Direct Object References (IDOR).
+3. **Login Endpoint Separation**:
+   - `POST /api/auth/staff/login`: Exclusively for `ADMIN` and `LECTURER`.
+   - `POST /api/auth/student/login`: Exclusively for `STUDENT`.
+   - Mismatched credentials belong to the wrong portal return the same generic 401 error as an incorrect password: `"Email or password is incorrect."`
+   - Neither frontend portal site links to the other site's login page.
+4. **Admin QR Generation & Bulk Export**: The `ADMIN` can generate opaque cryptographic student QR tokens, preview/download individual student QR badges (PNG), and bulk export QR codes by batch or lab group (ZIP archive and printable A4 sticker PDF). `LECTURER` retains a scanner-only role and cannot generate or download QR tokens. Students have no access to QR tokens.
+5. **Zero-Trust Client**: Roles and authorizations are derived exclusively from verified JWT claims in Spring Boot. Roles sent from the client are never trusted.
+6. **Session Finalization Rules**: Unmarked students are never prematurely marked absent during active sessions. Absent records are calculated and committed only upon explicit session closure by the lecturer.
+7. **Lab Groups & Cross-Group Attendance**: Batches can be partitioned into physical lab groups. Sessions target either a whole batch or a specific lab group. Students in the same batch attending another group's session are accepted and audited as cross-group visitors without distorting regular attendance percentages or home-group expected rosters.
+8. **Student Portal Read-Only Integrity**: The student portal cannot mark attendance, mutate lab sessions, modify rosters, or access other students' records. Only `FINALIZED` sessions count in statistics; `ACTIVE` sessions are never shown as absences, and `CANCELLED` sessions are excluded.
+9. **No Hardcoded Secrets**: All database connection URLs, credentials, and cryptographic keys (`JWT_SECRET`, `QR_HMAC_SECRET`) are injected exclusively via environment variables.
 
 ---
 
@@ -95,40 +98,60 @@ The backend starts on `http://localhost:8080`.
 
 ---
 
-### 3. Frontend Setup & Run
+### 3. Frontend Setup & Run (Staff & Student Portals)
 
+LabAttend has two separate frontend portals:
+1. **Staff Portal (`/frontend-staff`)**: Admin and Lecturer dashboard, scanner, rosters, reports (`http://localhost:5173`).
+2. **Student Portal (`/frontend-student`)**: Read-only student attendance dashboard, module breakdown, history (`http://localhost:5174`).
+
+#### Running the Staff Portal (Port 5173)
 ```bash
-cd frontend
-
-# 1. Create environment configuration
+cd frontend-staff
 cp .env.example .env
-
-# 2. Install dependencies
 npm install
-
-# 3. Launch Vite development server
 npm run dev
 ```
+Open `http://localhost:5173` in your browser.
 
-The frontend launches on `http://localhost:5173`. Open your browser and log in with the administrator credentials above.
+#### Running the Student Portal (Port 5174)
+```bash
+cd frontend-student
+cp .env.example .env
+npm install
+npm run dev
+```
+Open `http://localhost:5174` in your browser.
 
 ---
 
-## Automated Test Suites
+## Automated Test Suites (264 Tests Total — 100% Passing)
 
-### Backend Tests (137 Tests, JUnit 5 + Spring Boot Test)
+### Backend Tests (200 Tests, JUnit 5 + Spring Boot Test)
 ```bash
 cd backend
 mvn clean test
 ```
-Verifies authentication, student management, lab group management, QR generation & bulk exports (ZIP & PDF), cross-group attendance tracking, group-aware analytics/reports, canonical Section 29 benchmark (40 students, 35 present, 5 absent, 87.5% turnout), Step 16 benchmark (100 students across Groups A, B, C), multi-threaded concurrent scan deduplication, role escalation defense, cross-lecturer isolation, and rate limiters (login, scan, bulk QR).
 
-### Frontend Tests (27 Tests, Vitest + React Testing Library)
+### Staff Frontend Tests (51 Tests, Vitest)
 ```bash
-cd frontend
+cd frontend-staff
 npm test
 ```
-Verifies login form validation, protected route guards, role redirection, camera scanner feedback outcome cards, cross-group visitor indicators, student QR generation & regeneration modals, bulk QR export panels, and group-aware analytics & reports filters.
+
+### Student Frontend Tests (13 Tests, Vitest)
+```bash
+cd frontend-student
+npm test
+```
+
+### Running All Frontend & Backend Verification in One Command
+```bash
+# Root npm scripts
+npm run test:staff    # Run staff portal vitest suite (51 tests)
+npm run test:student  # Run student portal vitest suite (13 tests)
+npm run build:staff   # Compile staff portal production bundle
+npm run build:student # Compile student portal production bundle
+```
 
 ---
 

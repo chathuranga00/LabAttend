@@ -33,6 +33,13 @@ public class StudentResponse {
     private Integer qrVersion;
     private OffsetDateTime qrGeneratedAt;
     private Boolean isActive;
+    
+    // Student Portal Account Details
+    private Boolean hasAccount;
+    private UUID accountUserId;
+    private Boolean isAccountActive;
+    private String accountStatus; // NO_ACCOUNT, PENDING_ACTIVATION, ACTIVE, DEACTIVATED
+
     private OffsetDateTime createdAt;
     private OffsetDateTime updatedAt;
 }

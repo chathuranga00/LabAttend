@@ -9,8 +9,9 @@
 *.env.*
 !.env.example
 !backend/.env.example
-!frontend/.env.example
-!frontend/.env.production.example
+!frontend-staff/.env.example
+!frontend-staff/.env.production.example
+!frontend-student/.env.example
 
 # ------------------------------------------------------------------------------
 # Java & Maven

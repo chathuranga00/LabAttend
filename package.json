@@ -4,9 +4,16 @@
   "private": true,
   "description": "LabAttend - University Lab Attendance Tracking System",
   "scripts": {
-    "dev": "npm --prefix frontend run dev",
-    "build": "npm --prefix frontend run build",
-    "preview": "npm --prefix frontend run preview",
-    "test": "npm --prefix frontend test"
+    "dev": "npm --prefix frontend-staff run dev",
+    "dev:staff": "npm --prefix frontend-staff run dev",
+    "dev:student": "npm --prefix frontend-student run dev",
+    "build:staff": "npm --prefix frontend-staff run build",
+    "build:student": "npm --prefix frontend-student run build",
+    "build": "npm run build:staff && npm run build:student",
+    "preview:staff": "npm --prefix frontend-staff run preview",
+    "preview:student": "npm --prefix frontend-student run preview",
+    "test:staff": "npm --prefix frontend-staff test",
+    "test:student": "npm --prefix frontend-student test",
+    "test": "npm run test:staff"
   }
 }

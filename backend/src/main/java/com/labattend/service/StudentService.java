@@ -682,8 +682,25 @@ public class StudentService {
                 .qrVersion(s.getQrVersion())
                 .qrGeneratedAt(s.getQrGeneratedAt())
                 .isActive(s.getIsActive())
+                .hasAccount(s.getUser() != null)
+                .accountUserId(s.getUser() != null ? s.getUser().getId() : null)
+                .isAccountActive(s.getUser() != null ? s.getUser().getIsActive() : null)
+                .accountStatus(resolveAccountStatus(s.getUser()))
                 .createdAt(s.getCreatedAt())
                 .updatedAt(s.getUpdatedAt())
                 .build();
+    }
+
+    private String resolveAccountStatus(com.labattend.entity.User user) {
+        if (user == null) {
+            return "NO_ACCOUNT";
+        }
+        if (!Boolean.TRUE.equals(user.getIsActive())) {
+            return "DEACTIVATED";
+        }
+        if (Boolean.TRUE.equals(user.getMustChangePassword())) {
+            return "PENDING_ACTIVATION";
+        }
+        return "ACTIVE";
     }
 }

@@ -47,14 +47,14 @@ jobs:
         run: test -f target/labattend-backend-*.jar
 
   # ============================================================================
-  # Frontend CI: Node.js 22 LTS, Vitest Unit Tests, Vite Production Bundle
+  # Frontend Staff CI: Node.js 22 LTS, Vitest Unit Tests, Vite Production Bundle
   # ============================================================================
-  frontend-test-and-build:
-    name: Frontend CI (React & Vite)
+  frontend-staff-test-and-build:
+    name: Staff Frontend CI (React & Vite)
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: frontend
+        working-directory: frontend-staff
 
     steps:
       - name: Checkout Source Code
@@ -65,17 +65,52 @@ jobs:
         with:
           node-version: '22'
           cache: 'npm'
-          cache-dependency-path: frontend/package-lock.json
+          cache-dependency-path: frontend-staff/package-lock.json
 
       - name: Clean Install NPM Dependencies
         run: npm ci
 
-      - name: Run Frontend Unit Test Suite (Vitest)
+      - name: Run Staff Frontend Unit Test Suite (Vitest)
         run: npm test
         env:
           NODE_OPTIONS: "--require ./src/test/setup-env.cjs"
 
-      - name: Build Production Web Bundle (Vite)
+      - name: Build Production Staff Web Bundle (Vite)
+        run: npm run build
+        env:
+          VITE_API_BASE_URL: https://api.labattend.local/api
+
+      - name: Verify Dist Output & SPA Fallback
+        run: |
+          test -f dist/index.html
+          test -f dist/_redirects
+
+  # ============================================================================
+  # Frontend Student CI: Node.js 22 LTS, Vitest Unit Tests, Vite Production Bundle
+  # ============================================================================
+  frontend-student-test-and-build:
+    name: Student Frontend CI (React & Vite)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend-student
+
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 22 (LTS)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install NPM Dependencies
+        run: npm install
+
+      - name: Run Student Frontend Unit Test Suite (Vitest)
+        run: npm test
+
+      - name: Build Production Student Web Bundle (Vite)
         run: npm run build
         env:
           VITE_API_BASE_URL: https://api.labattend.local/api
