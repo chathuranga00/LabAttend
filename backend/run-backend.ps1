@@ -24,3 +24,4 @@ Write-Host " Java runtime: $javaBin" -ForegroundColor Gray
 Write-Host "=================================================" -ForegroundColor Cyan
 
 & $javaBin -jar target/labattend-backend-1.0.0.jar
+

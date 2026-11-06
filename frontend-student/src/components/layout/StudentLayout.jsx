@@ -46,8 +46,8 @@ export const StudentLayout = () => {
         <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
           {/* Logo & Brand */}
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-emerald-600 to-teal-400 flex items-center justify-center shadow-lg shadow-emerald-900/30">
-              <GraduationCap className="w-5 h-5 text-white" />
+            <div className="h-9 w-24 sm:h-10 sm:w-28 rounded-xl bg-white p-1 flex items-center justify-center shadow-md ring-1 ring-emerald-500/20">
+              <img src="/logo.png" alt="NSBM Green University" className="h-full w-full object-contain" />
             </div>
             <div>
               <div className="flex items-center gap-2">

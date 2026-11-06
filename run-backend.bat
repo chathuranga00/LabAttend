@@ -18,3 +18,4 @@ echo Using Java: "%JAVA_BIN%"
 "%JAVA_BIN%" -jar target\labattend-backend-1.0.0.jar
 
 endlocal
+

@@ -44,9 +44,9 @@ export const StudentLoginPage = () => {
 
       <div className="sm:mx-auto sm:w-full sm:max-w-md relative z-10">
         {/* Brand Header */}
-        <div className="text-center">
-          <div className="mx-auto w-14 h-14 rounded-2xl bg-gradient-to-tr from-emerald-600 to-teal-400 flex items-center justify-center shadow-xl shadow-emerald-950/50 mb-4 border border-emerald-500/30">
-            <GraduationCap className="w-8 h-8 text-white" />
+        <div className="flex flex-col items-center text-center">
+          <div className="h-20 w-52 sm:h-24 sm:w-60 rounded-2xl bg-white p-2.5 sm:p-3 flex items-center justify-center shadow-xl shadow-emerald-500/15 mb-4 sm:mb-5 ring-1 ring-emerald-500/20">
+            <img src="/logo.png" alt="NSBM Green University Town" className="h-full w-full object-contain" />
           </div>
           <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
             LabAttend
@@ -54,6 +54,11 @@ export const StudentLoginPage = () => {
           <p className="mt-1 text-sm font-semibold text-emerald-400">
             Student Attendance Portal
           </p>
+          <div className="mt-2 inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-900 border border-slate-800 text-[11px] sm:text-xs text-slate-400">
+            <span>NSBM Green University</span>
+            <span className="text-slate-600">•</span>
+            <span className="text-emerald-400 font-medium">STUDENT PORTAL</span>
+          </div>
           <p className="mt-2 text-xs text-slate-400 max-w-xs mx-auto">
             Log in to view your laboratory attendance quota, module breakdowns, and history.
           </p>

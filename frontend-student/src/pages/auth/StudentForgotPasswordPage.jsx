@@ -33,12 +33,17 @@ export const StudentForgotPasswordPage = () => {
   return (
     <div className="min-h-screen bg-slate-950 flex flex-col justify-center py-12 px-4 sm:px-6 lg:px-8">
       <div className="sm:mx-auto sm:w-full sm:max-w-md">
-        <div className="text-center">
-          <div className="mx-auto w-12 h-12 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center mb-3">
-            <KeyRound className="w-6 h-6 text-emerald-400" />
+        <div className="flex flex-col items-center text-center">
+          <div className="h-16 w-44 sm:h-20 sm:w-52 rounded-2xl bg-white p-2 flex items-center justify-center shadow-lg shadow-emerald-500/10 mb-4 ring-1 ring-emerald-500/20">
+            <img src="/logo.png" alt="NSBM Green University Town" className="h-full w-full object-contain" />
           </div>
           <h2 className="text-2xl font-bold text-white tracking-tight">Reset Password</h2>
-          <p className="mt-1 text-xs text-slate-400">
+          <div className="mt-1.5 inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-slate-900 border border-slate-800 text-[11px] text-slate-400">
+            <span>NSBM Green University</span>
+            <span className="text-slate-600">•</span>
+            <span className="text-emerald-400 font-medium">STUDENT PORTAL</span>
+          </div>
+          <p className="mt-2 text-xs text-slate-400">
             Enter your registered university email to receive password reset instructions.
           </p>
         </div>
