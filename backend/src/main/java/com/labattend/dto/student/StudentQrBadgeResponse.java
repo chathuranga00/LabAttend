@@ -15,3 +15,4 @@ public class StudentQrBadgeResponse {
     private String badgeDataUrl;
     private String qrDataUrl;
 }
+
