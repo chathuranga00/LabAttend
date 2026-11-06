@@ -303,7 +303,7 @@ export const StudentDashboardPage = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-2">
               {modules.map((m) => (
                 <div
-                  key={m.moduleId}
+                  key={m.moduleCode || m.moduleId}
                   className="p-4 rounded-xl bg-slate-950/60 border border-slate-800/80 flex items-center justify-between"
                 >
                   <div className="min-w-0 pr-3">
@@ -338,3 +338,4 @@ export const StudentDashboardPage = () => {
     </div>
   );
 };
+

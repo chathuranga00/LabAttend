@@ -128,7 +128,7 @@ export const StudentAttendancePage = () => {
             >
               <option value="">All Modules</option>
               {modules.map((m) => (
-                <option key={m.moduleId} value={m.moduleId}>
+                <option key={m.moduleCode || m.moduleId} value={m.moduleCode || m.moduleId}>
                   {m.moduleCode} — {m.moduleName}
                 </option>
               ))}
@@ -362,3 +362,4 @@ export const StudentAttendancePage = () => {
     </div>
   );
 };
+
