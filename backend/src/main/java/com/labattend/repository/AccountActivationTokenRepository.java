@@ -28,3 +28,4 @@ public interface AccountActivationTokenRepository extends JpaRepository<AccountA
     @Query("UPDATE AccountActivationToken t SET t.usedAt = :now WHERE t.user.id = :userId AND t.purpose = :purpose AND t.usedAt IS NULL")
     void invalidateUnusedTokens(@Param("userId") UUID userId, @Param("purpose") TokenPurpose purpose, @Param("now") OffsetDateTime now);
 }
+

@@ -17,3 +17,4 @@ public class StudentForgotPasswordRequest {
     @Email(message = "Valid email is required")
     private String email;
 }
+

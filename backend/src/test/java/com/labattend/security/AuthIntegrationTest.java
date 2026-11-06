@@ -5,7 +5,7 @@ import com.labattend.config.SecurityConfig;
 import com.labattend.controller.AdminTestController;
 import com.labattend.controller.AuthController;
 import com.labattend.controller.LecturerTestController;
-import com.labattend.controller.StudentTestController;
+import com.labattend.controller.StudentController;
 import com.labattend.dto.request.LoginRequest;
 import com.labattend.dto.request.StudentActivateRequest;
 import com.labattend.dto.request.StudentForgotPasswordRequest;
@@ -45,7 +45,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         AuthController.class,
         AdminTestController.class,
         LecturerTestController.class,
-        StudentTestController.class
+        StudentController.class
 })
 @Import({
         SecurityConfig.class,
@@ -84,6 +84,9 @@ public class AuthIntegrationTest {
 
     @MockBean
     private StudentAccountService studentAccountService;
+
+    @MockBean
+    private com.labattend.service.StudentPortalService studentPortalService;
 
     private User adminUser;
     private User lecturerUser;
