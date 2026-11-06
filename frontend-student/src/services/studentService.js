@@ -76,3 +76,4 @@ export const studentPortalService = {
     return response.data;
   },
 };
+
