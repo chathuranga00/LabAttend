@@ -1,6 +1,57 @@
 # LabAttend - Phase 1 Assumptions & Design Rationale
 
-This document records the foundational architectural decisions and technical assumptions established during Phase 1.
+This document records the foundational architectural decisions and technical assumptions established during Phase 1 and updated through Phase 2.
+
+---
+
+## 0. Student Portal & Three-Role Architecture [Updated 2026-11]
+
+### Context & Requirement Change
+- **Original assumption (Phase 1)**: Students are strictly database records only — no login, no portal, no self-service.
+- **Updated requirement (Phase 2, 2026-11)**: A third authenticated role `STUDENT` is introduced with a **dedicated read-only portal** (`/frontend-student`). The staff portal is renamed to `/frontend-staff`.
+
+### Architectural Decisions
+
+#### A. Three-Role Model
+| Role | Login endpoint | Portal |
+|---|---|---|
+| `ADMIN` | `POST /api/auth/staff/login` | `/frontend-staff` |
+| `LECTURER` | `POST /api/auth/staff/login` | `/frontend-staff` |
+| `STUDENT` | `POST /api/auth/student/login` | `/frontend-student` |
+
+#### B. Two Separate Login Endpoints
+- Rationale: Prevents cross-role token abuse. If a STUDENT credential is submitted to the staff endpoint, the backend returns `"Email or password is incorrect."` — identical to a wrong password — giving no information about which role the account belongs to. The same applies in reverse.
+- Neither frontend links to the other frontend's login page, preventing accidental role confusion.
+
+#### C. Student Identity Always from JWT — No Student ID Parameters
+- Every `/api/student/**` endpoint derives which student is calling from `SecurityContextHolder.getContext().getAuthentication()` → `CustomUserDetails.getId()` → lookup of `students.user_id`.
+- No student identifier (UUID, matriculation number, email) may appear as a URL path variable or query parameter in any `/api/student/**` endpoint.
+- Rationale: Prevents horizontal privilege escalation (Student A reading Student B's data by guessing/supplying Student B's ID).
+
+#### D. Student Account Lifecycle
+1. Admin registers student record (name, student ID, email, batch, group).
+2. Admin triggers activation: backend generates a one-time, time-limited token and emails it to the student's university email.
+3. Student clicks the link → sets password → account becomes `ACTIVE`.
+4. Backend responses never reveal whether an email or student ID exists (generic `"Email or password is incorrect."` on any failure).
+5. Passwords are BCrypt hashed. Plaintext passwords never stored or logged.
+
+#### E. Student Read-Only Scope (FINALIZED sessions only)
+- Only `FINALIZED` sessions appear in student statistics and history.
+- `CANCELLED` sessions are excluded entirely.
+- `ACTIVE` sessions are never shown as absences — a student portal response will simply not list in-progress sessions.
+- Student responses **never include**: `qr_token`, `qr_token_hash`, `qr_generated_at`, `justification_notes`, `corrected_by`, `previous_status`, `is_corrected`, or any other student's data.
+
+#### F. Spring Security Boundary Enforcement
+```
+/api/admin/**    → hasRole('ADMIN')    — LECTURER & STUDENT → 403
+/api/lecturer/** → hasRole('LECTURER') — ADMIN & STUDENT   → 403
+/api/student/**  → hasRole('STUDENT')  — ADMIN & LECTURER  → 403
+```
+
+#### G. Database: users table extended
+- `role` CHECK constraint updated to `IN ('ADMIN', 'LECTURER', 'STUDENT')`.
+- New columns on `users` for student activation: `activation_token`, `activation_token_expires_at`, `activated_at`.
+- `students.user_id` FK → `users.id` links the physical student record to their portal login account.
 
 ---
 
@@ -10,7 +61,7 @@ This document records the foundational architectural decisions and technical ass
 - Originally, the system assumed a strict scanner-only model where physical cards were issued externally and no QR generation occurred in-app.
 - **Updated Requirement (Step 13)**: The institution requires the `ADMIN` to generate, view, download (individual PNG & print-ready sticker), regenerate, and bulk-download (ZIP of PNGs and printable 3x8 PDF sticker sheet by batch or lab group) student QR codes directly from student records.
 - Lecturers retain a **scanner-only** role and are strictly prohibited from generating, downloading, or regenerating QR codes (enforced with HTTP 403 Forbidden).
-- Students have **no login accounts**, no student portal, and cannot view, generate, or mark their own attendance.
+- Students have a read-only portal but **cannot view, generate, or access their own QR token** through any student-facing endpoint.
 
 ### Cryptographic Token Design & Zero-PII Security Model
 - **Token Generation Formula**:
@@ -75,18 +126,29 @@ This document records the foundational architectural decisions and technical ass
 
 ---
 
-## 4. Zero Trust Authorization Boundary
+## 4. Zero Trust Authorization Boundary [Updated 2026-11]
 
-- The React frontend manages token persistence in browser memory/storage for user convenience only.
-- Spring Boot's `SecurityFilterChain` independently verifies the HMAC-SHA256 signature and extracts the `role` (`ADMIN` or `LECTURER`) from the validated JWT claims on every HTTP request.
+- The React frontends manage token persistence in browser memory/storage for user convenience only.
+- Spring Boot's `SecurityFilterChain` independently verifies the HMAC-SHA256 signature and extracts the `role` (`ADMIN`, `LECTURER`, or `STUDENT`) from the validated JWT claims on every HTTP request.
 - Frontend request bodies or headers specifying user roles are ignored and rejected.
+- Three separate path-prefix boundaries are enforced server-side:
+  - `/api/admin/**` → `ADMIN` only; `LECTURER` and `STUDENT` receive 403.
+  - `/api/lecturer/**` → `LECTURER` only; `ADMIN` and `STUDENT` receive 403.
+  - `/api/student/**` → `STUDENT` only; `ADMIN` and `LECTURER` receive 403.
+- Login endpoints are separated by role group (`/api/auth/staff/login` vs `/api/auth/student/login`). Presenting valid credentials for the wrong role group returns the same generic error as a wrong password.
 
 ---
 
-## 5. Authentication Token Transport Decision & Security Trade-Offs
+## 5. Authentication Token Transport Decision & Security Trade-Offs [Updated 2026-11]
 
 ### Architectural Decision: Authorization Header (`Bearer <token>`)
-For **LabAttend**, we employ the standard `Authorization: Bearer <jwt_token>` header transmitted with every authenticated Axios request, returned in the JSON payload of `POST /api/auth/login`.
+For **LabAttend**, we employ the standard `Authorization: Bearer <jwt_token>` header transmitted with every authenticated Axios request, returned in the JSON payload of `POST /api/auth/staff/login` or `POST /api/auth/student/login`.
+
+### Two Login Endpoints — Role Separation [Updated 2026-11]
+- `POST /api/auth/staff/login` accepts only `ADMIN` and `LECTURER` credentials.
+- `POST /api/auth/student/login` accepts only `STUDENT` credentials.
+- **Role-wrong-endpoint rule**: If a user with valid credentials submits them to the wrong endpoint (e.g., a STUDENT at the staff endpoint), the response is identical to an incorrect password: `"Email or password is incorrect."` This prevents role enumeration.
+- Neither the staff frontend nor the student frontend links to the other login page.
 
 ### Security Trade-Off Analysis
 
