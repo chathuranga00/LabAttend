@@ -50,8 +50,14 @@ This document records the foundational architectural decisions and technical ass
 
 #### G. Database: users table extended
 - `role` CHECK constraint updated to `IN ('ADMIN', 'LECTURER', 'STUDENT')`.
-- New columns on `users` for student activation: `activation_token`, `activation_token_expires_at`, `activated_at`.
+- New table `account_activation_tokens` stores single-use SHA-256 hashed activation and password reset tokens (24h expiration).
 - `students.user_id` FK → `users.id` links the physical student record to their portal login account.
+
+#### H. Cross-Origin Token Strategy & CORS Alignment [Updated 2026-11]
+- **Two Distinct Frontend Origins**: Staff portal operates on origin 1 (e.g. `http://localhost:5173` / `https://labattend-staff.vercel.app`); Student portal operates on origin 2 (e.g. `http://localhost:5174` / `https://labattend-student.vercel.app`).
+- **Authorization Header Bearer Tokens**: Because cross-origin cookies between distinct domains require complex third-party cookie policies (frequently blocked by modern Safari ITP, Chrome Privacy Sandbox, and Firefox Enhanced Tracking Protection), authentication utilizes standard `Authorization: Bearer <token>` request headers.
+- **Independent Client Storage**: Each web origin maintains isolated `localStorage` (`token` for staff, `student_token` for student). Tokens cannot bleed across origins.
+- **Backend CORS Policy**: `CORS_ALLOWED_ORIGINS` explicitly whitelists both origins. Wildcards (`*`) are strictly disallowed to maintain zero-trust defense.
 
 ---
 
