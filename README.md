@@ -16,12 +16,12 @@
 
 - **Frontends (Two Independent SPAs)**:
   - **Staff Portal (`/frontend-staff`)**: React 18 + Vite 5 + Tailwind CSS + React Router v6 + `html5-qrcode` (Port 5173). Admin & Lecturer management, webcam/camera QR scanning, lab session scheduling, rosters, attendance adjustments, and analytics reports.
-  - **Student Portal (`/frontend-student`)**: Mobile-first React 18 + Vite 5 + Tailwind CSS + Recharts + Lucide Icons (Port 5174). Read-only student personal attendance turnout, module progress, attendance history, low attendance advisory alerts, PWA offline app shell. No administrative code, no scanner, no QR badges.
+  - **Student Portal (`/frontend-student`)**: Mobile-first React 18 + Vite 5 + Tailwind CSS + Recharts + Lucide Icons (Port 5174). Read-only student personal attendance turnout, module progress, attendance history, low attendance advisory alerts, personal Digital Lab Badge & QR Code viewing and PNG downloads on the student Profile page, and PWA offline app shell. No administrative code or attendance mutation.
 
 - **Backend (`/backend`)**:
   - Java 21 (Temurin) & Spring Boot 3.3.5
   - Spring Web, Spring Data JPA, Spring Security, Spring Validation
-  - Flyway database migration engine (V1..V21 schemas auto-applied on startup)
+  - Flyway database migration engine (V1..V22 schemas auto-applied on startup)
   - JJWT (JSON Web Token) with HMAC-SHA256 signing and BCrypt password encryption
   - Separate login authentication endpoints (`/api/auth/staff/login` and `/api/auth/student/login`) with non-enumerating generic 401 defense
   - Rate limiting with token bucket per endpoint and IP
@@ -45,7 +45,7 @@
    - `POST /api/auth/student/login`: Exclusively for `STUDENT`.
    - Mismatched credentials belong to the wrong portal return the same generic 401 error as an incorrect password: `"Email or password is incorrect."`
    - Neither frontend portal site links to the other site's login page.
-4. **Admin QR Generation & Bulk Export**: The `ADMIN` can generate opaque cryptographic student QR tokens, preview/download individual student QR badges (PNG), and bulk export QR codes by batch or lab group (ZIP archive and printable A4 sticker PDF). `LECTURER` retains a scanner-only role and cannot generate or download QR tokens. Students have no access to QR tokens.
+4. **Admin QR Generation & Student Digital Badges**: The `ADMIN` can generate opaque cryptographic student QR tokens, preview/download individual student QR badges (PNG), and bulk export QR codes by batch or lab group (ZIP archive and printable A4 sticker PDF). `LECTURER` retains a scanner-only role and cannot generate or download QR tokens. Authenticated students can view and download their personal Digital Lab Badge and QR code on their Profile page (`/profile`) to present during lab sessions, but have zero access to raw token secrets or other students' badges.
 5. **Zero-Trust Client**: Roles and authorizations are derived exclusively from verified JWT claims in Spring Boot. Roles sent from the client are never trusted.
 6. **Session Finalization Rules**: Unmarked students are never prematurely marked absent during active sessions. Absent records are calculated and committed only upon explicit session closure by the lecturer.
 7. **Lab Groups & Cross-Group Attendance**: Batches can be partitioned into physical lab groups. Sessions target either a whole batch or a specific lab group. Students in the same batch attending another group's session are accepted and audited as cross-group visitors without distorting regular attendance percentages or home-group expected rosters.
@@ -89,8 +89,21 @@ cp .env.example .env
 mvn clean spring-boot:run
 ```
 
+#### Windows Turnkey Launchers (Resolves Java 17/21 PATH priority):
+```powershell
+# From project root in PowerShell:
+.\run-backend.ps1
+
+# Or from Command Prompt / File Explorer:
+run-backend.bat
+```
+*(Automatically resolves Adoptium Eclipse Temurin JDK 21/17 and avoids older Java PATH collisions).*
+
+> [!NOTE]
+> When connecting to Supabase AWS Seoul pooler from Sri Lankan or regional ISPs, connect **Cloudflare WARP** (`warp-cli connect`) to prevent SSL handshake timeouts.
+
 The backend starts on `http://localhost:8080`.
-- Flyway automatically runs database migrations on startup.
+- Flyway automatically runs database migrations (V1..V22) on startup.
 - If the database is empty, the first administrator account is bootstrapped automatically:
   - **Email**: `admin@labattend.local`
   - **Password**: `Admin@123456`
@@ -124,9 +137,9 @@ Open `http://localhost:5174` in your browser.
 
 ---
 
-## Automated Test Suites (264 Tests Total — 100% Passing)
+## Automated Test Suites (266 Tests Total — 100% Passing)
 
-### Backend Tests (200 Tests, JUnit 5 + Spring Boot Test)
+### Backend Tests (202 Tests, JUnit 5 + Spring Boot Test)
 ```bash
 cd backend
 mvn clean test
@@ -165,10 +178,10 @@ Detailed, step-by-step instructions for deploying to cloud hosts are available i
    - Set `SPRING_PROFILES_ACTIVE=prod`.
    - Connect to Supabase using the **Session Mode Pooler** (`aws-0-<region>.pooler.supabase.com:5432`) or Transaction Mode Pooler (`:6543?sslmode=require&prepareThreshold=0`).
    - Configure health check at `/api/health`.
-2. **Frontend**:
-   - Host on **Vercel** or **Netlify** pointing root directory to `frontend`.
+2. **Frontends**:
+   - Deploy `/frontend-staff` and `/frontend-student` independently on **Vercel**, **Netlify**, or **Cloudflare Pages**.
    - Set environment variable `VITE_API_BASE_URL=https://<your-backend-domain>/api`.
-   - Single-Page Application (SPA) routing is pre-configured via `vercel.json` and `public/_redirects`.
+   - Single-Page Application (SPA) routing is pre-configured via `vercel.json` and `public/_redirects` in each frontend directory.
 
 ---
 
@@ -192,14 +205,15 @@ LabAttend is a certified Progressive Web App (PWA) with native-like mobile execu
 
 Execute this checklist immediately after deploying to your live production URLs:
 
-- [ ] **1. HTTPS Validation**: Both frontend and backend URLs load over valid SSL/TLS certificates with zero mixed content errors.
+- [ ] **1. HTTPS Validation**: Both frontend portals and backend URLs load over valid SSL/TLS certificates with zero mixed content errors.
 - [ ] **2. Health Check**: `GET https://<backend-url>/api/health` returns `200 OK` with `"status": "UP"` and `"database": "CONNECTED"`.
-- [ ] **3. Flyway Migrations**: Verify all 5 migrations (V1..V5) applied cleanly during backend container startup.
-- [ ] **4. Admin Login**: Log in as administrator at `https://<frontend-url>/login`; confirm dashboard metrics and rosters load from PostgreSQL.
+- [ ] **3. Flyway Migrations**: Verify all 22 migrations (V1..V22) applied cleanly during backend container startup.
+- [ ] **4. Admin Login**: Log in as administrator at `https://<staff-frontend-url>/login`; confirm dashboard metrics and rosters load from PostgreSQL.
 - [ ] **5. Lecturer Login & Session**: Log in as lecturer; launch an active lab session.
 - [ ] **6. Real Mobile Phone Camera Scan**: Open the active session scanner on a real mobile device (iPhone/Android) over HTTPS; allow camera permissions and scan a student QR badge. Confirm real-time green success card and instant duplicate scan prevention.
-- [ ] **7. SPA Deep Link Refresh**: Refresh the browser while on `/admin/dashboard` or `/lecturer/sessions`; verify no 404 Not Found error.
-- [ ] **8. Secret Exposure Verification**: Confirm zero secrets or `.env` files are tracked in Git.
+- [ ] **7. Student Portal Access**: Log in as an activated student at `https://<student-frontend-url>/login`; verify personal profile, Digital Lab Badge preview, PNG download, and finalized attendance records.
+- [ ] **8. SPA Deep Link Refresh**: Refresh the browser while on `/admin/dashboard`, `/lecturer/sessions`, or `/profile`; verify no 404 Not Found error.
+- [ ] **9. Secret Exposure Verification**: Confirm zero secrets or `.env` files are tracked in Git.
 
 ---
 
